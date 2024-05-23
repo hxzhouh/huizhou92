@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="zh-cn" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'><meta name='description' content="背景 gRPC是google开源的高性能跨语言的RPC方案。gRPC的设计目标是在任何环境下运行，支持可插拔的负载均衡，跟踪，运行状况检查和身份验证。它不仅支持数据中心内部和跨数据中心的服务调用，它也适用于分布式计算的最后一公里，将设备，移动应用程序和浏览器连接到后端服务。 关于 GRPC设计的动机和原则 我们可以从这篇文章里面找到答案，gRPC Motivation and Design Principles This article is first published in the medium MPP plan. If you are a medium user, please follow me in medium. Thank you very much. 官方的文章令人印象深刻的点： 内部有Stubby的框架，但是它不是基于任何一个标准的 支持任意环境使用，支持物联网、手机、浏览器 支持stream和流控 实际上：性能不是gRPC 设计的第一目标。那么为什么选择HTTP/2? HTTP/2是什么 在正式讨论gRPC为什么选择HTTP/2之前，我们先来简单了解下HTTP/2。 HTTP/2可以简单用一个图片来介绍： 来自：https://hpbn.co/ HTTP/1里的header对应HTTP/2里的 HEADERS frame HTTP/1里的payload对应HTTP/2里的 DATA frame 在Chrome浏览器里，打开chrome://net-internals/#http2，可以看到http2链接的信息。 目前很多网站都已经跑在HTTP/2上了。 gRPC Over HTTP/2 准确来说gRPC设计上是分层的，底层支持不同的协议，目前gRPC支持： gRPC over HTTP2 gRPC Web 但是大多数情况下，讨论都是基于gRPC over HTTP2。 下面从一个真实的gRPC SayHello请求，查看它在HTTP/2上是怎样实现的。用Wireshark抓包： 可以看到下面这些Header： 1 2 3 4 5 6 Header: :authority: localhost:50051 Header: :path: /helloworld.">
+<title>为什么 Google 选择使用HTTP 2 实现 gRPC</title>
+
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/why-did-google-choose-to-implement-grpc-using-http2/'>
+
+<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="为什么 Google 选择使用HTTP 2 实现 gRPC">
+<meta property='og:description' content="背景 gRPC是google开源的高性能跨语言的RPC方案。gRPC的设计目标是在任何环境下运行，支持可插拔的负载均衡，跟踪，运行状况检查和身份验证。它不仅支持数据中心内部和跨数据中心的服务调用，它也适用于分布式计算的最后一公里，将设备，移动应用程序和浏览器连接到后端服务。 关于 GRPC设计的动机和原则 我们可以从这篇文章里面找到答案，gRPC Motivation and Design Principles This article is first published in the medium MPP plan. If you are a medium user, please follow me in medium. Thank you very much. 官方的文章令人印象深刻的点： 内部有Stubby的框架，但是它不是基于任何一个标准的 支持任意环境使用，支持物联网、手机、浏览器 支持stream和流控 实际上：性能不是gRPC 设计的第一目标。那么为什么选择HTTP/2? HTTP/2是什么 在正式讨论gRPC为什么选择HTTP/2之前，我们先来简单了解下HTTP/2。 HTTP/2可以简单用一个图片来介绍： 来自：https://hpbn.co/ HTTP/1里的header对应HTTP/2里的 HEADERS frame HTTP/1里的payload对应HTTP/2里的 DATA frame 在Chrome浏览器里，打开chrome://net-internals/#http2，可以看到http2链接的信息。 目前很多网站都已经跑在HTTP/2上了。 gRPC Over HTTP/2 准确来说gRPC设计上是分层的，底层支持不同的协议，目前gRPC支持： gRPC over HTTP2 gRPC Web 但是大多数情况下，讨论都是基于gRPC over HTTP2。 下面从一个真实的gRPC SayHello请求，查看它在HTTP/2上是怎样实现的。用Wireshark抓包： 可以看到下面这些Header： 1 2 3 4 5 6 Header: :authority: localhost:50051 Header: :path: /helloworld.">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/why-did-google-choose-to-implement-grpc-using-http2/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:tag' content='grpc' /><meta property='article:published_time' content='2024-05-23T10:25:02&#43;08:00'/><meta property='article:modified_time' content='2024-05-23T10:25:00&#43;08:00'/><meta property='og:image' content='https://huizhou92.com/p/why-did-google-choose-to-implement-grpc-using-http2/cb553b8f542344f88169374915cb1819.png' />
+<meta name="twitter:site" content="@https://x.com/piaopiaopig">
+    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="为什么 Google 选择使用HTTP 2 实现 gRPC">
+<meta name="twitter:description" content="背景 gRPC是google开源的高性能跨语言的RPC方案。gRPC的设计目标是在任何环境下运行，支持可插拔的负载均衡，跟踪，运行状况检查和身份验证。它不仅支持数据中心内部和跨数据中心的服务调用，它也适用于分布式计算的最后一公里，将设备，移动应用程序和浏览器连接到后端服务。 关于 GRPC设计的动机和原则 我们可以从这篇文章里面找到答案，gRPC Motivation and Design Principles This article is first published in the medium MPP plan. If you are a medium user, please follow me in medium. Thank you very much. 官方的文章令人印象深刻的点： 内部有Stubby的框架，但是它不是基于任何一个标准的 支持任意环境使用，支持物联网、手机、浏览器 支持stream和流控 实际上：性能不是gRPC 设计的第一目标。那么为什么选择HTTP/2? HTTP/2是什么 在正式讨论gRPC为什么选择HTTP/2之前，我们先来简单了解下HTTP/2。 HTTP/2可以简单用一个图片来介绍： 来自：https://hpbn.co/ HTTP/1里的header对应HTTP/2里的 HEADERS frame HTTP/1里的payload对应HTTP/2里的 DATA frame 在Chrome浏览器里，打开chrome://net-internals/#http2，可以看到http2链接的信息。 目前很多网站都已经跑在HTTP/2上了。 gRPC Over HTTP/2 准确来说gRPC设计上是分层的，底层支持不同的协议，目前gRPC支持： gRPC over HTTP2 gRPC Web 但是大多数情况下，讨论都是基于gRPC over HTTP2。 下面从一个真实的gRPC SayHello请求，查看它在HTTP/2上是怎样实现的。用Wireshark抓包： 可以看到下面这些Header： 1 2 3 4 5 6 Header: :authority: localhost:50051 Header: :path: /helloworld."><meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content='https://huizhou92.com/p/why-did-google-choose-to-implement-grpc-using-http2/cb553b8f542344f88169374915cb1819.png' />
+  
+
+
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="切换菜单">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/zh-cn/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_huda2458f72ce188392d75c5d51cd8e24e_373_300x0_resize_box_3.png" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+                    <span class="emoji">🍥</span>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/zh-cn">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/zh-cn/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>主页</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/%E5%85%B3%E4%BA%8E/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>关于</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>专栏</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>归档</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>搜索</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" >English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" selected>中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>暗色模式</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">目录</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#背景">背景</a></li>
+    <li><a href="#http2是什么">HTTP/2是什么</a></li>
+    <li><a href="#grpc-over-http2">gRPC Over HTTP/2</a></li>
+    <li><a href="#基于http2-协议的优点">基于HTTP/2 协议的优点</a>
+      <ol>
+        <li><a href="#http2-是一个公开的标准">HTTP/2 是一个公开的标准</a></li>
+        <li><a href="#http2-是一个经过实践检验的标准">HTTP/2 是一个经过实践检验的标准</a></li>
+        <li><a href="#http2-天然支持物联网手机浏览器">HTTP/2 天然支持物联网、手机、浏览器</a></li>
+        <li><a href="#基于http2-多语言的实现容易">基于HTTP/2 多语言的实现容易</a></li>
+        <li><a href="#http2支持stream和流控">HTTP/2支持Stream和流控</a></li>
+        <li><a href="#基于http2-在gatewayproxy很容易支持">基于HTTP/2 在Gateway/Proxy很容易支持</a></li>
+        <li><a href="#http2-安全性有保证">HTTP/2 安全性有保证</a></li>
+        <li><a href="#http2-鉴权成熟">HTTP/2 鉴权成熟</a></li>
+      </ol>
+    </li>
+    <li><a href="#基于http2-的缺点">基于HTTP/2 的缺点</a>
+      <ol>
+        <li><a href="#rpc的元数据的传输不够高效">rpc的元数据的传输不够高效</a></li>
+        <li><a href="#http2-里一次grpc调用需要解码两次">HTTP/2 里一次gRPC调用需要解码两次</a></li>
+      </ol>
+    </li>
+    <li><a href="#google制定标准的能力">Google制定标准的能力</a></li>
+    <li><a href="#为什么会出现grpc">为什么会出现gRPC</a></li>
+    <li><a href="#总结">总结</a></li>
+    <li><a href="#参考资料">参考资料</a></li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="has-image main-article">
+    <header class="article-header">
+        <div class="article-image">
+            <a href="/zh-cn/p/why-did-google-choose-to-implement-grpc-using-http2/">
+                <img src="/p/why-did-google-choose-to-implement-grpc-using-http2/cb553b8f542344f88169374915cb1819_hu8893b45aa37b1c5a992b8b724d707d73_5525332_800x0_resize_box_3.png"
+                        srcset="/p/why-did-google-choose-to-implement-grpc-using-http2/cb553b8f542344f88169374915cb1819_hu8893b45aa37b1c5a992b8b724d707d73_5525332_800x0_resize_box_3.png 800w, /p/why-did-google-choose-to-implement-grpc-using-http2/cb553b8f542344f88169374915cb1819_hu8893b45aa37b1c5a992b8b724d707d73_5525332_1600x0_resize_box_3.png 1600w"
+                        width="800" 
+                        height="457" 
+                        loading="lazy"
+                        alt="Featured image of post 为什么 Google 选择使用HTTP 2 实现 gRPC" />
+                
+            </a>
+        </div>
+    
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/zh-cn/categories/%E4%B8%BA%E4%BB%80%E4%B9%88%E8%BF%99%E4%B9%88%E8%AE%BE%E8%AE%A1/" >
+                为什么这么设计
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/zh-cn/p/why-did-google-choose-to-implement-grpc-using-http2/">为什么 Google 选择使用HTTP 2 实现 gRPC</a>
+        </h2>
+    
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">May 23, 2024</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    阅读时长: 1 分钟
+                </time>
+            </div>
+        
+    </footer>
+    
+
+    
+        <footer class="article-translations">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+            <div>
+                
+                    <a href="https://huizhou92.com/p/why-did-google-choose-to-implement-grpc-using-http2/" class="link">English</a>
+                
+            </div>
+        </footer>
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <h2 id="背景">背景
+</h2><p><a class="link" href="https://so.csdn.net/so/search?q=gRPC&amp;spm=1001.2101.3001.7020"  target="_blank" rel="noopener"
+    >gRPC</a>是google开源的高性能跨语言的RPC方案。gRPC的设计目标是在任何环境下运行，支持可插拔的负载均衡，跟踪，运行状况检查和身份验证。它不仅支持数据中心内部和跨数据中心的服务调用，它也适用于分布式计算的最后一公里，将设备，移动应用程序和浏览器连接到后端服务。<br>
+关于 GRPC设计的动机和原则 我们可以从这篇文章里面找到答案，<a class="link" href="https://grpc.io/blog/principles"  target="_blank" rel="noopener"
+    >gRPC Motivation and Design Principles</a></p>
+<!-- more-->
+<blockquote>
+<p>This article is first published in the medium MPP plan. If you are a medium user, please follow me in <a class="link" href="https://medium.hxzhouh.com/"  target="_blank" rel="noopener"
+    >medium</a>. Thank you very much.</p>
+</blockquote>
+<p>官方的文章令人印象深刻的点：</p>
+<ul>
+<li>内部有Stubby的框架，但是它不是基于任何一个标准的</li>
+<li>支持任意环境使用，支持物联网、手机、浏览器</li>
+<li>支持stream和流控</li>
+</ul>
+<p>实际上：性能不是gRPC 设计的第一目标。那么为什么选择HTTP/2?</p>
+<h2 id="http2是什么">HTTP/2是什么
+</h2><p>在正式讨论gRPC为什么选择HTTP/2之前，我们先来简单了解下HTTP/2。<br>
+HTTP/2可以简单用一个图片来介绍：<br>
+<img src="http://hengyunabc.github.io/img/http2.svg"
+	
+	
+	
+	loading="lazy"
+	
+		alt="https://hpbn.co/"
+	
+	
+></p>
+<p>来自：<a class="link" href="https://hpbn.co/"  target="_blank" rel="noopener"
+    >https://hpbn.co/</a></p>
+<ul>
+<li>HTTP/1里的header对应HTTP/2里的 HEADERS frame</li>
+<li>HTTP/1里的payload对应HTTP/2里的 DATA frame<br>
+在Chrome浏览器里，打开<code>chrome://net-internals/#http2</code>，可以看到http2链接的信息。<br>
+<img src="http://hengyunabc.github.io/img/chrome-http2.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="chrome-http2"
+	
+	
+></li>
+</ul>
+<p>目前很多网站都已经跑在HTTP/2上了。</p>
+<h2 id="grpc-over-http2">gRPC Over HTTP/2
+</h2><p>准确来说gRPC设计上是分层的，底层支持不同的协议，目前gRPC支持：</p>
+<ul>
+<li><a class="link" href="https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md"  target="_blank" rel="noopener"
+    >gRPC over HTTP2</a></li>
+<li><a class="link" href="https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-WEB.md"  target="_blank" rel="noopener"
+    >gRPC Web</a></li>
+</ul>
+<p>但是大多数情况下，讨论都是基于gRPC over HTTP2。<br>
+下面从一个真实的gRPC <code>SayHello</code>请求，查看它在HTTP/2上是怎样实现的。用Wireshark抓包：</p>
+<p><img src="http://hengyunabc.github.io/img/wireshark-grpc.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="wireshark-grpc"
+	
+	
+></p>
+<p>可以看到下面这些Header：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">Header: :authority: localhost:50051
+</span></span><span class="line"><span class="cl">Header: :path: /helloworld.Greeter/SayHello
+</span></span><span class="line"><span class="cl">Header: :method: POST
+</span></span><span class="line"><span class="cl">Header: :scheme: http
+</span></span><span class="line"><span class="cl">Header: content-type: application/grpc
+</span></span><span class="line"><span class="cl">Header: user-agent: grpc-java-netty/1.11.0  
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>然后请求的参数在DATA frame里：<br>
+<code>GRPC Message: /helloworld.Greeter/SayHello, Request</code><br>
+简而言之，gGRPC把元数据放到HTTP/2 Headers里，请求参数序列化之后放到 DATA frame里。</p>
+<h2 id="基于http2-协议的优点">基于HTTP/2 协议的优点
+</h2><h3 id="http2-是一个公开的标准">HTTP/2 是一个公开的标准
+</h3><p>Google本身把这个事情想清楚了，它并没有把内部的Stubby开源，而是选择重新做。现在技术越来越开放，私有协议的空间越来越小。</p>
+<h3 id="http2-是一个经过实践检验的标准">HTTP/2 是一个经过实践检验的标准
+</h3><p>HTTP/2是先有实践再有标准，这个很重要。很多不成功的标准都是先有一大堆厂商讨论出标准后有实现，导致混乱而不可用，比如CORBA。HTTP/2的前身是Google的<a class="link" href="https://en.wikipedia.org/wiki/SPDY"  target="_blank" rel="noopener"
+    >SPDY</a>，没有Google的实践和推动，可能都不会有HTTP/2。</p>
+<h3 id="http2-天然支持物联网手机浏览器">HTTP/2 天然支持物联网、手机、浏览器
+</h3><p>实际上先用上HTTP/2的也是手机和手机浏览器。移动互联网推动了HTTP/2的发展和普及。</p>
+<h3 id="基于http2-多语言的实现容易">基于HTTP/2 多语言的实现容易
+</h3><p>只讨论协议本身的实现，不考虑序列化。</p>
+<ul>
+<li>每个流行的编程语言都会有成熟的HTTP/2 Client</li>
+<li>HTTP/2 Client是经过充分测试，可靠的</li>
+<li>用Client发送HTTP/2请求的难度远低于用socket发送数据包/解析数据包</li>
+</ul>
+<h3 id="http2支持stream和流控">HTTP/2支持Stream和流控
+</h3><p>在业界，有很多支持stream的方案，比如基于websocket的，或者<a class="link" href="https://github.com/rsocket/rsocket"  target="_blank" rel="noopener"
+    >rsocket</a>。但是这些方案都不是通用的。<br>
+HTTP/2里的Stream还可以设置优先级，尽管在rpc里可能用的比较少，但是一些复杂的场景可能会用到。</p>
+<h3 id="基于http2-在gatewayproxy很容易支持">基于HTTP/2 在Gateway/Proxy很容易支持
+</h3><ul>
+<li><a class="link" href="[https://www.nginx.com/blog/nginx-1-13-10-grpc/]%28https://www.nginx.com/blog/nginx-1-13-10-grpc/%29" >nginx对gRPC的支持</a></li>
+<li><a class="link" href="https://www.envoyproxy.io/docs/envoy/latest/intro/arch%5c_overview/grpc#"  target="_blank" rel="noopener"
+    >envoy对gRPC的支持</a></li>
+</ul>
+<h3 id="http2-安全性有保证">HTTP/2 安全性有保证
+</h3><ul>
+<li>HTTP/2 天然支持SSL，当然gRPC可以跑在clear text协议（即不加密）上。</li>
+<li>很多私有协议的rpc可能自己包装了一层TLS支持，使用起来也非常复杂。开发者是否有足够的安全知识？使用者是否配置对了？运维者是否能正确理解？</li>
+<li>HTTP/2 在公有网络上的传输上有保证。比如这个<a class="link" href="https://en.wikipedia.org/wiki/CRIME"  target="_blank" rel="noopener"
+    >CRIME攻击</a>，私有协议很难保证没有这样子的漏洞。</li>
+</ul>
+<h3 id="http2-鉴权成熟">HTTP/2 鉴权成熟
+</h3><ul>
+<li>从HTTP/1发展起来的鉴权系统已经很成熟了，可以无缝用在HTTP/2上</li>
+<li>可以从前端到后端完全打通的鉴权，不需要做任何转换适配<br>
+比如传统的rpc dubbo，需要写一个dubbo filter，还要考虑把鉴权相关的信息通过thread local传递进去。rpc协议本身也需要支持。总之，非常复杂。实际上绝大部分公司里的rpc都是没有鉴权的，可以随便调。</li>
+</ul>
+<h2 id="基于http2-的缺点">基于HTTP/2 的缺点
+</h2><h3 id="rpc的元数据的传输不够高效">rpc的元数据的传输不够高效
+</h3><p>尽管HPAC可以压缩HTTP Header，但是对于rpc来说，确定一个函数调用，可以简化为一个int，只要两端去协商过一次，后面直接查表就可以了，不需要像HPAC那样编码解码。<br>
+可以考虑专门对gRPC做一个优化过的HTTP/2解析器，减少一些通用的处理，感觉可以提升性能。</p>
+<h3 id="http2-里一次grpc调用需要解码两次">HTTP/2 里一次gRPC调用需要解码两次
+</h3><p>一次是HEADERS frame，一次是DATA frame。</p>
+<p>HTTP/2 标准本身是只有一个TCP连接，但是实际在gRPC里是会有多个TCP连接，使用时需要注意。<br>
+gRPC选择基于HTTP/2，那么它的性能肯定不会是最顶尖的。<strong>但是对于rpc来说中庸的qps可以接受</strong>，通用和兼容性才是最重要的事情。我们可以参考一下官方的benchmark：<a class="link" href="https://grpc.io/docs/guides/benchmarking.html"  target="_blank" rel="noopener"
+    >https://grpc.io/docs/guides/benchmarking.html</a></p>
+<ul>
+<li><a class="link" href="https://github.com/hank-whu/rpc-benchmark"  target="_blank" rel="noopener"
+    >https://github.com/hank-whu/rpc-benchmark</a><br>
+如果您的场景是搞</li>
+</ul>
+<h2 id="google制定标准的能力">Google制定标准的能力
+</h2><p>近10年来，Google制定标准的能力越来越强。下面列举一些标准：</p>
+<ul>
+<li>HTTP/2</li>
+<li>WebP图片格式</li>
+<li>WebRTC 网页即时通信</li>
+<li>VP9/AV1 视频编码标准</li>
+<li>Service Worker/PWA</li>
+<li>QUIC/ HTTP/3<br>
+当然google也并不都会成功，很多事情它想推也失败了，比如Chrome的Native Client。</li>
+</ul>
+<p><strong>gRPC目前是k8s生态里的事实标准。 gRPC是否会成为更多地方，更大领域的RPC标准？</strong></p>
+<h2 id="为什么会出现grpc">为什么会出现gRPC
+</h2><p>准确来说为什么会出现基于HTTP/2的RPC？</p>
+<p>个人认为一个重要的原因是，在Cloud Native的潮流下，开放互通的需求必然会产生基于HTTP/2的RPC。即使没有gRPC，也会有其它基于HTTP/2的RPC。</p>
+<p>gRPC在Google的内部也是先用在Google Cloud Platform和公开的API上：<a class="link" href="https://opensource.google.com/projects/grpc"  target="_blank" rel="noopener"
+    >https://opensource.google.com/projects/grpc</a></p>
+<h2 id="总结">总结
+</h2><p>尽管gRPC它可能替换不了内部的RPC实现，但是在开放互通的时代，不止在k8s上，gRPC会有越来越多的舞台可以施展。</p>
+<h2 id="参考资料">参考资料
+</h2><ul>
+<li><a class="link" href="https://grpc.io/"  target="_blank" rel="noopener"
+    >https://grpc.io/</a></li>
+<li><a class="link" href="https://hpbn.co/"  target="_blank" rel="noopener"
+    >https://hpbn.co/</a></li>
+<li><a class="link" href="https://grpc.io/blog/loadbalancing"  target="_blank" rel="noopener"
+    >https://grpc.io/blog/loadbalancing</a></li>
+<li><a class="link" href="https://http2.github.io/faq"  target="_blank" rel="noopener"
+    >https://http2.github.io/faq</a></li>
+<li><a class="link" href="https://github.com/grpc/grpc"  target="_blank" rel="noopener"
+    >https://github.com/grpc/grpc</a></li>
+</ul>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/zh-cn/tags/golang/">Golang</a>
+        
+            <a href="/zh-cn/tags/grpc/">Grpc</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            最后更新于 May 23, 2024 10:25 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+<aside class="related-content--wrapper">
+    <h2 class="section-title">相关文章</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="">
+    <a href="/zh-cn/p/go-action-error-handling-in-grpc/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">gRPC中的错误处理</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+     
+    
+        
+    <script src="//cdn.jsdelivr.net/npm/twikoo@1.6.21/dist/twikoo.all.min.js"></script>
+<div id="tcomment"></div>
+<style>
+    .twikoo {
+        background-color: var(--card-background);
+        border-radius: var(--card-border-radius);
+        box-shadow: var(--shadow-l1);
+        padding: var(--card-padding);
+    }
+    :root[data-scheme="dark"] {
+        --twikoo-body-text-color-main: rgba(255, 255, 255, 0.9);
+        --twikoo-body-text-color: rgba(255, 255, 255, 0.7);
+    }
+    .twikoo .el-input-group__prepend,
+    .twikoo .tk-action-icon,
+    .twikoo .tk-submit-action-icon,
+    .twikoo .tk-time,
+    .twikoo .tk-comments-no,
+    .twikoo .tk-comments-count {
+        color: var(--twikoo-body-text-color);
+    }
+    .twikoo .el-input__inner,
+    .twikoo .el-textarea__inner,
+    .twikoo .tk-preview-container,
+    .twikoo .tk-content,
+    .twikoo .tk-nick,
+    .twikoo .tk-send {
+        color: var(--twikoo-body-text-color-main);
+    }
+    .twikoo .el-button{
+        color: var(--twikoo-body-text-color)!important;
+    }
+    .twikoo .el-input__count {
+        color: var(--twikoo-body-text-color) !important;
+    }
+    .OwO .OwO-body {
+        background-color: var(--body-background) !important;
+        color: var(--body-text-color) !important;
+    }
+</style><script>
+    twikoo.init({
+        envId: 'https:\/\/twikoo.yixiao9206.cn',
+        el: '#tcomment',})
+</script>
+
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2024 Example Person
+    </section>
+    
+    <section class="powerby">
+        使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+    </section>
+</footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>
