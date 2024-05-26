@@ -2,19 +2,20 @@
 <html lang="en" dir="ltr">
     <head><meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
-<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="\nNote: Non-members can read the full story in this\u00a0link.\nIntroduction In the previous article, we verified the context switch overhead of Linux processes and threads experimentally, which was approximately between 3-5 microseconds. This overhead is not significant, but for massively concurrent internet servers and typical computer programs, the characteristics are as follows:\nHigh concurrency: Thousands to tens of thousands of user requests need to be processed per second. Short cycles: The processing time per user should be as short as possible, often in the millisecond range. High network I/O: Often requires network I/O from other machines, such as Redis, MySQL, etc. Low computation: General CPU-intensive operations are not frequent. ">
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Introduction In the previous article, we verified the context switch overhead of Linux processes and threads experimentally, which was approximately between 3-5 microseconds. This overhead is not significant, but for massively concurrent internet servers and typical computer programs, the characteristics are as follows:\nHigh concurrency: Thousands to tens of thousands of user requests need to be processed per second. Short cycles: The processing time per user should be as short as possible, often in the millisecond range. High network I/O: Often requires network I/O from other machines, such as Redis, MySQL, etc. Low computation: General CPU-intensive operations are not frequent. ">
 <title>Performance analysis of goroutine switching</title>
 
 <link rel='canonical' href='https://huizhou92.com/p/performance-analysis-of-goroutine-switching/'>
 
 <link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="Performance analysis of goroutine switching">
-<meta property='og:description' content="\nNote: Non-members can read the full story in this\u00a0link.\nIntroduction In the previous article, we verified the context switch overhead of Linux processes and threads experimentally, which was approximately between 3-5 microseconds. This overhead is not significant, but for massively concurrent internet servers and typical computer programs, the characteristics are as follows:\nHigh concurrency: Thousands to tens of thousands of user requests need to be processed per second. Short cycles: The processing time per user should be as short as possible, often in the millisecond range. High network I/O: Often requires network I/O from other machines, such as Redis, MySQL, etc. Low computation: General CPU-intensive operations are not frequent. ">
+<meta property='og:description' content="Introduction In the previous article, we verified the context switch overhead of Linux processes and threads experimentally, which was approximately between 3-5 microseconds. This overhead is not significant, but for massively concurrent internet servers and typical computer programs, the characteristics are as follows:\nHigh concurrency: Thousands to tens of thousands of user requests need to be processed per second. Short cycles: The processing time per user should be as short as possible, often in the millisecond range. High network I/O: Often requires network I/O from other machines, such as Redis, MySQL, etc. Low computation: General CPU-intensive operations are not frequent. ">
 <meta property='og:url' content='https://huizhou92.com/p/performance-analysis-of-goroutine-switching/'>
 <meta property='og:site_name' content='huizhou92&#39;s Blog'>
-<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:published_time' content='2024-03-20T16:32:00&#43;00:00'/><meta property='article:modified_time' content='2024-03-20T16:32:00&#43;00:00'/>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:published_time' content='2024-03-20T16:32:00&#43;00:00'/><meta property='article:modified_time' content='2024-03-20T16:32:00&#43;00:00'/><meta property='og:image' content='https://images.hxzhouh.com/blog-images/2024/03/057d94f39fc9a6838acdbc94b915f654.png' />
 <meta name="twitter:site" content="@https://x.com/piaopiaopig">
     <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="Performance analysis of goroutine switching">
-<meta name="twitter:description" content="\nNote: Non-members can read the full story in this\u00a0link.\nIntroduction In the previous article, we verified the context switch overhead of Linux processes and threads experimentally, which was approximately between 3-5 microseconds. This overhead is not significant, but for massively concurrent internet servers and typical computer programs, the characteristics are as follows:\nHigh concurrency: Thousands to tens of thousands of user requests need to be processed per second. Short cycles: The processing time per user should be as short as possible, often in the millisecond range. High network I/O: Often requires network I/O from other machines, such as Redis, MySQL, etc. Low computation: General CPU-intensive operations are not frequent. ">
+<meta name="twitter:description" content="Introduction In the previous article, we verified the context switch overhead of Linux processes and threads experimentally, which was approximately between 3-5 microseconds. This overhead is not significant, but for massively concurrent internet servers and typical computer programs, the characteristics are as follows:\nHigh concurrency: Thousands to tens of thousands of user requests need to be processed per second. Short cycles: The processing time per user should be as short as possible, often in the millisecond range. High network I/O: Often requires network I/O from other machines, such as Redis, MySQL, etc. Low computation: General CPU-intensive operations are not frequent. "><meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content='https://images.hxzhouh.com/blog-images/2024/03/057d94f39fc9a6838acdbc94b915f654.png' />
     <link rel="shortcut icon" href="/favicon.ico" />
 
   
@@ -335,7 +336,9 @@
         <div class="widget--toc">
             <nav id="TableOfContents">
   <ol>
+    <li><a href="#introduction">Introduction</a></li>
     <li><a href="#coroutine-overhead-test">Coroutine Overhead Test</a></li>
+    <li><a href="#conclusion">Conclusion</a></li>
   </ol>
 </nav>
         </div>
@@ -347,8 +350,16 @@
 
 
             <main class="main full-width">
-    <article class="main-article">
+    <article class="has-image main-article">
     <header class="article-header">
+        <div class="article-image">
+            <a href="/p/performance-analysis-of-goroutine-switching/">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/03/057d94f39fc9a6838acdbc94b915f654.png" loading="lazy" alt="Featured image of post Performance analysis of goroutine switching" />
+                
+            </a>
+        </div>
+    
 
     <div class="article-details">
     
@@ -435,28 +446,18 @@
     <section class="article-content">
     
     
-    <p><img src="https://images.hxzhouh.com/blog-images/2024/03/057d94f39fc9a6838acdbc94b915f654.png"
-	
-	
-	
-	loading="lazy"
-	
-		alt="Pasted image 20240320201037"
-	
-	
-></p>
-<blockquote>
-<p>Note: Non-members can read the full story in this <a class="link" href="https://medium.hxzhouh.com/d91a49604cae?source=friends_link&amp;sk=f3140285d590037631e7f7354ee9f629"  target="_blank" rel="noopener"
-    >link</a>.</p>
-</blockquote>
-<h1 id="introduction">Introduction
-</h1><p>In the previous article, we verified the context switch overhead of Linux processes and threads experimentally, which was approximately between 3-5 microseconds. This overhead is not significant, but for massively concurrent internet servers and typical computer programs, the characteristics are as follows:</p>
+    <h2 id="introduction">Introduction
+</h2><p>In the previous article, we verified the context switch overhead of Linux processes and threads experimentally, which was approximately between 3-5 microseconds. This overhead is not significant, but for massively concurrent internet servers and typical computer programs, the characteristics are as follows:</p>
 <ul>
 <li>High concurrency: Thousands to tens of thousands of user requests need to be processed per second.</li>
 <li>Short cycles: The processing time per user should be as short as possible, often in the millisecond range.</li>
 <li>High network I/O: Often requires network I/O from other machines, such as Redis, MySQL, etc.</li>
 <li>Low computation: General CPU-intensive operations are not frequent.</li>
 </ul>
+<blockquote>
+<p>This article is first published in the medium MPP plan. If you are a medium user, please follow me in <a class="link" href="https://medium.hxzhouh.com/"  target="_blank" rel="noopener"
+    >medium</a>. Thank you very much.</p>
+</blockquote>
 <p>Even with a context switch overhead of 3-5 microseconds, it can still appear somewhat performance-degrading if the context switch volume is particularly high. For example, the Apache web server, which was the software product under this model, suffered from this. (In fact, when Linux operating system was designed, its goal was to be a general-purpose operating system rather than specifically designed for high-concurrency server-side applications.)</p>
 <p>To avoid frequent context switches, there is another asynchronous non-blocking development model. That is to use a process or thread to handle a large number of user requests and then improve performance through IO multiplexing (processes or threads do not block, saving the overhead of context switches). Nginx and Node.js are typical representatives of this model. Frankly speaking, in terms of program execution efficiency, this model is the most machine-friendly, with the highest efficiency (better than the coroutine development model mentioned below). Therefore, Nginx has replaced Apache as the preferred web server. However, the problem with this programming model lies in its unfriendliness to development, which is overly mechanized and deviates from the original intention of abstracting the concept of processes. Normal linear thinking of humans is disrupted, and application layer developers are forced to write code with non-human-like thinking, making code debugging extremely difficult.</p>
 <p>So, some smart heads continued to brainstorm at the application layer and designed &ldquo;threads&rdquo; that do not require process/thread context switching, called coroutines. Using coroutines to handle high-concurrency application scenarios can not only meet the original intention of processes but also allow developers to use normal linear thinking to handle their business, while also eliminating the expensive overhead of process/thread context switches. Therefore, it can be said that coroutines are a good patch for the process model in the scenario of processing massive requests on Linux.</p>
@@ -569,8 +570,8 @@ In terms of space, when coroutines are initialized and created, a stack of 2KB i
 </span></span><span class="line"><span class="cl">-n: file descriptors                <span class="m">12544</span>
 </span></span></code></pre></td></tr></table>
 </div>
-</div><h1 id="conclusion">Conclusion
-</h1><p>Since coroutines complete context switches in user space, the switch time is only slightly over 50ns, which is 70 times higher than process switches. The stack memory required by a single coroutine is also quite small, only requiring 2KB. Therefore, coroutines have shined in high-concurrency scenarios in backend internet applications in recent years.</p>
+</div><h2 id="conclusion">Conclusion
+</h2><p>Since coroutines complete context switches in user space, the switch time is only slightly over 50ns, which is 70 times higher than process switches. The stack memory required by a single coroutine is also quite small, only requiring 2KB. Therefore, coroutines have shined in high-concurrency scenarios in backend internet applications in recent years.</p>
 <p>Whether in terms of space or time performance, they are much better than processes (threads). Then why doesn&rsquo;t Linus implement them in the operating system? For the sake of better real-time performance, the operating system may preempt the CPU of processes with higher priorities. However, coroutines cannot achieve this and still rely on the coroutines currently using the CPU to release it actively, which is not consistent with the implementation purpose of the operating system. Therefore, the efficiency of coroutines comes at the cost of sacrificing preemption.</p>
 <p>Coroutines ultimately execute attached to operating system threads.</p>
 <p>A question we need to consider is:<br>
@@ -583,17 +584,7 @@ Instruction cycles of threads = interrupt detection + instruction execution (inc
 Instruction cycles of coroutines = interrupt detection + instruction execution + interrupt detection + coroutine signal detection</p>
 <p>So, I have the following conclusion:<br>
 In terms of performance, IO multiplexing + thread pool completely outperforms coroutines; but in terms of convenience, coroutines are still easier to use.</p>
-<p>Because calling coroutines in Go is so convenient, some Go programmers use the <code>go</code> keyword casually. It should be noted that before switching to a coroutine, the coroutine must be created first. Once created, plus the scheduling overhead, it increases to 400ns, which is almost equivalent to the time consumed by a system call. Although coroutines are efficient, they should not be used casually,</p>
-<p>If you like my articles, consider to :</p>
-<ol>
-<li>Drop me a follow -&gt; <a class="link" href="https://medium.hxzhouh.com/"  target="_blank" rel="noopener"
-    >huizhou92</a></li>
-<li>Leave a clap👏 (50 👏👏👏👏would be the best) and a comment if you want to interact with me.</li>
-<li>Receive an email every time I post on Medium -&gt; <a class="link" href="https://medium.hxzhouh.com/subscribe"  target="_blank" rel="noopener"
-    >Click here</a>!</li>
-<li>If you find my article helpful to you, please buy me a cup of <a class="link" href="https://www.buymeacoffee.com/hxzhouh"  target="_blank" rel="noopener"
-    >coffee</a></li>
-</ol>
+<p>Because calling coroutines in Go is so convenient, some Go programmers use the <code>go</code> keyword casually. It should be noted that before switching to a coroutine, the coroutine must be created first. Once created, plus the scheduling overhead, it increases to 400ns, which is almost equivalent to the time consumed by a system call. Although coroutines are efficient, they should not be used casually。</p>
 </section>
 
 
@@ -634,9 +625,15 @@ In terms of performance, IO multiplexing + thread pool completely outperforms co
         <div class="flex article-list--tile">
             
                 
-<article class="">
+<article class="has-image">
     <a href="/p/go-action-error-handling-in-grpc/">
         
+        
+            <div class="article-image">
+                
+                    <img src="https://cdn-images-1.medium.com/max/800/0*XqGwf5DLyzRkMj69" loading="lazy" data-key="go-action-error-handling-in-grpc" data-hash="https://cdn-images-1.medium.com/max/800/0*XqGwf5DLyzRkMj69"/>
+                
+            </div>
         
 
         <div class="article-details">
@@ -647,9 +644,15 @@ In terms of performance, IO multiplexing + thread pool completely outperforms co
 
             
                 
-<article class="">
+<article class="has-image">
     <a href="/p/secure-communication-with-grpc-from-ssl/tls-certification-to-san-certification/">
         
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/05/4976a194a8daca00ff6991a866c2ee53.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/05/4976a194a8daca00ff6991a866c2ee53.png"/>
+                
+            </div>
         
 
         <div class="article-details">
@@ -686,9 +689,15 @@ In terms of performance, IO multiplexing + thread pool completely outperforms co
 
             
                 
-<article class="">
+<article class="has-image">
     <a href="/p/analyzing-high-performance-network-framework-nbio-in-go/">
         
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/05/8876d50feac67c7fe0d47c28960064e5.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/05/8876d50feac67c7fe0d47c28960064e5.png"/>
+                
+            </div>
         
 
         <div class="article-details">

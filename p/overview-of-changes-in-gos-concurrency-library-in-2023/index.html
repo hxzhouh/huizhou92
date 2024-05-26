@@ -11,10 +11,11 @@
 <meta property='og:description' content="In 2023, there have been some changes to Go’s concurrency library, and this article provides an overview of these changes. Minor details such as typos and documentation changes will not be covered.">
 <meta property='og:url' content='https://huizhou92.com/p/overview-of-changes-in-gos-concurrency-library-in-2023/'>
 <meta property='og:site_name' content='huizhou92&#39;s Blog'>
-<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:published_time' content='2024-01-19T12:45:00&#43;00:00'/><meta property='article:modified_time' content='2024-01-19T12:45:00&#43;00:00'/>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:published_time' content='2024-01-19T12:45:00&#43;00:00'/><meta property='article:modified_time' content='2024-01-19T12:45:00&#43;00:00'/><meta property='og:image' content='https://images.hxzhouh.com/blog-images/2024/05/a0fe00350455e762e3a3891a422913ff.png' />
 <meta name="twitter:site" content="@https://x.com/piaopiaopig">
     <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="Overview of Changes in Go’s Concurrency Library in 2023">
-<meta name="twitter:description" content="In 2023, there have been some changes to Go’s concurrency library, and this article provides an overview of these changes. Minor details such as typos and documentation changes will not be covered.">
+<meta name="twitter:description" content="In 2023, there have been some changes to Go’s concurrency library, and this article provides an overview of these changes. Minor details such as typos and documentation changes will not be covered."><meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content='https://images.hxzhouh.com/blog-images/2024/05/a0fe00350455e762e3a3891a422913ff.png' />
     <link rel="shortcut icon" href="/favicon.ico" />
 
   
@@ -313,11 +314,56 @@
     </ol>
 </aside>
 
-    
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">Table of contents</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#syncmap">sync.Map</a></li>
+    <li><a href="#understanding-copychecker">Understanding copyChecker</a></li>
+    <li><a href="#optimization-insyncmap">Optimization in sync.Map</a></li>
+    <li><a href="#replacing-done-in-synconce-implementation-with-atomicuint32">Replacing done in sync.Once implementation with atomic.Uint32</a></li>
+    <li><a href="#optimization-in-initial-implementation-of-synconcefunc">Optimization in Initial Implementation of sync.OnceFunc</a></li>
+    <li><a href="#context">Context</a></li>
+    <li><a href="#golangorgxsync-no-significant-changes-insync">golang.org/x/sync No Significant Changes in sync</a></li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+            
+        
+    </aside>
+
 
             <main class="main full-width">
-    <article class="main-article">
+    <article class="has-image main-article">
     <header class="article-header">
+        <div class="article-image">
+            <a href="/p/overview-of-changes-in-gos-concurrency-library-in-2023/">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/05/a0fe00350455e762e3a3891a422913ff.png" loading="lazy" alt="Featured image of post Overview of Changes in Go’s Concurrency Library in 2023" />
+                
+            </a>
+        </div>
+    
 
     <div class="article-details">
     
@@ -413,18 +459,8 @@
 <p>This article is first published in the medium MPP plan. If you are a medium user, please follow me in <a class="link" href="https://medium.hxzhouh.com/"  target="_blank" rel="noopener"
     >medium</a>. Thank you very much.</p>
 </blockquote>
-<p><img src="https://images.hxzhouh.com/blog-images/2024/05/a0fe00350455e762e3a3891a422913ff.png"
-	
-	
-	
-	loading="lazy"
-	
-		alt="Pasted image 20240517205357"
-	
-	
-></p>
-<h1 id="syncmap">sync.Map
-</h1><p>In Go 1.21.0, three functions related to <code>Once</code> were added to the <code>sync</code> package to facilitate the usage of <code>Once</code>:</p>
+<h2 id="syncmap">sync.Map
+</h2><p>In Go 1.21.0, three functions related to <code>Once</code> were added to the <code>sync</code> package to facilitate the usage of <code>Once</code>:</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
@@ -502,8 +538,8 @@
 </div>
 </div><p>The code is slightly simplified, and you only need to call the returned function <code>g</code> to obtain the singleton.</p>
 <p>In summary, these three functions are just encapsulations of <code>sync.Once</code> to make it more convenient to use.</p>
-<h1 id="understanding-copychecker">Understanding copyChecker
-</h1><p>We know that <code>sync.Cond</code> has two fields, <code>noCopy</code> and <code>checker</code>. <code>noCopy</code> can be statically checked using the <code>go vet</code> tool, but <code>checker</code> is checked at runtime:</p>
+<h2 id="understanding-copychecker">Understanding copyChecker
+</h2><p>We know that <code>sync.Cond</code> has two fields, <code>noCopy</code> and <code>checker</code>. <code>noCopy</code> can be statically checked using the <code>go vet</code> tool, but <code>checker</code> is checked at runtime:</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
@@ -590,8 +626,8 @@
 </ul>
 <p>The entire logic uses CAS combined with two pointer checks to ensure the correctness of the judgment.</p>
 <p>In summary, the first step is a performance optimization. The second step uses CAS to ensure initialization. The third step rechecks to ensure the judgment.</p>
-<h1 id="optimization-insyncmap">Optimization in sync.Map
-</h1><p>Previously, the implementation of the <code>Range</code> function in <code>sync.Map</code> was as follows:</p>
+<h2 id="optimization-insyncmap">Optimization in sync.Map
+</h2><p>Previously, the implementation of the <code>Range</code> function in <code>sync.Map</code> was as follows:</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt"> 1
@@ -649,8 +685,8 @@
 </div>
 </div><p><a class="link" href="https://github.com/golang/go/issues/62404"  target="_blank" rel="noopener"
     >Issue #62404</a> analyzed this problem.</p>
-<h1 id="replacing-done-in-synconce-implementation-with-atomicuint32">Replacing done in sync.Once implementation with atomic.Uint32
-</h1><p>Previously, the implementation of <code>sync.Once</code> was as follows:</p>
+<h2 id="replacing-done-in-synconce-implementation-with-atomicuint32">Replacing done in sync.Once implementation with atomic.Uint32
+</h2><p>Previously, the implementation of <code>sync.Once</code> was as follows:</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
@@ -684,8 +720,8 @@
 </div><p>Since Go 1.19, the standard library has provided atomic wrappers for basic types, and a large amount of code in the Go standard library has been replaced with <code>atomic.XXX</code> types.</p>
 <p>In my opinion, this modification may result in a performance decrease compared to the previous implementation in certain cases. I will write an article specifically to explore this.</p>
 <p>Besides <code>sync.Once</code>, there are other types that have been replaced with <code>atomic.XXX</code> types in their usage. Is it necessary to replace them?</p>
-<h1 id="optimization-in-initial-implementation-of-synconcefunc">Optimization in Initial Implementation of sync.OnceFunc
-</h1><p>The initial implementation of <code>sync.OnceFunc</code> was as follows:</p>
+<h2 id="optimization-in-initial-implementation-of-synconcefunc">Optimization in Initial Implementation of sync.OnceFunc
+</h2><p>The initial implementation of <code>sync.OnceFunc</code> was as follows:</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt"> 1
@@ -807,8 +843,8 @@
 </span></span><span class="line"><span class="cl"><span class="p">}</span>
 </span></span></code></pre></td></tr></table>
 </div>
-</div><h1 id="context">Context
-</h1><p>As we know, in Go 1.20, a new method <code>WithCancelCause</code> was added ( <code>func WithCancelCause(parent Context) (ctx Context, cancel CancelCauseFunc)</code>), which allows us to pass the cancellation cause to the <code>Context</code> generated by <code>WithCancelCause</code>. This allows us to retrieve the cancellation cause using the <code>context.Cause</code> method.</p>
+</div><h2 id="context">Context
+</h2><p>As we know, in Go 1.20, a new method <code>WithCancelCause</code> was added ( <code>func WithCancelCause(parent Context) (ctx Context, cancel CancelCauseFunc)</code>), which allows us to pass the cancellation cause to the <code>Context</code> generated by <code>WithCancelCause</code>. This allows us to retrieve the cancellation cause using the <code>context.Cause</code> method.</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
@@ -848,8 +884,8 @@
 <p>This is a helper function, but it may be difficult to understand, and it is unlikely to be widely used.</p>
 <p>Other minor performance optimizations, such as replacing <code>type emptyCtx int</code> with <code>type emptyCtx struct{}</code>, are not mentioned here.</p>
 <p>An additional function <code>func WithoutCancel(parent Context) Context</code> was added, which creates a <code>Context</code> that is not affected when the parent is canceled.</p>
-<h1 id="golangorgxsync-no-significant-changes-insync">golang.org/x/sync No Significant Changes in sync
-</h1><p><code>errgroup</code> now supports setting the cause using <code>withCancelCause</code>. <code>singleflight</code> added an <code>Unwrap</code> method to <code>panicError</code>.</p>
+<h2 id="golangorgxsync-no-significant-changes-insync">golang.org/x/sync No Significant Changes in sync
+</h2><p><code>errgroup</code> now supports setting the cause using <code>withCancelCause</code>. <code>singleflight</code> added an <code>Unwrap</code> method to <code>panicError</code>.</p>
 </section>
 
 
@@ -890,9 +926,15 @@
         <div class="flex article-list--tile">
             
                 
-<article class="">
+<article class="has-image">
     <a href="/p/go-action-error-handling-in-grpc/">
         
+        
+            <div class="article-image">
+                
+                    <img src="https://cdn-images-1.medium.com/max/800/0*XqGwf5DLyzRkMj69" loading="lazy" data-key="go-action-error-handling-in-grpc" data-hash="https://cdn-images-1.medium.com/max/800/0*XqGwf5DLyzRkMj69"/>
+                
+            </div>
         
 
         <div class="article-details">
@@ -903,9 +945,15 @@
 
             
                 
-<article class="">
+<article class="has-image">
     <a href="/p/secure-communication-with-grpc-from-ssl/tls-certification-to-san-certification/">
         
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/05/4976a194a8daca00ff6991a866c2ee53.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/05/4976a194a8daca00ff6991a866c2ee53.png"/>
+                
+            </div>
         
 
         <div class="article-details">
@@ -942,9 +990,15 @@
 
             
                 
-<article class="">
+<article class="has-image">
     <a href="/p/analyzing-high-performance-network-framework-nbio-in-go/">
         
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/05/8876d50feac67c7fe0d47c28960064e5.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/05/8876d50feac67c7fe0d47c28960064e5.png"/>
+                
+            </div>
         
 
         <div class="article-details">
