@@ -5795,6 +5795,125 @@ In terms of performance, IO multiplexing + thread pool completely outperforms co
 &lt;p&gt;Because calling coroutines in Go is so convenient, some Go programmers use the &lt;code&gt;go&lt;/code&gt; keyword casually. It should be noted that before switching to a coroutine, the coroutine must be created first. Once created, plus the scheduling overhead, it increases to 400ns, which is almost equivalent to the time consumed by a system call. Although coroutines are efficient, they should not be used casually。&lt;/p&gt;</description>
         </item>
         <item>
+        <title>Go: Internal Data Structure: heap</title>
+        <link>https://huizhou92.com/p/go-internal-data-structure-heap/</link>
+        <pubDate>Tue, 12 Mar 2024 10:27:31 +0000</pubDate>
+        
+        <guid>https://huizhou92.com/p/go-internal-data-structure-heap/</guid>
+        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2024/06/0158f02d1102610416ac3f6296e8ffe0.png" alt="Featured image of post Go: Internal Data Structure: heap" /&gt;&lt;p&gt;In the Go source code, there is an implementation of the &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/blob/19309779ac5e2f5a2fd3cbb34421dafb2855ac21/src/container/heap/heap.go&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;heap&lt;/a&gt; data structure. Here is its description:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;// Package heap provides heap operations for any type that implements&lt;br&gt;
+// heap.Interface. A heap is a tree with the property that each node is the&lt;br&gt;
+// minimum-valued node in its subtree.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;What is a heap? In the &amp;ldquo;Data Structures&amp;rdquo; course at university, we learned about the classic data structure called a heap. Let&amp;rsquo;s refresh our memory about heaps through the &lt;a class=&#34;link&#34; href=&#34;https://en.wikipedia.org/wiki/Heap_%28data_structure%29&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;&lt;strong&gt;Wikipedia page&lt;/strong&gt;&lt;/a&gt;.&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;em&gt;In computer science, a&lt;/em&gt; &lt;strong&gt;&lt;em&gt;heap&lt;/em&gt;&lt;/strong&gt; &lt;em&gt;is a tree-based data structure that satisfies the&lt;/em&gt; &lt;strong&gt;&lt;em&gt;heap property&lt;/em&gt;&lt;/strong&gt; &lt;em&gt;: In a max heap, for any given node C, if P is a parent node of C, then the key (the value) of P is greater than or equal to the key of C. In a min heap, the key of P is less than or equal to the key of C.&lt;/em&gt; &lt;a class=&#34;link&#34; href=&#34;https://en.wikipedia.org/wiki/Heap_%28data_structure%29#cite_note-1&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;&lt;em&gt;[1]&lt;/em&gt;&lt;/a&gt; &lt;em&gt;The node at the &amp;ldquo;top&amp;rdquo; of the heap (with no parents) is called the root node.&lt;/em&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;If you haven&amp;rsquo;t studied &lt;strong&gt;&lt;em&gt;computer science&lt;/em&gt;&lt;/strong&gt; or have yet to systematically learn about data structures before, I strongly recommend taking the course &lt;a class=&#34;link&#34; href=&#34;https://www.coursera.org/learn/algorithms-part1&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Coursera: Algorithms I &amp;amp; II&lt;/a&gt;. It is the highest-rated algorithm course on Coursera. Professor Robert Sedgewick has a magical ability to explain even the most complex algorithms clearly and engagingly.&lt;/p&gt;
+&lt;h2 id=&#34;implementation-of-goheap&#34;&gt;Implementation of Go heap
+&lt;/h2&gt;&lt;blockquote&gt;
+&lt;p&gt;&lt;em&gt;Based on Go 1.21.4&lt;/em&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;The basic operations of a heap are as follows:&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/06/0facefd16a14e47b5719adfcab2d1c8e.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20240607102724&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;Now, let&amp;rsquo;s take a look at the implementation of &lt;code&gt;heap&lt;/code&gt;. It&amp;rsquo;s quite simple, with only a &lt;code&gt;sort&lt;/code&gt; interface and two methods: &lt;code&gt;push&lt;/code&gt; and &lt;code&gt;pop&lt;/code&gt;.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;type&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;Interface&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;interface&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;     &lt;span class=&#34;nx&#34;&gt;sort&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Interface&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;     &lt;span class=&#34;nf&#34;&gt;Push&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;x&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;any&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// add x as element Len()
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;     &lt;span class=&#34;nf&#34;&gt;Pop&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;any&lt;/span&gt;   &lt;span class=&#34;c1&#34;&gt;// remove and return element Len() - 1.
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;c1&#34;&gt;// sort.Interface  src/sort/sort.go
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;type&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;Interface&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;interface&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;     &lt;span class=&#34;c1&#34;&gt;// Len is the number of elements in the collection.
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;     &lt;span class=&#34;nf&#34;&gt;Len&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;     &lt;span class=&#34;nf&#34;&gt;Less&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;j&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;bool&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;     &lt;span class=&#34;c1&#34;&gt;// Swap swaps the elements with indexes i and j.
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;     &lt;span class=&#34;nf&#34;&gt;Swap&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;j&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;By implementing the &lt;code&gt;sort.Interface&lt;/code&gt;, we can obtain a robust heap implementation. Different implementations &lt;code&gt;Less&lt;/code&gt; can achieve either a max heap or a min heap. The more complex part of heap maintenance is already implemented in the source code. Since this article is not a data structures course, we won&amp;rsquo;t delve into the derivation of its principles. Instead, I will use an example to describe the adjustment process.&lt;/p&gt;
+&lt;h2 id=&#34;example&#34;&gt;Example
+&lt;/h2&gt;&lt;p&gt;Now let&amp;rsquo;s use a heap to solve a practical problem—yes, it&amp;rsquo;s time to brush up on LeetCode.&lt;/p&gt;
+&lt;h3 id=&#34;215-kth-largest-element-in-an-arrayhttpsleetcodecomproblemskth-largest-element-in-an-array&#34;&gt;&lt;a class=&#34;link&#34; href=&#34;https://leetcode.com/problems/kth-largest-element-in-an-array/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;215. Kth Largest Element in an Array&lt;/a&gt;
+&lt;/h3&gt;&lt;blockquote&gt;
+&lt;p&gt;&lt;em&gt;Given an integer array&lt;/em&gt; &lt;code&gt;nums&lt;/code&gt; &lt;em&gt;and an integer&lt;/em&gt; &lt;code&gt;k&lt;/code&gt; &lt;em&gt;, return the&lt;/em&gt; &lt;code&gt;k&lt;/code&gt; &lt;em&gt;th largest element in the array. This problem can be perfectly solved using a min heap.&lt;/em&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;&lt;strong&gt;Example 2:&lt;/strong&gt; &lt;strong&gt;Input:&lt;/strong&gt; &lt;code&gt;nums = [3,2,3,1,2,4,5,5,6]&lt;/code&gt;, &lt;code&gt;k = 4&lt;/code&gt; &lt;strong&gt;Output:&lt;/strong&gt; &lt;code&gt;4&lt;/code&gt;&lt;br&gt;
+&lt;script src=&#34;https://gist.github.com/hxzhouh/fa785dfe6eb46b866fb0071019d05a47.js&#34;&gt;&lt;/script&gt;
+&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/06/a24471ac4230d34b77bee0a43fc24ac1.gif&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;1_okRxrEIw00t3vuCkP8JKwQ&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;h3 id=&#34;692-top-k-frequentwordshttpsleetcodecomproblemstop-k-frequent-words&#34;&gt;&lt;a class=&#34;link&#34; href=&#34;https://leetcode.com/problems/top-k-frequent-words/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;692. Top K Frequent Words&lt;/a&gt;
+&lt;/h3&gt;&lt;p&gt;The solution is similar; we need to change the implementation of &lt;code&gt;Less&lt;/code&gt;.&lt;br&gt;
+&lt;script src=&#34;https://gist.github.com/hxzhouh/c60dc4b50cf1dbba9f24bf3c0f46f624.js&#34;&gt;&lt;/script&gt;
+&lt;/p&gt;
+&lt;h2 id=&#34;usage--heap-in-real-world&#34;&gt;Usage  heap in real-world
+&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;gosrc: The Go language&amp;rsquo;s garbage collector (GC) source code uses a heap. &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/blob/ed817f1c4055a559a94afffecbb91c78e4f39942/src/internal/trace/gc.go#L342&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;bandUtilHeap&lt;/a&gt; and &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/blob/ed817f1c4055a559a94afffecbb91c78e4f39942/src/cmd/compile/internal/ssa/schedule.go#L28&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;ValHeap&lt;/a&gt; in the GC source code both utilize heaps.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;etcd: The &lt;a class=&#34;link&#34; href=&#34;https://github.com/etcd-io/etcd/blob/266a3ba5ecef675bf3ce180e5d6260c1886e2e45/server/lease/lease_queue.go#L18&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;lease&lt;/a&gt; implementation in etcd also uses a heap.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;differing-opinions&#34;&gt;Differing Opinions
+&lt;/h2&gt;&lt;p&gt;Some Gophers think heap is difficult to use. Although the standard library provides a heap implementation, it is considered challenging to use for the following reasons:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;It uses a functional approach instead of an intuitive object-oriented approach.&lt;/li&gt;
+&lt;li&gt;It requires implementing three methods ( &lt;code&gt;Len&lt;/code&gt;, &lt;code&gt;Less&lt;/code&gt;, &lt;code&gt;Swap&lt;/code&gt;) of the &lt;code&gt;Interface&lt;/code&gt; interface ( &lt;code&gt;sort.Interface&lt;/code&gt;), as well as &lt;code&gt;Push(x any)&lt;/code&gt; and &lt;code&gt;Pop() any&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;The package provides methods such as &lt;code&gt;heap.Init&lt;/code&gt;, &lt;code&gt;heap.Fix&lt;/code&gt;, &lt;code&gt;heap.Pop&lt;/code&gt;, &lt;code&gt;heap.Push&lt;/code&gt;, and &lt;code&gt;heap.Remove&lt;/code&gt;. The names &lt;code&gt;Pop&lt;/code&gt; and &lt;code&gt;Push&lt;/code&gt; conflict with the methods of &lt;code&gt;Interface&lt;/code&gt;, which can be confusing.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;heap.Pop&lt;/code&gt; and &lt;code&gt;Interface.Pop&lt;/code&gt; have no relationship, and the same applies to &lt;code&gt;heap.Push&lt;/code&gt; and &lt;code&gt;Interface.Push&lt;/code&gt;. Although &lt;code&gt;heap.Push&lt;/code&gt; internally calls &lt;code&gt;Interface.Push&lt;/code&gt;, there are additional processing steps.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;However, some people have implemented simpler alternatives. An article titled &lt;a class=&#34;link&#34; href=&#34;https://www.dolthub.com/blog/2023-12-01-why-are-go-heaps-confusing/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Why Are Golang Heaps So Complicated&lt;/a&gt; discusses this issue.&lt;/p&gt;
+</description>
+        </item>
+        <item>
         <title>Decrypt Go:  Understand the Three Pointer&#39;s in the Go</title>
         <link>https://huizhou92.com/p/decrypt-go-understand-the-three-pointers-in-the-go/</link>
         <pubDate>Sun, 25 Feb 2024 12:32:00 +0000</pubDate>
