@@ -2,20 +2,20 @@
 <html lang="en" dir="ltr">
     <head><meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
-<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Introduction In the previous article, we verified the context switch overhead of Linux processes and threads experimentally, which was approximately between 3-5 microseconds. This overhead is not significant, but for massively concurrent internet servers and typical computer programs, the characteristics are as follows:\nHigh concurrency: Thousands to tens of thousands of user requests need to be processed per second. Short cycles: The processing time per user should be as short as possible, often in the millisecond range. High network I/O: Often requires network I/O from other machines, such as Redis, MySQL, etc. Low computation: General CPU-intensive operations are not frequent. ">
-<title>Performance analysis of goroutine switching</title>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Last week, Go 1\u00a0.23 entered the freeze period, meaning no new features will be added, and any already added features are unlikely to be removed. This is a great opportunity to preview the upcoming changes. In this article, Let’s learn about the new iter package. This article is first published in the medium MPP plan. If you are a medium user, please follow me in medium. Thank you very much.">
+<title>Go 1.23: 新包 Iter</title>
 
-<link rel='canonical' href='https://huizhou92.com/p/performance-analysis-of-goroutine-switching/'>
+<link rel='canonical' href='https://huizhou92.com/p/go-1.23-new-iter-package/'>
 
-<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="Performance analysis of goroutine switching">
-<meta property='og:description' content="Introduction In the previous article, we verified the context switch overhead of Linux processes and threads experimentally, which was approximately between 3-5 microseconds. This overhead is not significant, but for massively concurrent internet servers and typical computer programs, the characteristics are as follows:\nHigh concurrency: Thousands to tens of thousands of user requests need to be processed per second. Short cycles: The processing time per user should be as short as possible, often in the millisecond range. High network I/O: Often requires network I/O from other machines, such as Redis, MySQL, etc. Low computation: General CPU-intensive operations are not frequent. ">
-<meta property='og:url' content='https://huizhou92.com/p/performance-analysis-of-goroutine-switching/'>
+<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="Go 1.23: new Iter\u00a0package">
+<meta property='og:description' content="Last week, Go 1\u00a0.23 entered the freeze period, meaning no new features will be added, and any already added features are unlikely to be removed. This is a great opportunity to preview the upcoming changes. In this article, Let’s learn about the new iter package. This article is first published in the medium MPP plan. If you are a medium user, please follow me in medium. Thank you very much.">
+<meta property='og:url' content='https://huizhou92.com/p/go-1.23-new-iter-package/'>
 <meta property='og:site_name' content='huizhou92&#39;s Blog'>
-<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:published_time' content='2024-03-20T16:32:00&#43;00:00'/><meta property='article:modified_time' content='2024-03-20T16:32:00&#43;00:00'/><meta property='og:image' content='https://images.hxzhouh.com/blog-images/2024/03/057d94f39fc9a6838acdbc94b915f654.png' />
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:published_time' content='2024-06-11T17:33:16&#43;08:00'/><meta property='article:modified_time' content='2024-06-11T17:33:06&#43;08:00'/><meta property='og:image' content='https://images.hxzhouh.com/blog-images/2024/06/91f640dd323a289717b83dd1c1a3c38c.png' />
 <meta name="twitter:site" content="@https://x.com/piaopiaopig">
-    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="Performance analysis of goroutine switching">
-<meta name="twitter:description" content="Introduction In the previous article, we verified the context switch overhead of Linux processes and threads experimentally, which was approximately between 3-5 microseconds. This overhead is not significant, but for massively concurrent internet servers and typical computer programs, the characteristics are as follows:\nHigh concurrency: Thousands to tens of thousands of user requests need to be processed per second. Short cycles: The processing time per user should be as short as possible, often in the millisecond range. High network I/O: Often requires network I/O from other machines, such as Redis, MySQL, etc. Low computation: General CPU-intensive operations are not frequent. "><meta name="twitter:card" content="summary">
-    <meta name="twitter:image" content='https://images.hxzhouh.com/blog-images/2024/03/057d94f39fc9a6838acdbc94b915f654.png' />
+    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="Go 1.23: new Iter\u00a0package">
+<meta name="twitter:description" content="Last week, Go 1\u00a0.23 entered the freeze period, meaning no new features will be added, and any already added features are unlikely to be removed. This is a great opportunity to preview the upcoming changes. In this article, Let’s learn about the new iter package. This article is first published in the medium MPP plan. If you are a medium user, please follow me in medium. Thank you very much."><meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content='https://images.hxzhouh.com/blog-images/2024/06/91f640dd323a289717b83dd1c1a3c38c.png' />
     <link rel="shortcut icon" href="/favicon.ico" />
 
   
@@ -336,9 +336,16 @@
         <div class="widget--toc">
             <nav id="TableOfContents">
   <ol>
-    <li><a href="#introduction">Introduction</a></li>
-    <li><a href="#coroutine-overhead-test">Coroutine Overhead Test</a></li>
-    <li><a href="#conclusion">Conclusion</a></li>
+    <li>
+      <ol>
+        <li><a href="#性能对比">性能对比</a></li>
+      </ol>
+    </li>
+    <li><a href="#iter-的目标">iter 的目标</a></li>
+    <li><a href="#如何使用-iter">如何使用 iter</a></li>
+    <li><a href="#争论">争论</a></li>
+    <li><a href="#结论">结论</a></li>
+    <li><a href="#参考资料">参考资料</a></li>
   </ol>
 </nav>
         </div>
@@ -350,16 +357,8 @@
 
 
             <main class="main full-width">
-    <article class="has-image main-article">
+    <article class="main-article">
     <header class="article-header">
-        <div class="article-image">
-            <a href="/p/performance-analysis-of-goroutine-switching/">
-                
-                    <img src="https://images.hxzhouh.com/blog-images/2024/03/057d94f39fc9a6838acdbc94b915f654.png" loading="lazy" alt="Featured image of post Performance analysis of goroutine switching" />
-                
-            </a>
-        </div>
-    
 
     <div class="article-details">
     
@@ -374,7 +373,7 @@
 
     <div class="article-title-wrapper">
         <h2 class="article-title">
-            <a href="/p/performance-analysis-of-goroutine-switching/">Performance analysis of goroutine switching</a>
+            <a href="/p/go-1.23-new-iter-package/">Go 1.23: 新包 Iter</a>
         </h2>
     
         
@@ -396,7 +395,7 @@
   <path d="M3 11h16" />
   <path d="M18 16.496v1.504l1 1" />
 </svg>
-                <time class="article-time--published">Mar 20, 2024</time>
+                <time class="article-time--published">Jun 11, 2024</time>
             </div>
         
 
@@ -411,7 +410,7 @@
 
 
                 <time class="article-time--reading">
-                    6 minute read
+                    3 minute read
                 </time>
             </div>
         
@@ -446,30 +445,151 @@
     <section class="article-content">
     
     
-    <h2 id="introduction">Introduction
-</h2><p>In the previous article, we verified the context switch overhead of Linux processes and threads experimentally, which was approximately between 3-5 microseconds. This overhead is not significant, but for massively concurrent internet servers and typical computer programs, the characteristics are as follows:</p>
-<ul>
-<li>High concurrency: Thousands to tens of thousands of user requests need to be processed per second.</li>
-<li>Short cycles: The processing time per user should be as short as possible, often in the millisecond range.</li>
-<li>High network I/O: Often requires network I/O from other machines, such as Redis, MySQL, etc.</li>
-<li>Low computation: General CPU-intensive operations are not frequent.</li>
-</ul>
+    <p>上周，<a class="link" href="https://tip.golang.org/doc/go1.23"  target="_blank" rel="noopener"
+    >Go 1.23</a> 进入冻结期，这意味着不会添加任何新功能，并且任何已添加的功能不太可能被删除。这是一个预览即将发生的变化的好机会。<br>
+这篇文章，来了解一下 1.23 转正的 iter 包。</p>
+<!-- more-->
 <blockquote>
 <p>This article is first published in the medium MPP plan. If you are a medium user, please follow me in <a class="link" href="https://medium.hxzhouh.com/"  target="_blank" rel="noopener"
     >medium</a>. Thank you very much.</p>
 </blockquote>
-<p>Even with a context switch overhead of 3-5 microseconds, it can still appear somewhat performance-degrading if the context switch volume is particularly high. For example, the Apache web server, which was the software product under this model, suffered from this. (In fact, when Linux operating system was designed, its goal was to be a general-purpose operating system rather than specifically designed for high-concurrency server-side applications.)</p>
-<p>To avoid frequent context switches, there is another asynchronous non-blocking development model. That is to use a process or thread to handle a large number of user requests and then improve performance through IO multiplexing (processes or threads do not block, saving the overhead of context switches). Nginx and Node.js are typical representatives of this model. Frankly speaking, in terms of program execution efficiency, this model is the most machine-friendly, with the highest efficiency (better than the coroutine development model mentioned below). Therefore, Nginx has replaced Apache as the preferred web server. However, the problem with this programming model lies in its unfriendliness to development, which is overly mechanized and deviates from the original intention of abstracting the concept of processes. Normal linear thinking of humans is disrupted, and application layer developers are forced to write code with non-human-like thinking, making code debugging extremely difficult.</p>
-<p>So, some smart heads continued to brainstorm at the application layer and designed &ldquo;threads&rdquo; that do not require process/thread context switching, called coroutines. Using coroutines to handle high-concurrency application scenarios can not only meet the original intention of processes but also allow developers to use normal linear thinking to handle their business, while also eliminating the expensive overhead of process/thread context switches. Therefore, it can be said that coroutines are a good patch for the process model in the scenario of processing massive requests on Linux.</p>
-<p>With the background introduced, what I want to say is that although coroutine encapsulation is lightweight, it still incurs some additional costs. So, let&rsquo;s take a look at how small these additional costs are.</p>
-<h2 id="coroutine-overhead-test">Coroutine Overhead Test
-</h2><blockquote>
-<p>This article is based on go 1.22.1.</p>
-</blockquote>
-<ul>
-<li><strong>1. Coroutine Context Switch CPU Overhead</strong><br>
-The test process involves continuously yielding the CPU between coroutines. The core code is as follows.</li>
-</ul>
+<p>在Go 1.22中，引入了<a class="link" href="https://go.dev/wiki/RangefuncExperiment"  target="_blank" rel="noopener"
+    >range over func</a>实验性功能，但需要通过参数<code>GOEXPERIMENT=rangefunc</code>启用。在Go 1.23中，可以直接使用代码实现这种迭代方式。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">Backward</span><span class="p">(</span><span class="nx">s</span> <span class="p">[]</span><span class="kt">string</span><span class="p">)</span> <span class="kd">func</span><span class="p">(</span><span class="nx">yield</span> <span class="kd">func</span><span class="p">(</span><span class="kt">string</span><span class="p">)</span> <span class="kt">bool</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">   <span class="k">return</span> <span class="kd">func</span><span class="p">(</span><span class="nx">yield</span> <span class="kd">func</span><span class="p">(</span><span class="kt">string</span><span class="p">)</span> <span class="kt">bool</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">     <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="nb">len</span><span class="p">(</span><span class="nx">s</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">;</span> <span class="nx">i</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span><span class="o">--</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nf">yield</span><span class="p">(</span><span class="nx">strings</span><span class="p">.</span><span class="nf">ToUpper</span><span class="p">(</span><span class="nx">s</span><span class="p">[</span><span class="nx">i</span><span class="p">]))</span>  
+</span></span><span class="line"><span class="cl">     <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">   <span class="p">}</span>  
+</span></span><span class="line"><span class="cl"> <span class="p">}</span>  
+</span></span><span class="line"><span class="cl"> <span class="err">​</span>  
+</span></span><span class="line"><span class="cl"> <span class="kd">func</span> <span class="nf">ToUpperByIter</span><span class="p">()</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">   <span class="nx">sl</span> <span class="o">:=</span> <span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">&#34;hello&#34;</span><span class="p">,</span> <span class="s">&#34;world&#34;</span><span class="p">,</span> <span class="s">&#34;golang&#34;</span><span class="p">}</span>  
+</span></span><span class="line"><span class="cl">   <span class="k">for</span> <span class="nx">v</span> <span class="o">:=</span> <span class="k">range</span> <span class="nf">Backward</span><span class="p">(</span><span class="nx">sl</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">     <span class="c1">// do business   
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>   <span class="p">}</span>  
+</span></span><span class="line"><span class="cl"> <span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p><code>yield</code>是传递给迭代器的可调用函数的常规名称。<br>
+我们考虑一下如何在不使用“iter”包的情况下编写代码来实现相同的功能：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nx">Convert</span><span class="p">[</span><span class="nx">S</span> <span class="nx">any</span><span class="p">,</span> <span class="nx">D</span> <span class="nx">any</span><span class="p">](</span><span class="nx">src</span> <span class="p">[]</span><span class="nx">S</span><span class="p">,</span> <span class="nx">mapFn</span> <span class="kd">func</span><span class="p">(</span><span class="nx">s</span> <span class="nx">S</span><span class="p">)</span> <span class="nx">D</span><span class="p">)</span> <span class="p">[]</span><span class="nx">D</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">     <span class="nx">r</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">([]</span><span class="nx">D</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="nx">src</span><span class="p">))</span>  
+</span></span><span class="line"><span class="cl">     <span class="k">for</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">i</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">src</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">        <span class="nx">r</span> <span class="p">=</span> <span class="nb">append</span><span class="p">(</span><span class="nx">r</span><span class="p">,</span> <span class="nf">mapFn</span><span class="p">(</span><span class="nx">i</span><span class="p">))</span>  
+</span></span><span class="line"><span class="cl">     <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">     <span class="k">return</span> <span class="nx">r</span>  
+</span></span><span class="line"><span class="cl"> <span class="p">}</span>    
+</span></span><span class="line"><span class="cl">     
+</span></span><span class="line"><span class="cl"> <span class="kd">func</span> <span class="nf">ToUpByString</span><span class="p">()</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">     <span class="nx">sl</span> <span class="o">:=</span> <span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">&#34;hello&#34;</span><span class="p">,</span> <span class="s">&#34;world&#34;</span><span class="p">,</span> <span class="s">&#34;golang&#34;</span><span class="p">}</span>  
+</span></span><span class="line"><span class="cl">     <span class="nx">s0</span> <span class="o">:=</span> <span class="nf">Convert</span><span class="p">(</span><span class="nx">sl</span><span class="p">,</span> <span class="kd">func</span><span class="p">(</span><span class="nx">v</span> <span class="kt">string</span><span class="p">)</span> <span class="kt">string</span> <span class="p">{</span> <span class="k">return</span> <span class="nx">strings</span><span class="p">.</span><span class="nf">ToUpper</span><span class="p">(</span><span class="nx">v</span><span class="p">)</span> <span class="p">})</span>  
+</span></span><span class="line"><span class="cl">     <span class="k">for</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">v</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">s0</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">        <span class="c1">// do business  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>     <span class="p">}</span>  
+</span></span><span class="line"><span class="cl"> <span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><h3 id="性能对比">性能对比
+</h3><div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">➜  huizhou92 git:<span class="o">(</span>master<span class="o">)</span> ✗ go <span class="nb">test</span> -bench . -count<span class="o">=</span><span class="m">3</span>  
+</span></span><span class="line"><span class="cl"> goos: darwin  
+</span></span><span class="line"><span class="cl"> goarch: arm64  
+</span></span><span class="line"><span class="cl"> pkg: huizhou92  
+</span></span><span class="line"><span class="cl"> cpu: Apple M1 Pro  
+</span></span><span class="line"><span class="cl"> BenchmarkToUpByString-10         <span class="m">8568332</span>               128.7 ns/op  
+</span></span><span class="line"><span class="cl"> BenchmarkToUpByString-10         <span class="m">9310351</span>               128.6 ns/op  
+</span></span><span class="line"><span class="cl"> BenchmarkToUpByString-10         <span class="m">9344986</span>               128.5 ns/op  
+</span></span><span class="line"><span class="cl"> BenchmarkToUpByIter-10          <span class="m">12440120</span>                96.22 ns/op  
+</span></span><span class="line"><span class="cl"> BenchmarkToUpByIter-10          <span class="m">12436645</span>                96.25 ns/op  
+</span></span><span class="line"><span class="cl"> BenchmarkToUpByIter-10          <span class="m">12371175</span>                96.64 ns/op  
+</span></span><span class="line"><span class="cl"> PASS  
+</span></span><span class="line"><span class="cl"> ok      huizhou92       8.162s
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>结果很明显：<code>ToUpperByIter</code> 性能更好，因为它不会重新分配新的slice，使得它比以前的方法更高效。</p>
+<h2 id="iter-的目标">iter 的目标
+</h2><p><code>iter</code> 包旨在提供统一且高效的迭代方法。它为自定义容器类（尤其是在引入泛型之后）提供了标准的迭代接口，并可以替换一些返回切片的现有 API。通过使用迭代器并利用编译器优化，可以提高性能。此外，它还提供了适合函数式编程风格的标准迭代机制。</p>
+<h2 id="如何使用-iter">如何使用 iter
+</h2><p><code>iter</code>支持两种类型的迭代器：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span><span class="lnt">8
+</span><span class="lnt">9
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// Seq is an iterator over sequences of individual values.  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span> <span class="c1">// When called as seq(yield), seq calls yield(v) for each value v in the sequence,  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span> <span class="c1">// stopping early if yield returns false.  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span> <span class="kd">type</span> <span class="nx">Seq</span><span class="p">[</span><span class="nx">V</span> <span class="nx">any</span><span class="p">]</span> <span class="kd">func</span><span class="p">(</span><span class="nx">yield</span> <span class="kd">func</span><span class="p">(</span><span class="nx">V</span><span class="p">)</span> <span class="kt">bool</span><span class="p">)</span>    
+</span></span><span class="line"><span class="cl">     
+</span></span><span class="line"><span class="cl"> <span class="c1">// Seq2 is an iterator over sequences of pairs of values, most commonly key-value pairs.  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span> <span class="c1">// When called as seq(yield), seq calls yield(k, v) for each pair (k, v) in the sequence,  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span> <span class="c1">// stopping early if yield returns false.  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span> <span class="kd">type</span> <span class="nx">Seq2</span><span class="p">[</span><span class="nx">K</span><span class="p">,</span> <span class="nx">V</span> <span class="nx">any</span><span class="p">]</span> <span class="kd">func</span><span class="p">(</span><span class="nx">yield</span> <span class="kd">func</span><span class="p">(</span><span class="nx">K</span><span class="p">,</span> <span class="nx">V</span><span class="p">)</span> <span class="kt">bool</span><span class="p">)</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p><code>map</code> 包已经使用 <code>iter</code> 来添加了诸如 <code>All</code> 和 <code>Keys</code> 等方法。这里是它的实现参考：</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt"> 1
@@ -497,94 +617,57 @@ The test process involves continuously yielding the CPU between coroutines. The 
 </span><span class="lnt">23
 </span><span class="lnt">24
 </span><span class="lnt">25
+</span><span class="lnt">26
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">main</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="p">(</span>  
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;fmt&#34;</span>  
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;runtime&#34;</span>    
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;time&#34;</span>
-</span></span><span class="line"><span class="cl"><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">cal</span><span class="p">()</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="mi">1000000</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">runtime</span><span class="p">.</span><span class="nf">Gosched</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">runtime</span><span class="p">.</span><span class="nf">GOMAXPROCS</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">currentTime</span> <span class="o">:=</span> <span class="nx">time</span><span class="p">.</span><span class="nf">Now</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nx">currentTime</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">go</span> <span class="nf">cal</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="mi">1000000</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">runtime</span><span class="p">.</span><span class="nf">Gosched</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nx">time</span><span class="p">.</span><span class="nf">Now</span><span class="p">().</span><span class="nf">Sub</span><span class="p">(</span><span class="nx">currentTime</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2000000</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">//https://go.googlesource.com/go/blob/c83b1a7013784098c2061ae7be832b2ab7241424/src/maps/iter.go#L12  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span> <span class="c1">// All returns an iterator over key-value pairs from m.  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span> <span class="c1">// The iteration order is not specified and is not guaranteed  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span> <span class="c1">// to be the same from one call to the next.  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span> <span class="kd">func</span> <span class="nx">All</span><span class="p">[</span><span class="nx">Map</span> <span class="p">~</span><span class="kd">map</span><span class="p">[</span><span class="nx">K</span><span class="p">]</span><span class="nx">V</span><span class="p">,</span> <span class="nx">K</span> <span class="nx">comparable</span><span class="p">,</span> <span class="nx">V</span> <span class="nx">any</span><span class="p">](</span><span class="nx">m</span> <span class="nx">Map</span><span class="p">)</span> <span class="nx">iter</span><span class="p">.</span><span class="nx">Seq2</span><span class="p">[</span><span class="nx">K</span><span class="p">,</span> <span class="nx">V</span><span class="p">]</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">     <span class="k">return</span> <span class="kd">func</span><span class="p">(</span><span class="nx">yield</span> <span class="kd">func</span><span class="p">(</span><span class="nx">K</span><span class="p">,</span> <span class="nx">V</span><span class="p">)</span> <span class="kt">bool</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">        <span class="k">for</span> <span class="nx">k</span><span class="p">,</span> <span class="nx">v</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">m</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">           <span class="k">if</span> <span class="p">!</span><span class="nf">yield</span><span class="p">(</span><span class="nx">k</span><span class="p">,</span> <span class="nx">v</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">              <span class="k">return</span>  
+</span></span><span class="line"><span class="cl">           <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">        <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">     <span class="p">}</span>  
+</span></span><span class="line"><span class="cl"> <span class="p">}</span>    
+</span></span><span class="line"><span class="cl">     
+</span></span><span class="line"><span class="cl"> <span class="c1">// Keys returns an iterator over keys in m.  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span> <span class="c1">// The iteration order is not specified and is not guaranteed  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span> <span class="c1">// to be the same from one call to the next.  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span> <span class="kd">func</span> <span class="nx">Keys</span><span class="p">[</span><span class="nx">Map</span> <span class="p">~</span><span class="kd">map</span><span class="p">[</span><span class="nx">K</span><span class="p">]</span><span class="nx">V</span><span class="p">,</span> <span class="nx">K</span> <span class="nx">comparable</span><span class="p">](</span><span class="nx">m</span> <span class="nx">Map</span><span class="p">)</span> <span class="nx">iter</span><span class="p">.</span><span class="nx">Seq</span><span class="p">[</span><span class="nx">K</span><span class="p">]</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">     <span class="k">return</span> <span class="kd">func</span><span class="p">(</span><span class="nx">yield</span> <span class="kd">func</span><span class="p">(</span><span class="nx">K</span><span class="p">)</span> <span class="kt">bool</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">        <span class="k">for</span> <span class="nx">k</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">m</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">           <span class="k">if</span> <span class="p">!</span><span class="nf">yield</span><span class="p">(</span><span class="nx">k</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">              <span class="k">return</span>  
+</span></span><span class="line"><span class="cl">           <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">        <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">     <span class="p">}</span>  
+</span></span><span class="line"><span class="cl"> <span class="p">}</span>
 </span></span></code></pre></td></tr></table>
 </div>
-</div><p>Compilation and execution</p>
-<div class="highlight"><div class="chroma">
-<table class="lntable"><tr><td class="lntd">
-<pre tabindex="0" class="chroma"><code><span class="lnt">1
-</span><span class="lnt">2
-</span><span class="lnt">3
-</span><span class="lnt">4
-</span></code></pre></td>
-<td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">➜  trace git:<span class="o">(</span>main<span class="o">)</span> ✗ go run main.go              
-</span></span><span class="line"><span class="cl">2024-03-20 19:52:24.772579 +0800 CST <span class="nv">m</span><span class="o">=</span>+0.000114834
-</span></span><span class="line"><span class="cl">54ns
-</span></span><span class="line"><span class="cl">➜  trace git:<span class="o">(</span>main<span class="o">)</span> ✗ 
-</span></span></code></pre></td></tr></table>
-</div>
-</div><p>The average overhead of each coroutine switch is 54ns, which is approximately 1/70 of the context switch overhead measured in the previous article, about 3.5 microseconds, and is approximately 70 times lower than the overhead caused by system calls.</p>
-<p><strong>Coroutine Memory Overhead</strong><br>
-In terms of space, when coroutines are initialized and created, a stack of 2KB is allocated for them. The stack of threads is much larger than this number, which can be checked through the <code>ulimit</code> command, usually in several megabytes. On my Mac, it&rsquo;s 8MB. If a coroutine is created for each user to handle, 2GB of memory is sufficient for handling 1 million concurrent user requests, while the thread model would require 8TB.</p>
-<div class="highlight"><div class="chroma">
-<table class="lntable"><tr><td class="lntd">
-<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
-</span><span class="lnt"> 2
-</span><span class="lnt"> 3
-</span><span class="lnt"> 4
-</span><span class="lnt"> 5
-</span><span class="lnt"> 6
-</span><span class="lnt"> 7
-</span><span class="lnt"> 8
-</span><span class="lnt"> 9
-</span><span class="lnt">10
-</span></code></pre></td>
-<td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">➜  trace git:<span class="o">(</span>main<span class="o">)</span> ✗ <span class="nb">ulimit</span> -a   
-</span></span><span class="line"><span class="cl">-t: cpu <span class="nb">time</span> <span class="o">(</span>seconds<span class="o">)</span>              unlimited
-</span></span><span class="line"><span class="cl">-f: file size <span class="o">(</span>blocks<span class="o">)</span>              unlimited
-</span></span><span class="line"><span class="cl">-d: data seg size <span class="o">(</span>kbytes<span class="o">)</span>          unlimited
-</span></span><span class="line"><span class="cl">-s: stack size <span class="o">(</span>kbytes<span class="o">)</span>             <span class="m">8176</span>
-</span></span><span class="line"><span class="cl">-c: core file size <span class="o">(</span>blocks<span class="o">)</span>         <span class="m">0</span>
-</span></span><span class="line"><span class="cl">-v: address space <span class="o">(</span>kbytes<span class="o">)</span>          unlimited
-</span></span><span class="line"><span class="cl">-l: locked-in-memory size <span class="o">(</span>kbytes<span class="o">)</span>  unlimited
-</span></span><span class="line"><span class="cl">-u: processes                       <span class="m">2666</span>
-</span></span><span class="line"><span class="cl">-n: file descriptors                <span class="m">12544</span>
-</span></span></code></pre></td></tr></table>
-</div>
-</div><h2 id="conclusion">Conclusion
-</h2><p>Since coroutines complete context switches in user space, the switch time is only slightly over 50ns, which is 70 times higher than process switches. The stack memory required by a single coroutine is also quite small, only requiring 2KB. Therefore, coroutines have shined in high-concurrency scenarios in backend internet applications in recent years.</p>
-<p>Whether in terms of space or time performance, they are much better than processes (threads). Then why doesn&rsquo;t Linus implement them in the operating system? For the sake of better real-time performance, the operating system may preempt the CPU of processes with higher priorities. However, coroutines cannot achieve this and still rely on the coroutines currently using the CPU to release it actively, which is not consistent with the implementation purpose of the operating system. Therefore, the efficiency of coroutines comes at the cost of sacrificing preemption.</p>
-<p>Coroutines ultimately execute attached to operating system threads.</p>
-<p>A question we need to consider is:<br>
-Does using coroutines mean threads no longer switch? The frequency of thread switches basically depends on the number of threads. When using coroutines, you need to specify tasks for each thread. For the same workload, the number of threads required by coroutines should always be higher than that of automatically allocated thread pools.<br>
-Therefore:<br>
-Using threads = thread switch overhead (low)<br>
-Using coroutines = thread switch overhead (high) + coroutine switch overhead</p>
-<p>Then CPU overhead:<br>
-Instruction cycles of threads = interrupt detection + instruction execution (including fetch, decode, and execute)<br>
-Instruction cycles of coroutines = interrupt detection + instruction execution + interrupt detection + coroutine signal detection</p>
-<p>So, I have the following conclusion:<br>
-In terms of performance, IO multiplexing + thread pool completely outperforms coroutines; but in terms of convenience, coroutines are still easier to use.</p>
-<p>Because calling coroutines in Go is so convenient, some Go programmers use the <code>go</code> keyword casually. It should be noted that before switching to a coroutine, the coroutine must be created first. Once created, plus the scheduling overhead, it increases to 400ns, which is almost equivalent to the time consumed by a system call. Although coroutines are efficient, they should not be used casually。</p>
+</div><h2 id="争论">争论
+</h2><blockquote>
+<p>“在我看来，yield 是一个足够复杂的概念，会导致出现大量糟糕的、难以理解的代码。这个建议只提供了语法糖，用于编写语言中已经超出可能范围的内容。我认为这违背了“一个问题 - 一个解决方案”的规则。拜托，让 Go 保持无聊。” <a class="link" href="https://github.com/golang/go/discussions/56413#discussioncomment-4060408"  target="_blank" rel="noopener"
+    >来源</a></p>
+</blockquote>
+<p>这是社区内常见的反对意见。<code>yield</code> 不容易理解，并且我们可以通过多种方式实现迭代器。</p>
+<h2 id="结论">结论
+</h2><p>我支持添加<code>iter</code>。</p>
+<p><code>iter</code>包为开发人员提供了许多可能性，旨在简化代码并采用更多的函数式编程实践。然而，由于对性能、复杂性和学习曲线的担忧，它的接受度存在分歧。</p>
+<p>与任何新工具一样，关键是在提供明显好处的地方平衡其使用，并同时注意潜在缺点。毫无疑问，Go社区将继续探索和辩论如何利用<code>iter</code>的力量而不损害该语言的基本原则。</p>
+<h2 id="参考资料">参考资料
+</h2><ol>
+<li><a class="link" href="https://github.com/golang/go/issues/61405"  target="_blank" rel="noopener"
+    >61405</a></li>
+<li><a class="link" href="https://github.com/golang/go/discussions/56413"  target="_blank" rel="noopener"
+    >56413</a></li>
+<li><a class="link" href="https://www.reddit.com/r/golang/comments/1d8o01x/iterators_in_go_123/"  target="_blank" rel="noopener"
+    >iterators_in_go_123</a></li>
+</ol>
+
 </section>
 
 
@@ -609,7 +692,19 @@ In terms of performance, IO multiplexing + thread pool completely outperforms co
 
         <span>Licensed under CC BY-NC-SA 4.0</span>
     </section>
-    </footer>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            Last updated on Jun 11, 2024 17:33 CST
+        </span>
+    </section></footer>
 
 
     
@@ -623,19 +718,6 @@ In terms of performance, IO multiplexing + thread pool completely outperforms co
     <h2 class="section-title">Related content</h2>
     <div class="related-content">
         <div class="flex article-list--tile">
-            
-                
-<article class="">
-    <a href="/p/go-1.23-new-iter-package/">
-        
-        
-
-        <div class="article-details">
-            <h2 class="article-title">Go 1.23: 新包 Iter</h2>
-        </div>
-    </a>
-</article>
-
             
                 
 <article class="">
@@ -702,6 +784,25 @@ In terms of performance, IO multiplexing + thread pool completely outperforms co
 
         <div class="article-details">
             <h2 class="article-title">Go Action: Error Handling In gRPC</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/p/secure-communication-with-grpc-from-ssl/tls-certification-to-san-certification/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/05/4976a194a8daca00ff6991a866c2ee53.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/05/4976a194a8daca00ff6991a866c2ee53.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Secure Communication with gRPC: From SSL/TLS Certification to SAN Certification</h2>
         </div>
     </a>
 </article>
