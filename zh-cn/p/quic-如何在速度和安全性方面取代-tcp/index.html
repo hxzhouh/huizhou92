@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="zh-cn" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="原文链接how-quic-is-displacing-tcp-for-speed 引言 在过去的三十年中，HTTP（超文本传输协议）一直是互联网的支柱。我们能够浏览网页、下载文件、流式传输电影等，都是因为HTTP。这个协议多年来不断发展，见证了重大的改进。 HTTP协议是一个应用层协议，工作在TCP（传输控制协议）之上。TCP协议有一些限制，导致网络应用程序响应性较差。 谷歌开发了一种改变游戏规则的传输协议QUIC，以克服TCP的缺点。QUIC几年前被标准化并加入到IETF（互联网工程任务组）。 在过去几年中，QUIC的采用呈指数级增长。大多数科技公司，如谷歌、Facebook、Pinterest等，已经开始采用使用QUIC作为传输层的HTTP/3.0。这些公司在使用HTTP/3.0和QUIC后，其网站性能有了显著提升。 让我们开始我们的旅程，了解QUIC如何取代TCP。我们首先将了解一些基本的TCP和UDP网络概念。之后，我们将看看HTTP的演变，以及每个版本是如何克服前一个版本的限制的。然后，我们将了解QUIC是什么以及它的工作原理。我们将探讨为什么QUIC的性能比TCP高。 TCP和UDP是如何工作的？ TCP（传输控制协议）和UDP（用户数据报协议）是传输层协议。这些协议管理互联网数据包流向和来自任何电子设备的过程。让我们详细了解这两个协议是如何工作的。 TCP TCP是一种基于连接的协议。客户端与服务器建立连接，然后发送数据。TCP连接是通过一种称为三次握手的机制建立的。下图展示了三次握手过程： 这个过程包括三个步骤： SYN - 客户端向服务器发送一个SYN数据包。 ACK - 服务器接收到SYN后，通过ACK数据包向客户端发送确认。 SYN-ACK - 客户端收到服务器的ACK数据包后，最终通过SYN-ACK向服务器发送确认。 TCP是一个有状态和可靠的协议。它保证从一台设备到另一台设备的所有数据包的传输。此外，它允许客户端和服务器使用相同的连接进行通信。 UDP UDP是一种无连接协议。与TCP不同，客户端和服务器之间没有三次握手。客户端向服务器发送数据包，不等待服务器的确认。 UDP不能保证100%的数据包传输。数据包可能会丢失，可能无法到达另一台设备。UDP不像TCP那样可靠。 由于没有初始握手，UDP比TCP快得多。出于性能原因，UDP主要用于流式数据应用程序，如音乐/视频。 这是一个流行的互联网梗，对TCP/UDP进行了调侃： 到目前为止，我们已经了解了TCP和UDP协议是如何工作的。现在让我们探索HTTP协议，这是一个应用层协议。 HTTP的演变 由Tim Berners-Lee在CERN开发的HTTP的第一个版本是在1989年。从那时起，该协议经历了多次优化和性能改进。大多数现代设备使用HTTP 1.1/ HTTP 2.0和HTTP 3.0。让我们回顾一下HTTP的历史，了解协议经历的重大变化。 HTTP/1.0 在最初的HTTP/0.9版本之后，HTTP/1.0开始支持头、请求体、文本文件等。客户端每次使用HTTP从服务器获取数据时，都必须创建一个TCP连接。这导致在建立连接时显著浪费资源。 HTTP/1.1 这个协议增加了对重用客户端和服务器之间现有TCP连接以获取新数据的支持。这是通过HTTP头keep-alive实现的。 如果客户端想要获取10个JavaScript文件，那么它将与服务器建立一个连接。然后，它将重用相同的连接来获取这10个文件，而不是为每个文件创建一个新连接。 这导致资源浪费减少和性能提升，因为它避免了创建多余的连接。然而，一个主要的缺点是众所周知的_队头阻塞_问题。 下图展示了_队头阻塞_问题。 让我们通过一个例子来理解这个概念。如上图所示，你有3个文件 - 图像、文本和视频。视频文件体积较大，传输时间会更长。由于视频文件传输时间较长，它会阻塞图像和文本文件的发送。 HTTP/2.0 HTTP 2.0通过多路复用解决了_队头阻塞_问题。通过多路复用，多个文件可以通过同一个TCP连接发送。 这导致了性能提升，并解决了应用层面的队头阻塞问题。然而，在TCP层面，如果发生数据包丢失，它必须等待数据包重传。 多路复用解决方案在数据包丢失的情况下并不像预期的那样有效。实际上，如果数据包丢失超过5%，HTTP 1.1的性能比HTTP 2.0更好。_队头阻塞_问题从应用层转移到了传输层。 下图展示了单个数据包丢失如何导致多个流延迟： 当一个数据包丢失时，TCP将其后续数据包存储在其缓冲区中，直到收到丢失的数据包。然后TCP使用重传来获取丢失的数据包。HTTP无法看到TCP重传。因此，在这种情况下，不同的流会看到传输延迟。 什么是QUIC？ 在过去的几个部分中，我们看到了TCP有一些固有的限制，如三次握手和队头阻塞。这些限制可以通过增强TCP或用新协议替换TCP来解决。 尽管增强TCP很简单，但TCP存在于最低层，与操作系统紧密耦合。简单来说，TCP的代码存在于内核层而不是用户空间。考虑到大量的设备，实施内核空间的更改将需要大量的时间才能到达所有用户。 因此，谷歌提出了一种新的协议QUIC，作为TCP的替代品。像TCP一样，QUIC也是一个传输层协议。然而，它位于用户空间而不是内核空间。这使得它容易更改和增强，与TCP不同。 QUIC在UDP之上工作。它通过使用UDP克服了TCP的限制。它只是一个在UDP之上的层或包装器。该包装器添加了TCP的功能，如拥塞控制、数据包重传、多路复用等。它内部使用UDP，并在其上添加了TCP的最佳功能。 下图显示了QUIC如何适应网络栈： 现在我们已经了解了QUIC的基础知识，让我们深入了解这个协议的工作原理。 QUIC是如何工作的？ QUIC握手 QUIC在UDP上工作，它不需要经过三次握手过程。三次握手过程增加了额外的开销，增加了延迟。因此，QUIC通过减少连接延迟来提高性能。 在TCP的情况下，还有一个额外的用于TLS的握手，这也增加了延迟。QUIC将TLS握手和QUIC握手合并为一个调用。它优化了握手过程并提高了性能。 可靠性 您可能会想“既然QUIC在UDP上工作，数据包会丢失吗？”。答案是不。QUIC在UDP堆栈上添加了可靠性。它实现了数据包重传，以防它没有收到必要的数据包。例如：如果服务器没有收到来自客户端的第5个数据包，协议将检测到它并要求客户端重新发送相同的数据包。 多路复用 与TCP类似，QUIC也实现了多路复用。客户端可以使用单个通道同时传输多个文件。QUIC为每个流（传输的文件）创建一个UUID。它使用UUID来识别流。然后，多个流通过单个通道发送。 下图展示了QUIC中多路复用是如何工作的：">
+<title>QUIC 如何在速度和安全性方面取代 TCP？</title>
+
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/quic-%E5%A6%82%E4%BD%95%E5%9C%A8%E9%80%9F%E5%BA%A6%E5%92%8C%E5%AE%89%E5%85%A8%E6%80%A7%E6%96%B9%E9%9D%A2%E5%8F%96%E4%BB%A3-tcp/'>
+
+<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="QUIC 如何在速度和安全性方面取代 TCP？">
+<meta property='og:description' content="原文链接how-quic-is-displacing-tcp-for-speed 引言 在过去的三十年中，HTTP（超文本传输协议）一直是互联网的支柱。我们能够浏览网页、下载文件、流式传输电影等，都是因为HTTP。这个协议多年来不断发展，见证了重大的改进。 HTTP协议是一个应用层协议，工作在TCP（传输控制协议）之上。TCP协议有一些限制，导致网络应用程序响应性较差。 谷歌开发了一种改变游戏规则的传输协议QUIC，以克服TCP的缺点。QUIC几年前被标准化并加入到IETF（互联网工程任务组）。 在过去几年中，QUIC的采用呈指数级增长。大多数科技公司，如谷歌、Facebook、Pinterest等，已经开始采用使用QUIC作为传输层的HTTP/3.0。这些公司在使用HTTP/3.0和QUIC后，其网站性能有了显著提升。 让我们开始我们的旅程，了解QUIC如何取代TCP。我们首先将了解一些基本的TCP和UDP网络概念。之后，我们将看看HTTP的演变，以及每个版本是如何克服前一个版本的限制的。然后，我们将了解QUIC是什么以及它的工作原理。我们将探讨为什么QUIC的性能比TCP高。 TCP和UDP是如何工作的？ TCP（传输控制协议）和UDP（用户数据报协议）是传输层协议。这些协议管理互联网数据包流向和来自任何电子设备的过程。让我们详细了解这两个协议是如何工作的。 TCP TCP是一种基于连接的协议。客户端与服务器建立连接，然后发送数据。TCP连接是通过一种称为三次握手的机制建立的。下图展示了三次握手过程： 这个过程包括三个步骤： SYN - 客户端向服务器发送一个SYN数据包。 ACK - 服务器接收到SYN后，通过ACK数据包向客户端发送确认。 SYN-ACK - 客户端收到服务器的ACK数据包后，最终通过SYN-ACK向服务器发送确认。 TCP是一个有状态和可靠的协议。它保证从一台设备到另一台设备的所有数据包的传输。此外，它允许客户端和服务器使用相同的连接进行通信。 UDP UDP是一种无连接协议。与TCP不同，客户端和服务器之间没有三次握手。客户端向服务器发送数据包，不等待服务器的确认。 UDP不能保证100%的数据包传输。数据包可能会丢失，可能无法到达另一台设备。UDP不像TCP那样可靠。 由于没有初始握手，UDP比TCP快得多。出于性能原因，UDP主要用于流式数据应用程序，如音乐/视频。 这是一个流行的互联网梗，对TCP/UDP进行了调侃： 到目前为止，我们已经了解了TCP和UDP协议是如何工作的。现在让我们探索HTTP协议，这是一个应用层协议。 HTTP的演变 由Tim Berners-Lee在CERN开发的HTTP的第一个版本是在1989年。从那时起，该协议经历了多次优化和性能改进。大多数现代设备使用HTTP 1.1/ HTTP 2.0和HTTP 3.0。让我们回顾一下HTTP的历史，了解协议经历的重大变化。 HTTP/1.0 在最初的HTTP/0.9版本之后，HTTP/1.0开始支持头、请求体、文本文件等。客户端每次使用HTTP从服务器获取数据时，都必须创建一个TCP连接。这导致在建立连接时显著浪费资源。 HTTP/1.1 这个协议增加了对重用客户端和服务器之间现有TCP连接以获取新数据的支持。这是通过HTTP头keep-alive实现的。 如果客户端想要获取10个JavaScript文件，那么它将与服务器建立一个连接。然后，它将重用相同的连接来获取这10个文件，而不是为每个文件创建一个新连接。 这导致资源浪费减少和性能提升，因为它避免了创建多余的连接。然而，一个主要的缺点是众所周知的_队头阻塞_问题。 下图展示了_队头阻塞_问题。 让我们通过一个例子来理解这个概念。如上图所示，你有3个文件 - 图像、文本和视频。视频文件体积较大，传输时间会更长。由于视频文件传输时间较长，它会阻塞图像和文本文件的发送。 HTTP/2.0 HTTP 2.0通过多路复用解决了_队头阻塞_问题。通过多路复用，多个文件可以通过同一个TCP连接发送。 这导致了性能提升，并解决了应用层面的队头阻塞问题。然而，在TCP层面，如果发生数据包丢失，它必须等待数据包重传。 多路复用解决方案在数据包丢失的情况下并不像预期的那样有效。实际上，如果数据包丢失超过5%，HTTP 1.1的性能比HTTP 2.0更好。_队头阻塞_问题从应用层转移到了传输层。 下图展示了单个数据包丢失如何导致多个流延迟： 当一个数据包丢失时，TCP将其后续数据包存储在其缓冲区中，直到收到丢失的数据包。然后TCP使用重传来获取丢失的数据包。HTTP无法看到TCP重传。因此，在这种情况下，不同的流会看到传输延迟。 什么是QUIC？ 在过去的几个部分中，我们看到了TCP有一些固有的限制，如三次握手和队头阻塞。这些限制可以通过增强TCP或用新协议替换TCP来解决。 尽管增强TCP很简单，但TCP存在于最低层，与操作系统紧密耦合。简单来说，TCP的代码存在于内核层而不是用户空间。考虑到大量的设备，实施内核空间的更改将需要大量的时间才能到达所有用户。 因此，谷歌提出了一种新的协议QUIC，作为TCP的替代品。像TCP一样，QUIC也是一个传输层协议。然而，它位于用户空间而不是内核空间。这使得它容易更改和增强，与TCP不同。 QUIC在UDP之上工作。它通过使用UDP克服了TCP的限制。它只是一个在UDP之上的层或包装器。该包装器添加了TCP的功能，如拥塞控制、数据包重传、多路复用等。它内部使用UDP，并在其上添加了TCP的最佳功能。 下图显示了QUIC如何适应网络栈： 现在我们已经了解了QUIC的基础知识，让我们深入了解这个协议的工作原理。 QUIC是如何工作的？ QUIC握手 QUIC在UDP上工作，它不需要经过三次握手过程。三次握手过程增加了额外的开销，增加了延迟。因此，QUIC通过减少连接延迟来提高性能。 在TCP的情况下，还有一个额外的用于TLS的握手，这也增加了延迟。QUIC将TLS握手和QUIC握手合并为一个调用。它优化了握手过程并提高了性能。 可靠性 您可能会想“既然QUIC在UDP上工作，数据包会丢失吗？”。答案是不。QUIC在UDP堆栈上添加了可靠性。它实现了数据包重传，以防它没有收到必要的数据包。例如：如果服务器没有收到来自客户端的第5个数据包，协议将检测到它并要求客户端重新发送相同的数据包。 多路复用 与TCP类似，QUIC也实现了多路复用。客户端可以使用单个通道同时传输多个文件。QUIC为每个流（传输的文件）创建一个UUID。它使用UUID来识别流。然后，多个流通过单个通道发送。 下图展示了QUIC中多路复用是如何工作的：">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/quic-%E5%A6%82%E4%BD%95%E5%9C%A8%E9%80%9F%E5%BA%A6%E5%92%8C%E5%AE%89%E5%85%A8%E6%80%A7%E6%96%B9%E9%9D%A2%E5%8F%96%E4%BB%A3-tcp/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='tcp' /><meta property='article:tag' content='quic' /><meta property='article:published_time' content='2024-06-14T09:38:42&#43;08:00'/><meta property='article:modified_time' content='2024-06-14T09:38:40&#43;08:00'/><meta property='og:image' content='https://substackcdn.com/image/fetch/f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2Fd0e30c17-275b-4a94-8883-74c546ead5e5_5955x3350.jpeg' />
+<meta name="twitter:site" content="@https://x.com/piaopiaopig">
+    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="QUIC 如何在速度和安全性方面取代 TCP？">
+<meta name="twitter:description" content="原文链接how-quic-is-displacing-tcp-for-speed 引言 在过去的三十年中，HTTP（超文本传输协议）一直是互联网的支柱。我们能够浏览网页、下载文件、流式传输电影等，都是因为HTTP。这个协议多年来不断发展，见证了重大的改进。 HTTP协议是一个应用层协议，工作在TCP（传输控制协议）之上。TCP协议有一些限制，导致网络应用程序响应性较差。 谷歌开发了一种改变游戏规则的传输协议QUIC，以克服TCP的缺点。QUIC几年前被标准化并加入到IETF（互联网工程任务组）。 在过去几年中，QUIC的采用呈指数级增长。大多数科技公司，如谷歌、Facebook、Pinterest等，已经开始采用使用QUIC作为传输层的HTTP/3.0。这些公司在使用HTTP/3.0和QUIC后，其网站性能有了显著提升。 让我们开始我们的旅程，了解QUIC如何取代TCP。我们首先将了解一些基本的TCP和UDP网络概念。之后，我们将看看HTTP的演变，以及每个版本是如何克服前一个版本的限制的。然后，我们将了解QUIC是什么以及它的工作原理。我们将探讨为什么QUIC的性能比TCP高。 TCP和UDP是如何工作的？ TCP（传输控制协议）和UDP（用户数据报协议）是传输层协议。这些协议管理互联网数据包流向和来自任何电子设备的过程。让我们详细了解这两个协议是如何工作的。 TCP TCP是一种基于连接的协议。客户端与服务器建立连接，然后发送数据。TCP连接是通过一种称为三次握手的机制建立的。下图展示了三次握手过程： 这个过程包括三个步骤： SYN - 客户端向服务器发送一个SYN数据包。 ACK - 服务器接收到SYN后，通过ACK数据包向客户端发送确认。 SYN-ACK - 客户端收到服务器的ACK数据包后，最终通过SYN-ACK向服务器发送确认。 TCP是一个有状态和可靠的协议。它保证从一台设备到另一台设备的所有数据包的传输。此外，它允许客户端和服务器使用相同的连接进行通信。 UDP UDP是一种无连接协议。与TCP不同，客户端和服务器之间没有三次握手。客户端向服务器发送数据包，不等待服务器的确认。 UDP不能保证100%的数据包传输。数据包可能会丢失，可能无法到达另一台设备。UDP不像TCP那样可靠。 由于没有初始握手，UDP比TCP快得多。出于性能原因，UDP主要用于流式数据应用程序，如音乐/视频。 这是一个流行的互联网梗，对TCP/UDP进行了调侃： 到目前为止，我们已经了解了TCP和UDP协议是如何工作的。现在让我们探索HTTP协议，这是一个应用层协议。 HTTP的演变 由Tim Berners-Lee在CERN开发的HTTP的第一个版本是在1989年。从那时起，该协议经历了多次优化和性能改进。大多数现代设备使用HTTP 1.1/ HTTP 2.0和HTTP 3.0。让我们回顾一下HTTP的历史，了解协议经历的重大变化。 HTTP/1.0 在最初的HTTP/0.9版本之后，HTTP/1.0开始支持头、请求体、文本文件等。客户端每次使用HTTP从服务器获取数据时，都必须创建一个TCP连接。这导致在建立连接时显著浪费资源。 HTTP/1.1 这个协议增加了对重用客户端和服务器之间现有TCP连接以获取新数据的支持。这是通过HTTP头keep-alive实现的。 如果客户端想要获取10个JavaScript文件，那么它将与服务器建立一个连接。然后，它将重用相同的连接来获取这10个文件，而不是为每个文件创建一个新连接。 这导致资源浪费减少和性能提升，因为它避免了创建多余的连接。然而，一个主要的缺点是众所周知的_队头阻塞_问题。 下图展示了_队头阻塞_问题。 让我们通过一个例子来理解这个概念。如上图所示，你有3个文件 - 图像、文本和视频。视频文件体积较大，传输时间会更长。由于视频文件传输时间较长，它会阻塞图像和文本文件的发送。 HTTP/2.0 HTTP 2.0通过多路复用解决了_队头阻塞_问题。通过多路复用，多个文件可以通过同一个TCP连接发送。 这导致了性能提升，并解决了应用层面的队头阻塞问题。然而，在TCP层面，如果发生数据包丢失，它必须等待数据包重传。 多路复用解决方案在数据包丢失的情况下并不像预期的那样有效。实际上，如果数据包丢失超过5%，HTTP 1.1的性能比HTTP 2.0更好。_队头阻塞_问题从应用层转移到了传输层。 下图展示了单个数据包丢失如何导致多个流延迟： 当一个数据包丢失时，TCP将其后续数据包存储在其缓冲区中，直到收到丢失的数据包。然后TCP使用重传来获取丢失的数据包。HTTP无法看到TCP重传。因此，在这种情况下，不同的流会看到传输延迟。 什么是QUIC？ 在过去的几个部分中，我们看到了TCP有一些固有的限制，如三次握手和队头阻塞。这些限制可以通过增强TCP或用新协议替换TCP来解决。 尽管增强TCP很简单，但TCP存在于最低层，与操作系统紧密耦合。简单来说，TCP的代码存在于内核层而不是用户空间。考虑到大量的设备，实施内核空间的更改将需要大量的时间才能到达所有用户。 因此，谷歌提出了一种新的协议QUIC，作为TCP的替代品。像TCP一样，QUIC也是一个传输层协议。然而，它位于用户空间而不是内核空间。这使得它容易更改和增强，与TCP不同。 QUIC在UDP之上工作。它通过使用UDP克服了TCP的限制。它只是一个在UDP之上的层或包装器。该包装器添加了TCP的功能，如拥塞控制、数据包重传、多路复用等。它内部使用UDP，并在其上添加了TCP的最佳功能。 下图显示了QUIC如何适应网络栈： 现在我们已经了解了QUIC的基础知识，让我们深入了解这个协议的工作原理。 QUIC是如何工作的？ QUIC握手 QUIC在UDP上工作，它不需要经过三次握手过程。三次握手过程增加了额外的开销，增加了延迟。因此，QUIC通过减少连接延迟来提高性能。 在TCP的情况下，还有一个额外的用于TLS的握手，这也增加了延迟。QUIC将TLS握手和QUIC握手合并为一个调用。它优化了握手过程并提高了性能。 可靠性 您可能会想“既然QUIC在UDP上工作，数据包会丢失吗？”。答案是不。QUIC在UDP堆栈上添加了可靠性。它实现了数据包重传，以防它没有收到必要的数据包。例如：如果服务器没有收到来自客户端的第5个数据包，协议将检测到它并要求客户端重新发送相同的数据包。 多路复用 与TCP类似，QUIC也实现了多路复用。客户端可以使用单个通道同时传输多个文件。QUIC为每个流（传输的文件）创建一个UUID。它使用UUID来识别流。然后，多个流通过单个通道发送。 下图展示了QUIC中多路复用是如何工作的："><meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content='https://substackcdn.com/image/fetch/f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2Fd0e30c17-275b-4a94-8883-74c546ead5e5_5955x3350.jpeg' />
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="切换菜单">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/zh-cn/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+                    <span class="emoji">😄</span>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/zh-cn">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/zh-cn/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>主页</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/%E5%85%B3%E4%BA%8E/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>关于</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/categories/newsletter/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>NewsLetter</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>归档</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>搜索</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" >English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" selected>中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>暗色模式</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">目录</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#引言">引言</a></li>
+    <li><a href="#tcp和udp是如何工作的">TCP和UDP是如何工作的？</a>
+      <ol>
+        <li><a href="#tcp">TCP</a></li>
+        <li><a href="#udp">UDP</a></li>
+      </ol>
+    </li>
+    <li><a href="#http的演变">HTTP的演变</a>
+      <ol>
+        <li><a href="#http10">HTTP/1.0</a></li>
+        <li><a href="#http11">HTTP/1.1</a></li>
+        <li><a href="#http20">HTTP/2.0</a></li>
+      </ol>
+    </li>
+    <li><a href="#什么是quic">什么是QUIC？</a></li>
+    <li><a href="#quic是如何工作的">QUIC是如何工作的？</a>
+      <ol>
+        <li><a href="#quic握手">QUIC握手</a></li>
+        <li><a href="#可靠性">可靠性</a></li>
+        <li><a href="#多路复用">多路复用</a></li>
+        <li><a href="#安全性">安全性</a></li>
+      </ol>
+    </li>
+    <li><a href="#为什么选择quic">为什么选择QUIC？</a></li>
+    <li><a href="#http3和quic">HTTP/3和QUIC</a></li>
+    <li><a href="#结论">结论</a></li>
+    <li><a href="#参考文献">参考文献</a></li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="has-image main-article">
+    <header class="article-header">
+        <div class="article-image">
+            <a href="/zh-cn/p/quic-%E5%A6%82%E4%BD%95%E5%9C%A8%E9%80%9F%E5%BA%A6%E5%92%8C%E5%AE%89%E5%85%A8%E6%80%A7%E6%96%B9%E9%9D%A2%E5%8F%96%E4%BB%A3-tcp/">
+                
+                    <img src="https://substackcdn.com/image/fetch/f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2Fd0e30c17-275b-4a94-8883-74c546ead5e5_5955x3350.jpeg" loading="lazy" alt="Featured image of post QUIC 如何在速度和安全性方面取代 TCP？" />
+                
+            </a>
+        </div>
+    
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/zh-cn/categories/%E7%BD%91%E7%BB%9C/" >
+                网络
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/zh-cn/p/quic-%E5%A6%82%E4%BD%95%E5%9C%A8%E9%80%9F%E5%BA%A6%E5%92%8C%E5%AE%89%E5%85%A8%E6%80%A7%E6%96%B9%E9%9D%A2%E5%8F%96%E4%BB%A3-tcp/">QUIC 如何在速度和安全性方面取代 TCP？</a>
+        </h2>
+    
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Jun 14, 2024</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    阅读时长: 1 分钟
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <p>原文链接<a class="link" href="https://engineeringatscale.substack.com/p/how-quic-is-displacing-tcp-for-speed"  target="_blank" rel="noopener"
+    >how-quic-is-displacing-tcp-for-speed</a></p>
+<h2 id="引言">引言
+</h2><p>在过去的三十年中，<strong>HTTP</strong>（超文本传输协议）一直是互联网的支柱。我们能够浏览网页、下载文件、流式传输电影等，都是因为HTTP。这个协议多年来不断发展，见证了重大的改进。</p>
+<p>HTTP协议是一个应用层协议，工作在<strong>TCP</strong>（传输控制协议）之上。TCP协议有一些限制，导致网络应用程序响应性较差。</p>
+<p>谷歌开发了一种改变游戏规则的传输协议QUIC，以克服TCP的缺点。<strong>QUIC</strong>几年前被标准化并加入到<strong>IETF</strong>（互联网工程任务组）。</p>
+<p>在过去几年中，QUIC的采用呈指数级增长。大多数科技公司，如谷歌、Facebook、Pinterest等，已经开始采用使用QUIC作为传输层的HTTP/3.0。这些公司在使用HTTP/3.0和QUIC后，其网站性能有了显著提升。</p>
+<p>让我们开始我们的旅程，了解QUIC如何取代TCP。我们首先将了解一些基本的TCP和UDP网络概念。之后，我们将看看HTTP的演变，以及每个版本是如何克服前一个版本的限制的。然后，我们将了解QUIC是什么以及它的工作原理。我们将探讨为什么QUIC的性能比TCP高。</p>
+<h2 id="tcp和udp是如何工作的">TCP和UDP是如何工作的？
+</h2><p>TCP（传输控制协议）和UDP（用户数据报协议）是传输层协议。这些协议管理互联网数据包流向和来自任何电子设备的过程。让我们详细了解这两个协议是如何工作的。</p>
+<h3 id="tcp">TCP
+</h3><p><strong>TCP</strong>是一种基于连接的协议。客户端与服务器建立连接，然后发送数据。TCP连接是通过一种称为三次握手的机制建立的。下图展示了三次握手过程：</p>
+<p><img src="https://images.hxzhouh.com/blog-images/2024/06/caf726113bb8757bed09f9999ae30733.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="TCP 三次握手过程"
+	
+	
+></p>
+<p>这个过程包括三个步骤：</p>
+<ol>
+<li>
+<p>SYN - 客户端向服务器发送一个<strong>SYN</strong>数据包。</p>
+</li>
+<li>
+<p>ACK - 服务器接收到<strong>SYN</strong>后，通过<strong>ACK</strong>数据包向客户端发送确认。</p>
+</li>
+<li>
+<p>SYN-ACK - 客户端收到服务器的<strong>ACK</strong>数据包后，最终通过<strong>SYN-ACK</strong>向服务器发送确认。</p>
+</li>
+</ol>
+<p>TCP是一个有状态和可靠的协议。它保证从一台设备到另一台设备的所有数据包的传输。此外，它允许客户端和服务器使用相同的连接进行通信。</p>
+<h3 id="udp">UDP
+</h3><p><strong>UDP</strong>是一种无连接协议。与TCP不同，客户端和服务器之间没有三次握手。客户端向服务器发送数据包，不等待服务器的确认。</p>
+<p>UDP不能保证100%的数据包传输。数据包可能会丢失，可能无法到达另一台设备。UDP不像TCP那样可靠。</p>
+<p>由于没有初始握手，UDP比TCP快得多。出于性能原因，UDP主要用于流式数据应用程序，如音乐/视频。</p>
+<p>这是一个流行的互联网梗，对TCP/UDP进行了调侃：</p>
+<p><img src="https://images.hxzhouh.com/blog-images/2024/06/a3ca4b8e00d8afa0578e4417d1967428.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="TCP VS UDP 梗"
+	
+	
+></p>
+<p>到目前为止，我们已经了解了TCP和UDP协议是如何工作的。现在让我们探索HTTP协议，这是一个应用层协议。</p>
+<h2 id="http的演变">HTTP的演变
+</h2><p>由<a class="link" href="https://en.wikipedia.org/wiki/Tim_Berners-Lee"  target="_blank" rel="noopener"
+    >Tim Berners-Lee</a>在<a class="link" href="https://en.wikipedia.org/wiki/CERN"  target="_blank" rel="noopener"
+    >CERN</a>开发的HTTP的第一个版本是在1989年。从那时起，该协议经历了多次优化和性能改进。大多数现代设备使用<strong>HTTP 1.1</strong>/ <strong>HTTP 2.0</strong>和<strong>HTTP 3.0</strong>。让我们回顾一下HTTP的历史，了解协议经历的重大变化。</p>
+<h3 id="http10">HTTP/1.0
+</h3><p>在最初的HTTP/0.9版本之后，HTTP/1.0开始支持头、请求体、文本文件等。客户端每次使用HTTP从服务器获取数据时，都必须创建一个TCP连接。这导致在建立连接时显著浪费资源。</p>
+<h3 id="http11">HTTP/1.1
+</h3><p>这个协议增加了对重用客户端和服务器之间现有TCP连接以获取新数据的支持。这是通过HTTP头<code>keep-alive</code>实现的。</p>
+<p>如果客户端想要获取10个JavaScript文件，那么它将与服务器建立一个连接。然后，它将重用相同的连接来获取这10个文件，而不是为每个文件创建一个新连接。</p>
+<p>这导致资源浪费减少和性能提升，因为它避免了创建多余的连接。然而，一个主要的缺点是众所周知的_队头阻塞_问题。</p>
+<p>下图展示了_队头阻塞_问题。</p>
+<p><img src="https://images.hxzhouh.com/blog-images/2024/06/5cc7b3071e1e63fa95130aacc6ab9dda.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="队头阻塞"
+	
+	
+></p>
+<p>让我们通过一个例子来理解这个概念。如上图所示，你有3个文件 - 图像、文本和视频。视频文件体积较大，传输时间会更长。由于视频文件传输时间较长，它会阻塞图像和文本文件的发送。</p>
+<h3 id="http20">HTTP/2.0
+</h3><p><strong>HTTP 2.0</strong>通过多路复用解决了_队头阻塞_问题。通过多路复用，多个文件可以通过同一个TCP连接发送。</p>
+<p><img src="https://images.hxzhouh.com/blog-images/2024/06/cc93f0e6a4693c17d06b65804412e8d7.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="HTTP/2.0中的多路复用"
+	
+	
+></p>
+<p>这导致了性能提升，并解决了应用层面的队头阻塞问题。然而，在TCP层面，如果发生数据包丢失，它必须等待数据包重传。</p>
+<p>多路复用解决方案在数据包丢失的情况下并不像预期的那样有效。实际上，如果数据包丢失超过5%，HTTP 1.1的性能比HTTP 2.0更好。_队头阻塞_问题从应用层转移到了传输层。</p>
+<p>下图展示了单个数据包丢失如何导致多个流延迟：</p>
+<p><img src="https://images.hxzhouh.com/blog-images/2024/06/be1f098332879071f2909e464e139ef4.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="HTTP/2.0中的数据包丢失导致重传和流延迟"
+	
+	
+></p>
+<p>当一个数据包丢失时，TCP将其后续数据包存储在其缓冲区中，直到收到丢失的数据包。然后TCP使用重传来获取丢失的数据包。HTTP无法看到TCP重传。因此，在这种情况下，不同的流会看到传输延迟。</p>
+<h2 id="什么是quic">什么是QUIC？
+</h2><p>在过去的几个部分中，我们看到了TCP有一些固有的限制，如三次握手和队头阻塞。这些限制可以通过增强TCP或用新协议替换TCP来解决。</p>
+<p>尽管增强TCP很简单，但TCP存在于最低层，与操作系统紧密耦合。简单来说，TCP的代码存在于内核层而不是用户空间。考虑到大量的设备，实施内核空间的更改将需要大量的时间才能到达所有用户。</p>
+<p>因此，谷歌提出了一种新的协议<strong>QUIC</strong>，作为TCP的替代品。像TCP一样，QUIC也是一个传输层协议。然而，它位于用户空间而不是内核空间。这使得它容易更改和增强，与TCP不同。</p>
+<p>QUIC在UDP之上工作。它通过使用UDP克服了TCP的限制。它只是一个在UDP之上的层或包装器。该包装器添加了TCP的功能，如拥塞控制、数据包重传、多路复用等。它内部使用UDP，并在其上添加了TCP的最佳功能。</p>
+<p>下图显示了QUIC如何适应网络栈：</p>
+<p><img src="https://images.hxzhouh.com/blog-images/2024/06/0f6646bac5d36e03f7efc018abecd36e.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="带有QUIC的网络栈"
+	
+	
+></p>
+<p>现在我们已经了解了QUIC的基础知识，让我们深入了解这个协议的工作原理。</p>
+<h2 id="quic是如何工作的">QUIC是如何工作的？
+</h2><h3 id="quic握手">QUIC握手
+</h3><p>QUIC在UDP上工作，它不需要经过三次握手过程。三次握手过程增加了额外的开销，增加了延迟。因此，QUIC通过减少连接延迟来提高性能。</p>
+<p>在TCP的情况下，还有一个额外的用于TLS的握手，这也增加了延迟。QUIC将TLS握手和QUIC握手合并为一个调用。它优化了握手过程并提高了性能。</p>
+<h3 id="可靠性">可靠性
+</h3><p>您可能会想“<em>既然QUIC在UDP上工作，数据包会丢失吗？</em>”。答案是不。QUIC在UDP堆栈上添加了可靠性。它实现了数据包重传，以防它没有收到必要的数据包。例如：如果服务器没有收到来自客户端的第5个数据包，协议将检测到它并要求客户端重新发送相同的数据包。</p>
+<h3 id="多路复用">多路复用
+</h3><p>与TCP类似，QUIC也实现了多路复用。客户端可以使用单个通道同时传输多个文件。QUIC为每个流（传输的文件）创建一个UUID。它使用UUID来识别流。然后，多个流通过单个通道发送。</p>
+<p>下图展示了QUIC中多路复用是如何工作的：</p>
+<p><img src="https://images.hxzhouh.com/blog-images/2024/06/768ff5b9df55d625011a814cf1339e13.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="QUIC中的多路复用"
+	
+	
+></p>
+<p>QUIC还通过其多路复用解决了TCP面临的队头阻塞问题。如果一个流遭受数据包丢失，只有该流会受到影响。QUIC中的流是独立的，不会影响彼此的工作。</p>
+<h3 id="安全性">安全性
+</h3><p>此外，QUIC 还支持 TLS 1.3（传输层安全性）。这保证了数据的安全性和保密性。TLS 加密了 QUIC 协议的大部分内容，例如数据包编号和连接关闭信号。</p>
+<h2 id="为什么选择quic">为什么选择QUIC？
+</h2><ul>
+<li><strong>降低延迟</strong> - QUIC通过将TLS握手与连接建立结合起来，最小化了延迟。这也被称为<strong>0-RTT</strong>（零往返时间）。它实现了更快的连接建立，并提高了网络应用程序的性能。</li>
+<li><strong>多路复用</strong> - 通过多路复用，QUIC可以在单个通道上发送多个数据流。这对于下载多个文件（如图像、JavaScript、CSS等）的客户端应用程序非常有用。</li>
+<li><strong>连接迁移</strong> - 使用QUIC，您可以在不出现任何问题的情况下从一种网络接口切换到另一种（例如从Wi-Fi切换到移动数据）。这对于移动设备很重要，并提高了用户体验。</li>
+<li><strong>提高安全性</strong> - QUIC使用TLS 1.3，提供更好的安全性。此外，它还加密了协议的大部分，与只加密HTTP有效载荷的TCP和TLS不同。与TCP相比，它更能抵御安全攻击。</li>
+<li><strong>广泛支持</strong> - 自其诞生以来，它的采用率一直在上升。这进一步加强了它的有效性。</li>
+</ul>
+<h2 id="http3和quic">HTTP/3和QUIC
+</h2><p>HTTP/3是超文本传输协议（HTTP）的最新版本。它内部使用QUIC而不是TCP。它旨在为现代网络提供更有效和安全的基础。它拥有QUIC提供的所有优势。</p>
+<p>HTTP/3由IETF标准化。今天，很大一部分互联网流量依赖于HTTP/3。以下是显示HTTP/3采用率的图表：</p>
+<p><img src="https://images.hxzhouh.com/blog-images/2024/06/0fc7211ffb79567e4a515c7c0c6182f7.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="HTTP/3.0 采用率"
+	
+	
+><br>
+从上述图表中可以看出，采用率已经飙升至30%，并逐渐超越了<strong>HTTP/1.1</strong>。按照目前的发展速度，<strong>HTTP/3.0</strong>将在未来几年逐渐超越<strong>HTTP/2.0</strong>。</p>
+<h2 id="结论">结论
+</h2><p>自三十年前HTTP诞生以来，互联网已经走过了漫长的道路。HTTP的演变使在线体验更加高效和响应迅速。随着现代应用程序需求的增长，我们意识到了底层协议如TCP的固有限制。</p>
+<p>谷歌开发了改变游戏规则的协议QUIC。它利用UDP并解决了TCP的所有不足。降低延迟、多路复用、增强安全性和连接迁移是QUIC的一些显著特点。QUIC带来的创新解决了队头阻塞等问题。</p>
+<p>像谷歌和Facebook这样的大型科技公司通过在HTTP/3中采用QUIC，在性能上取得了显著提升。随着采用率的上升和日益增长的支持，HTTP/3将成为互联网通信的标准。在未来几年，互联网将发展并过渡到HTTP/3，以实现效率、可靠性和性能。</p>
+<h2 id="参考文献">参考文献
+</h2><ol>
+<li><a class="link" href="https://www.obiikriationz.com/tcp-vs-udp-meme-version.xhtml"  target="_blank" rel="noopener"
+    >TCP VS UDP 梗</a></li>
+<li><a class="link" href="https://blog.apnic.net/2023/09/25/why-http-3-is-eating-the-world/"  target="_blank" rel="noopener"
+    >为什么HTTP/3.0正在吞噬世界？</a></li>
+<li><a class="link" href="https://medium.com/pinterest-engineering/pinterest-is-now-on-http-3-608fb5581094"  target="_blank" rel="noopener"
+    >Pinterest现在使用HTTP/3.0</a></li>
+<li><a class="link" href="https://peering.google.com/#/learn-more/quic"  target="_blank" rel="noopener"
+    >与谷歌对等 - QUIC</a></li>
+</ol>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/zh-cn/tags/tcp/">Tcp</a>
+        
+            <a href="/zh-cn/tags/quic/">Quic</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            最后更新于 Jun 14, 2024 09:38 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+<aside class="related-content--wrapper">
+    <h2 class="section-title">相关文章</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/the-key-points-of-https/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/05/9113c36ee94b362ffe79a997b75c8efe.png" loading="lazy" data-key="the-key-points-of-https" data-hash="https://images.hxzhouh.com/blog-images/2024/05/9113c36ee94b362ffe79a997b75c8efe.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">了解 HTTPS：关键点和流程详解</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+     
+    
+        
+    <script src="//cdn.jsdelivr.net/npm/twikoo@1.6.21/dist/twikoo.all.min.js"></script>
+<div id="tcomment"></div>
+<style>
+    .twikoo {
+        background-color: var(--card-background);
+        border-radius: var(--card-border-radius);
+        box-shadow: var(--shadow-l1);
+        padding: var(--card-padding);
+    }
+    :root[data-scheme="dark"] {
+        --twikoo-body-text-color-main: rgba(255, 255, 255, 0.9);
+        --twikoo-body-text-color: rgba(255, 255, 255, 0.7);
+    }
+    .twikoo .el-input-group__prepend,
+    .twikoo .tk-action-icon,
+    .twikoo .tk-submit-action-icon,
+    .twikoo .tk-time,
+    .twikoo .tk-comments-no,
+    .twikoo .tk-comments-count {
+        color: var(--twikoo-body-text-color);
+    }
+    .twikoo .el-input__inner,
+    .twikoo .el-textarea__inner,
+    .twikoo .tk-preview-container,
+    .twikoo .tk-content,
+    .twikoo .tk-nick,
+    .twikoo .tk-send {
+        color: var(--twikoo-body-text-color-main);
+    }
+    .twikoo .el-button{
+        color: var(--twikoo-body-text-color)!important;
+    }
+    .twikoo .el-input__count {
+        color: var(--twikoo-body-text-color) !important;
+    }
+    .OwO .OwO-body {
+        background-color: var(--body-background) !important;
+        color: var(--body-text-color) !important;
+    }
+</style><script>
+    twikoo.init({
+        envId: 'https:\/\/twikoo.yixiao9206.cn',
+        el: '#tcomment',lang: 'en',})
+</script>
+
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2024 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+    </section>
+    
+     	
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>

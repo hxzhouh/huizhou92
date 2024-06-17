@@ -7,7 +7,190 @@
         <generator>Hugo -- gohugo.io</generator>
         <language>zh-cn</language>
         <copyright>Copyright © 2023 huizhou92</copyright>
-        <lastBuildDate>Tue, 11 Jun 2024 17:33:16 +0800</lastBuildDate><atom:link href="https://huizhou92.com/zh-cn/post/index.xml" rel="self" type="application/rss+xml" /><item>
+        <lastBuildDate>Fri, 14 Jun 2024 09:38:42 +0800</lastBuildDate><atom:link href="https://huizhou92.com/zh-cn/post/index.xml" rel="self" type="application/rss+xml" /><item>
+        <title>QUIC 如何在速度和安全性方面取代 TCP？</title>
+        <link>https://huizhou92.com/zh-cn/p/quic-%E5%A6%82%E4%BD%95%E5%9C%A8%E9%80%9F%E5%BA%A6%E5%92%8C%E5%AE%89%E5%85%A8%E6%80%A7%E6%96%B9%E9%9D%A2%E5%8F%96%E4%BB%A3-tcp/</link>
+        <pubDate>Fri, 14 Jun 2024 09:38:42 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/zh-cn/p/quic-%E5%A6%82%E4%BD%95%E5%9C%A8%E9%80%9F%E5%BA%A6%E5%92%8C%E5%AE%89%E5%85%A8%E6%80%A7%E6%96%B9%E9%9D%A2%E5%8F%96%E4%BB%A3-tcp/</guid>
+        <description>&lt;img src="https://substackcdn.com/image/fetch/f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2Fd0e30c17-275b-4a94-8883-74c546ead5e5_5955x3350.jpeg" alt="Featured image of post QUIC 如何在速度和安全性方面取代 TCP？" /&gt;&lt;p&gt;原文链接&lt;a class=&#34;link&#34; href=&#34;https://engineeringatscale.substack.com/p/how-quic-is-displacing-tcp-for-speed&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;how-quic-is-displacing-tcp-for-speed&lt;/a&gt;&lt;/p&gt;
+&lt;h2 id=&#34;引言&#34;&gt;引言
+&lt;/h2&gt;&lt;p&gt;在过去的三十年中，&lt;strong&gt;HTTP&lt;/strong&gt;（超文本传输协议）一直是互联网的支柱。我们能够浏览网页、下载文件、流式传输电影等，都是因为HTTP。这个协议多年来不断发展，见证了重大的改进。&lt;/p&gt;
+&lt;p&gt;HTTP协议是一个应用层协议，工作在&lt;strong&gt;TCP&lt;/strong&gt;（传输控制协议）之上。TCP协议有一些限制，导致网络应用程序响应性较差。&lt;/p&gt;
+&lt;p&gt;谷歌开发了一种改变游戏规则的传输协议QUIC，以克服TCP的缺点。&lt;strong&gt;QUIC&lt;/strong&gt;几年前被标准化并加入到&lt;strong&gt;IETF&lt;/strong&gt;（互联网工程任务组）。&lt;/p&gt;
+&lt;p&gt;在过去几年中，QUIC的采用呈指数级增长。大多数科技公司，如谷歌、Facebook、Pinterest等，已经开始采用使用QUIC作为传输层的HTTP/3.0。这些公司在使用HTTP/3.0和QUIC后，其网站性能有了显著提升。&lt;/p&gt;
+&lt;p&gt;让我们开始我们的旅程，了解QUIC如何取代TCP。我们首先将了解一些基本的TCP和UDP网络概念。之后，我们将看看HTTP的演变，以及每个版本是如何克服前一个版本的限制的。然后，我们将了解QUIC是什么以及它的工作原理。我们将探讨为什么QUIC的性能比TCP高。&lt;/p&gt;
+&lt;h2 id=&#34;tcp和udp是如何工作的&#34;&gt;TCP和UDP是如何工作的？
+&lt;/h2&gt;&lt;p&gt;TCP（传输控制协议）和UDP（用户数据报协议）是传输层协议。这些协议管理互联网数据包流向和来自任何电子设备的过程。让我们详细了解这两个协议是如何工作的。&lt;/p&gt;
+&lt;h3 id=&#34;tcp&#34;&gt;TCP
+&lt;/h3&gt;&lt;p&gt;&lt;strong&gt;TCP&lt;/strong&gt;是一种基于连接的协议。客户端与服务器建立连接，然后发送数据。TCP连接是通过一种称为三次握手的机制建立的。下图展示了三次握手过程：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/06/caf726113bb8757bed09f9999ae30733.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;TCP 三次握手过程&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;这个过程包括三个步骤：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;SYN - 客户端向服务器发送一个&lt;strong&gt;SYN&lt;/strong&gt;数据包。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;ACK - 服务器接收到&lt;strong&gt;SYN&lt;/strong&gt;后，通过&lt;strong&gt;ACK&lt;/strong&gt;数据包向客户端发送确认。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;SYN-ACK - 客户端收到服务器的&lt;strong&gt;ACK&lt;/strong&gt;数据包后，最终通过&lt;strong&gt;SYN-ACK&lt;/strong&gt;向服务器发送确认。&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;TCP是一个有状态和可靠的协议。它保证从一台设备到另一台设备的所有数据包的传输。此外，它允许客户端和服务器使用相同的连接进行通信。&lt;/p&gt;
+&lt;h3 id=&#34;udp&#34;&gt;UDP
+&lt;/h3&gt;&lt;p&gt;&lt;strong&gt;UDP&lt;/strong&gt;是一种无连接协议。与TCP不同，客户端和服务器之间没有三次握手。客户端向服务器发送数据包，不等待服务器的确认。&lt;/p&gt;
+&lt;p&gt;UDP不能保证100%的数据包传输。数据包可能会丢失，可能无法到达另一台设备。UDP不像TCP那样可靠。&lt;/p&gt;
+&lt;p&gt;由于没有初始握手，UDP比TCP快得多。出于性能原因，UDP主要用于流式数据应用程序，如音乐/视频。&lt;/p&gt;
+&lt;p&gt;这是一个流行的互联网梗，对TCP/UDP进行了调侃：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/06/a3ca4b8e00d8afa0578e4417d1967428.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;TCP VS UDP 梗&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;到目前为止，我们已经了解了TCP和UDP协议是如何工作的。现在让我们探索HTTP协议，这是一个应用层协议。&lt;/p&gt;
+&lt;h2 id=&#34;http的演变&#34;&gt;HTTP的演变
+&lt;/h2&gt;&lt;p&gt;由&lt;a class=&#34;link&#34; href=&#34;https://en.wikipedia.org/wiki/Tim_Berners-Lee&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Tim Berners-Lee&lt;/a&gt;在&lt;a class=&#34;link&#34; href=&#34;https://en.wikipedia.org/wiki/CERN&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;CERN&lt;/a&gt;开发的HTTP的第一个版本是在1989年。从那时起，该协议经历了多次优化和性能改进。大多数现代设备使用&lt;strong&gt;HTTP 1.1&lt;/strong&gt;/ &lt;strong&gt;HTTP 2.0&lt;/strong&gt;和&lt;strong&gt;HTTP 3.0&lt;/strong&gt;。让我们回顾一下HTTP的历史，了解协议经历的重大变化。&lt;/p&gt;
+&lt;h3 id=&#34;http10&#34;&gt;HTTP/1.0
+&lt;/h3&gt;&lt;p&gt;在最初的HTTP/0.9版本之后，HTTP/1.0开始支持头、请求体、文本文件等。客户端每次使用HTTP从服务器获取数据时，都必须创建一个TCP连接。这导致在建立连接时显著浪费资源。&lt;/p&gt;
+&lt;h3 id=&#34;http11&#34;&gt;HTTP/1.1
+&lt;/h3&gt;&lt;p&gt;这个协议增加了对重用客户端和服务器之间现有TCP连接以获取新数据的支持。这是通过HTTP头&lt;code&gt;keep-alive&lt;/code&gt;实现的。&lt;/p&gt;
+&lt;p&gt;如果客户端想要获取10个JavaScript文件，那么它将与服务器建立一个连接。然后，它将重用相同的连接来获取这10个文件，而不是为每个文件创建一个新连接。&lt;/p&gt;
+&lt;p&gt;这导致资源浪费减少和性能提升，因为它避免了创建多余的连接。然而，一个主要的缺点是众所周知的_队头阻塞_问题。&lt;/p&gt;
+&lt;p&gt;下图展示了_队头阻塞_问题。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/06/5cc7b3071e1e63fa95130aacc6ab9dda.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;队头阻塞&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;让我们通过一个例子来理解这个概念。如上图所示，你有3个文件 - 图像、文本和视频。视频文件体积较大，传输时间会更长。由于视频文件传输时间较长，它会阻塞图像和文本文件的发送。&lt;/p&gt;
+&lt;h3 id=&#34;http20&#34;&gt;HTTP/2.0
+&lt;/h3&gt;&lt;p&gt;&lt;strong&gt;HTTP 2.0&lt;/strong&gt;通过多路复用解决了_队头阻塞_问题。通过多路复用，多个文件可以通过同一个TCP连接发送。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/06/cc93f0e6a4693c17d06b65804412e8d7.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;HTTP/2.0中的多路复用&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;这导致了性能提升，并解决了应用层面的队头阻塞问题。然而，在TCP层面，如果发生数据包丢失，它必须等待数据包重传。&lt;/p&gt;
+&lt;p&gt;多路复用解决方案在数据包丢失的情况下并不像预期的那样有效。实际上，如果数据包丢失超过5%，HTTP 1.1的性能比HTTP 2.0更好。_队头阻塞_问题从应用层转移到了传输层。&lt;/p&gt;
+&lt;p&gt;下图展示了单个数据包丢失如何导致多个流延迟：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/06/be1f098332879071f2909e464e139ef4.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;HTTP/2.0中的数据包丢失导致重传和流延迟&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;当一个数据包丢失时，TCP将其后续数据包存储在其缓冲区中，直到收到丢失的数据包。然后TCP使用重传来获取丢失的数据包。HTTP无法看到TCP重传。因此，在这种情况下，不同的流会看到传输延迟。&lt;/p&gt;
+&lt;h2 id=&#34;什么是quic&#34;&gt;什么是QUIC？
+&lt;/h2&gt;&lt;p&gt;在过去的几个部分中，我们看到了TCP有一些固有的限制，如三次握手和队头阻塞。这些限制可以通过增强TCP或用新协议替换TCP来解决。&lt;/p&gt;
+&lt;p&gt;尽管增强TCP很简单，但TCP存在于最低层，与操作系统紧密耦合。简单来说，TCP的代码存在于内核层而不是用户空间。考虑到大量的设备，实施内核空间的更改将需要大量的时间才能到达所有用户。&lt;/p&gt;
+&lt;p&gt;因此，谷歌提出了一种新的协议&lt;strong&gt;QUIC&lt;/strong&gt;，作为TCP的替代品。像TCP一样，QUIC也是一个传输层协议。然而，它位于用户空间而不是内核空间。这使得它容易更改和增强，与TCP不同。&lt;/p&gt;
+&lt;p&gt;QUIC在UDP之上工作。它通过使用UDP克服了TCP的限制。它只是一个在UDP之上的层或包装器。该包装器添加了TCP的功能，如拥塞控制、数据包重传、多路复用等。它内部使用UDP，并在其上添加了TCP的最佳功能。&lt;/p&gt;
+&lt;p&gt;下图显示了QUIC如何适应网络栈：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/06/0f6646bac5d36e03f7efc018abecd36e.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;带有QUIC的网络栈&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;现在我们已经了解了QUIC的基础知识，让我们深入了解这个协议的工作原理。&lt;/p&gt;
+&lt;h2 id=&#34;quic是如何工作的&#34;&gt;QUIC是如何工作的？
+&lt;/h2&gt;&lt;h3 id=&#34;quic握手&#34;&gt;QUIC握手
+&lt;/h3&gt;&lt;p&gt;QUIC在UDP上工作，它不需要经过三次握手过程。三次握手过程增加了额外的开销，增加了延迟。因此，QUIC通过减少连接延迟来提高性能。&lt;/p&gt;
+&lt;p&gt;在TCP的情况下，还有一个额外的用于TLS的握手，这也增加了延迟。QUIC将TLS握手和QUIC握手合并为一个调用。它优化了握手过程并提高了性能。&lt;/p&gt;
+&lt;h3 id=&#34;可靠性&#34;&gt;可靠性
+&lt;/h3&gt;&lt;p&gt;您可能会想“&lt;em&gt;既然QUIC在UDP上工作，数据包会丢失吗？&lt;/em&gt;”。答案是不。QUIC在UDP堆栈上添加了可靠性。它实现了数据包重传，以防它没有收到必要的数据包。例如：如果服务器没有收到来自客户端的第5个数据包，协议将检测到它并要求客户端重新发送相同的数据包。&lt;/p&gt;
+&lt;h3 id=&#34;多路复用&#34;&gt;多路复用
+&lt;/h3&gt;&lt;p&gt;与TCP类似，QUIC也实现了多路复用。客户端可以使用单个通道同时传输多个文件。QUIC为每个流（传输的文件）创建一个UUID。它使用UUID来识别流。然后，多个流通过单个通道发送。&lt;/p&gt;
+&lt;p&gt;下图展示了QUIC中多路复用是如何工作的：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/06/768ff5b9df55d625011a814cf1339e13.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;QUIC中的多路复用&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;QUIC还通过其多路复用解决了TCP面临的队头阻塞问题。如果一个流遭受数据包丢失，只有该流会受到影响。QUIC中的流是独立的，不会影响彼此的工作。&lt;/p&gt;
+&lt;h3 id=&#34;安全性&#34;&gt;安全性
+&lt;/h3&gt;&lt;p&gt;此外，QUIC 还支持 TLS 1.3（传输层安全性）。这保证了数据的安全性和保密性。TLS 加密了 QUIC 协议的大部分内容，例如数据包编号和连接关闭信号。&lt;/p&gt;
+&lt;h2 id=&#34;为什么选择quic&#34;&gt;为什么选择QUIC？
+&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;降低延迟&lt;/strong&gt; - QUIC通过将TLS握手与连接建立结合起来，最小化了延迟。这也被称为&lt;strong&gt;0-RTT&lt;/strong&gt;（零往返时间）。它实现了更快的连接建立，并提高了网络应用程序的性能。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;多路复用&lt;/strong&gt; - 通过多路复用，QUIC可以在单个通道上发送多个数据流。这对于下载多个文件（如图像、JavaScript、CSS等）的客户端应用程序非常有用。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;连接迁移&lt;/strong&gt; - 使用QUIC，您可以在不出现任何问题的情况下从一种网络接口切换到另一种（例如从Wi-Fi切换到移动数据）。这对于移动设备很重要，并提高了用户体验。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;提高安全性&lt;/strong&gt; - QUIC使用TLS 1.3，提供更好的安全性。此外，它还加密了协议的大部分，与只加密HTTP有效载荷的TCP和TLS不同。与TCP相比，它更能抵御安全攻击。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;广泛支持&lt;/strong&gt; - 自其诞生以来，它的采用率一直在上升。这进一步加强了它的有效性。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;http3和quic&#34;&gt;HTTP/3和QUIC
+&lt;/h2&gt;&lt;p&gt;HTTP/3是超文本传输协议（HTTP）的最新版本。它内部使用QUIC而不是TCP。它旨在为现代网络提供更有效和安全的基础。它拥有QUIC提供的所有优势。&lt;/p&gt;
+&lt;p&gt;HTTP/3由IETF标准化。今天，很大一部分互联网流量依赖于HTTP/3。以下是显示HTTP/3采用率的图表：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/06/0fc7211ffb79567e4a515c7c0c6182f7.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;HTTP/3.0 采用率&#34;
+	
+	
+&gt;&lt;br&gt;
+从上述图表中可以看出，采用率已经飙升至30%，并逐渐超越了&lt;strong&gt;HTTP/1.1&lt;/strong&gt;。按照目前的发展速度，&lt;strong&gt;HTTP/3.0&lt;/strong&gt;将在未来几年逐渐超越&lt;strong&gt;HTTP/2.0&lt;/strong&gt;。&lt;/p&gt;
+&lt;h2 id=&#34;结论&#34;&gt;结论
+&lt;/h2&gt;&lt;p&gt;自三十年前HTTP诞生以来，互联网已经走过了漫长的道路。HTTP的演变使在线体验更加高效和响应迅速。随着现代应用程序需求的增长，我们意识到了底层协议如TCP的固有限制。&lt;/p&gt;
+&lt;p&gt;谷歌开发了改变游戏规则的协议QUIC。它利用UDP并解决了TCP的所有不足。降低延迟、多路复用、增强安全性和连接迁移是QUIC的一些显著特点。QUIC带来的创新解决了队头阻塞等问题。&lt;/p&gt;
+&lt;p&gt;像谷歌和Facebook这样的大型科技公司通过在HTTP/3中采用QUIC，在性能上取得了显著提升。随着采用率的上升和日益增长的支持，HTTP/3将成为互联网通信的标准。在未来几年，互联网将发展并过渡到HTTP/3，以实现效率、可靠性和性能。&lt;/p&gt;
+&lt;h2 id=&#34;参考文献&#34;&gt;参考文献
+&lt;/h2&gt;&lt;ol&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://www.obiikriationz.com/tcp-vs-udp-meme-version.xhtml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;TCP VS UDP 梗&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://blog.apnic.net/2023/09/25/why-http-3-is-eating-the-world/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;为什么HTTP/3.0正在吞噬世界？&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://medium.com/pinterest-engineering/pinterest-is-now-on-http-3-608fb5581094&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Pinterest现在使用HTTP/3.0&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://peering.google.com/#/learn-more/quic&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;与谷歌对等 - QUIC&lt;/a&gt;&lt;/li&gt;
+&lt;/ol&gt;
+</description>
+        </item>
+        <item>
         <title>Go 1.23: 新包 Iter</title>
         <link>https://huizhou92.com/zh-cn/p/go-1.23-new-iter-package/</link>
         <pubDate>Tue, 11 Jun 2024 17:33:16 +0800</pubDate>
@@ -875,7 +1058,7 @@ TLS 协议在版本上有1.1、1.2、1.3，其中1.2曾经是主流，现在推�
         <pubDate>Thu, 23 May 2024 10:25:02 +0800</pubDate>
         
         <guid>https://huizhou92.com/zh-cn/p/why-did-google-choose-to-implement-grpc-using-http2/</guid>
-        <description>&lt;img src="https://huizhou92.com/p/why-did-google-choose-to-implement-grpc-using-http2/cb553b8f542344f88169374915cb1819.png" alt="Featured image of post 为什么 Google 选择使用HTTP 2 实现 gRPC" /&gt;&lt;h2 id=&#34;背景&#34;&gt;背景
+        <description>&lt;img src="https://huizhou92.com/cb553b8f542344f88169374915cb1819.png" alt="Featured image of post 为什么 Google 选择使用HTTP 2 实现 gRPC" /&gt;&lt;h2 id=&#34;背景&#34;&gt;背景
 &lt;/h2&gt;&lt;p&gt;&lt;a class=&#34;link&#34; href=&#34;https://grpc.io/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;gRPC&lt;/a&gt;是google开源的高性能跨语言的RPC方案。gRPC的设计目标是在任何环境下运行，支持可插拔的负载均衡，跟踪，运行状况检查和身份验证。它不仅支持数据中心内部和跨数据中心的服务调用，它也适用于分布式计算的最后一公里，将设备，移动应用程序和浏览器连接到后端服务。&lt;br&gt;
 关于 GRPC设计的动机和原则 我们可以从这篇文章里面找到答案，&lt;a class=&#34;link&#34; href=&#34;https://grpc.io/blog/principles&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
