@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+    <channel>
+        <title>Redis on huizhou92&#39;s Blog</title>
+        <link>https://huizhou92.com/tags/redis/</link>
+        <description>Recent content in Redis on huizhou92&#39;s Blog</description>
+        <generator>Hugo -- gohugo.io</generator>
+        <language>en</language>
+        <copyright>Copyright © 2023 huizhou92</copyright>
+        <lastBuildDate>Fri, 01 Mar 2024 14:55:16 +0800</lastBuildDate><atom:link href="https://huizhou92.com/tags/redis/index.xml" rel="self" type="application/rss+xml" /><item>
+        <title>Redis stream VS Kafka, A Clash Of Two Kings</title>
+        <link>https://huizhou92.com/p/redis-stream-vs-kafka-a-clash-of-two-kings/</link>
+        <pubDate>Fri, 01 Mar 2024 14:55:16 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/p/redis-stream-vs-kafka-a-clash-of-two-kings/</guid>
+        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2024/06/2320e4fa0276aa272f2516ae5b793337.png" alt="Featured image of post Redis stream VS Kafka, A Clash Of Two Kings" /&gt;&lt;p&gt;Kafka is known for addressing large-scale data processing problems and is widely deployed in the infrastructure of many well-known companies. As early as 2015, LinkedIn had 60 clusters with 1100 Brokers, processing 13 million messages per second.&lt;/p&gt;
+&lt;p&gt;But it turns out that scale isn&amp;rsquo;t the only thing Kafka excels at. Its advocated programming paradigm &amp;ndash; partitioned, ordered, event processing &amp;ndash; is a good solution for many problems you may encounter. For example, if events represent rows to be indexed into a search database, the last modification is the last index, which is essential, otherwise, searches will indefinitely return stale data. Similarly, if events represent user behavior, processing the second event (&amp;ldquo;user account upgrade&amp;rdquo;) may depend on the first (&amp;ldquo;user account creation&amp;rdquo;). This paradigm differs from traditional job queue systems, where many workers simultaneously pop up events from the queue, which is simple and scalable but breaks any ordering guarantee. Suppose you want ordered processing, but perhaps you don&amp;rsquo;t want to use Kafka because of its reputation as a difficult-to-operate or expensive heavyweight system. How does Redis, with its &amp;ldquo;stream&amp;rdquo; data structure released with version 5.0, compare? Does it solve the same problems?&lt;/p&gt;
+&lt;!-- more--&gt;
+&lt;blockquote&gt;
+&lt;p&gt;This article is first published in the medium MPP plan. If you are a medium user, please follow me in &lt;a class=&#34;link&#34; href=&#34;https://medium.hxzhouh.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;medium&lt;/a&gt;. Thank you very much.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h3 id=&#34;kafka-architecture&#34;&gt;Kafka Architecture
+&lt;/h3&gt;&lt;p&gt;Let&amp;rsquo;s first take a look at the basic architecture of Kafka. The fundamental data structure is the topic. It&amp;rsquo;s a time-ordered record sequence, appended-only. The benefits of using this data structure are well described in Jay Kreps&amp;rsquo; classic blog post, The Log.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/06/cea5c39ec7687f2268da4d1d1f5d9ec8.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20240619144940&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;Topics are partitioned to allow them to scale: each topic can be hosted on separate Kafka instances. Records in each partition are assigned consecutive IDs called offsets, which uniquely identify each record in the partition. Consumers process records sequentially, keeping track of the last offset they&amp;rsquo;ve seen. Since records persist in a topic, &lt;strong&gt;multiple consumers can independently process records&lt;/strong&gt;.&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/06/29fd2c0ea08602d7556126ac5ba94335.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20240619145120&#34;
+	
+	
+&gt;&lt;br&gt;
+In practice, you may distribute your processing across many machines. To achieve this, Kafka provides an abstraction called a &amp;ldquo;consumer group,&amp;rdquo; a group of cooperating processes consuming data from a topic. Partitions of a topic are assigned to members of the group. Then, when members join or leave the group, partitions must be reassigned to ensure each member gets a fair share of the partitions. This is called the rebalancing algorithm.&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/06/5499bbd164535ca831e10aba27a13f7c.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20240619150023&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;Note that a partition is processed by only one member of the consumer group. (A member may be responsible for multiple partitions.) This ensures strictly ordered processing.&lt;br&gt;
+This toolkit is handy. You can quickly scale your processing by adding more workers, while Kafka handles distributed coordination problems.&lt;/p&gt;
+&lt;h3 id=&#34;redis-stream-data-structure&#34;&gt;Redis Stream Data Structure
+&lt;/h3&gt;&lt;p&gt;How does Redis&amp;rsquo; &amp;ldquo;stream&amp;rdquo; data structure compare? Redis streams conceptually equate to partitioning the abovementioned Kafka topic but with minor differences.&lt;br&gt;
+It&amp;rsquo;s a persistent, ordered event storage (similar to Kafka). It has a configurable maximum length (as opposed to a retention period in Kafka). Events store keys and values akin to Redis Hash (as opposed to a single key value in Kafka). &lt;strong&gt;The most significant difference is that consumer groups in Redis are entirely different from those in Kafka.&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;In Redis, a consumer group is a set of processes that read from the same stream. Redis ensures that events are only delivered to one consumer within the group. For example, in the diagram below, Consumer 1 won&amp;rsquo;t process &amp;lsquo;9&amp;rsquo;. It will skip it because Consumer 2 has already seen it. Consumer 1 will get the next event not seen by any other group member.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/06/2d6b8982fb5b7fdd58f4a2533f619cfc.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20240619145008&#34;
+	
+	
+&gt;&lt;br&gt;
+The role of groups in Redis is to parallelize the processing of a single stream. This structure resembles a traditional job queue. Unfortunately, it loses the ordering guarantee essential to stream processing.&lt;/p&gt;
+&lt;h3 id=&#34;stream-processing-as-a-clientlibrary&#34;&gt;Stream Processing as a Client Library
+&lt;/h3&gt;&lt;p&gt;So, if Redis effectively only provides topics with job queue semantics, how can we build a stream processing engine on top of Redis? If you want Kafka&amp;rsquo;s features, you need to make them yourself. That means implementing.&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Event partitioning. You need to create N streams and treat each stream as a partition. Then, upon sending, you must decide which partition should receive it based on the event&amp;rsquo;s hash value or one of its fields.&lt;/li&gt;
+&lt;li&gt;A worker partition assignment system. To scale and support multiple workers, you must create an algorithm to distribute partitions among them, ensuring each worker has an exclusive subset, akin to Kafka&amp;rsquo;s &amp;ldquo;rebalancing&amp;rdquo; system.&lt;/li&gt;
+&lt;li&gt;Ordered processing with acknowledgment. Each worker needs to iterate through each partition, tracking its offset. Though Redis consumer groups have job queue semantics, they can help here. The trick is to have each group use one consumer and then create a group for each partition. Then, each partition will be processed sequentially, and you can leverage built-in consumer group state tracking. Redis can track not only offsets but also acknowledgments for each event, which is powerful.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;This is the absolute minimum requirement. Suppose you want your solution to be robust. In that case, you might also consider error handling: In addition to crashing your workers, perhaps you&amp;rsquo;d like a mechanism to forward errors to a &amp;ldquo;dead letter&amp;rdquo; stream and continue processing.&lt;/p&gt;
+&lt;p&gt;The good news is that &lt;strong&gt;&lt;em&gt;if you&amp;rsquo;re a Python enthusiast&lt;/em&gt;&lt;/strong&gt;&lt;em&gt;,&lt;/em&gt; a newly released library called &lt;a class=&#34;link&#34; href=&#34;https://github.com/mjwestcott/runnel&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;&lt;strong&gt;Runnel&lt;/strong&gt;&lt;/a&gt; addresses these problems and more. You can check out Kafka-like semantics on Redis. Below is what it looks like in one of the Kafka diagrams above.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/06/c5b89aa6c1c98b78ac90f36dab850dd9.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20240619145031&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;Workers coordinate their ownership of partitions via locks implemented in Redis. They communicate with each other through a special &amp;ldquo;control&amp;rdquo; stream. For more information, including a detailed breakdown of the architecture and rebalancing algorithm, please refer to the Runnel documentation.&lt;/p&gt;
+&lt;h3 id=&#34;summary&#34;&gt;summary
+&lt;/h3&gt;&lt;p&gt;Is Redis a good choice for large-scale event processing? There&amp;rsquo;s a fundamental trade-off: because everything is in memory, you get unparalleled processing speed, but it&amp;rsquo;s &lt;strong&gt;unsuitable for storing unlimited data&lt;/strong&gt;. With Kafka, you can retain all your events indefinitely. Still, with Redis, you&amp;rsquo;re storing a fixed window of the most recent events &amp;ndash; just enough for your processors to have a comfortable buffer in case they slow down or crash. This means you should also use an external long-term event store, such as S3, to be able to replay them, which adds complexity to your architecture but reduces costs.&lt;/p&gt;
+&lt;p&gt;The primary motivation for researching this issue is the ease of use and low cost of deploying and operating Redis. That&amp;rsquo;s why it&amp;rsquo;s attractive compared to Kafka. It&amp;rsquo;s also a magical toolkit that stood the test of time, quite impressive. It turns out that, with effort, it can also support the distributed stream processing paradigm.&lt;/p&gt;
+</description>
+        </item>
+        
+    </channel>
+</rss>

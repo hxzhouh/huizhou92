@@ -7,7 +7,7 @@
         <generator>Hugo -- gohugo.io</generator>
         <language>en</language>
         <copyright>Copyright © 2023 huizhou92</copyright>
-        <lastBuildDate>Mon, 17 Jun 2024 09:26:13 +0800</lastBuildDate><atom:link href="https://huizhou92.com/index.xml" rel="self" type="application/rss+xml" /><item>
+        <lastBuildDate>Mon, 17 Jun 2024 23:05:42 +0800</lastBuildDate><atom:link href="https://huizhou92.com/index.xml" rel="self" type="application/rss+xml" /><item>
         <title>Go 1.23: new Iter package</title>
         <link>https://huizhou92.com/p/go-1.23-new-iter-package/</link>
         <pubDate>Sat, 08 Jun 2024 19:41:11 +0800</pubDate>
@@ -8818,6 +8818,224 @@ So, further, let&amp;rsquo;s see which processes are causing frequent context sw
 &lt;/ul&gt;</description>
         </item>
         <item>
+        <title>Analyzing Performance Bottlenecks in Go Applications with expvar</title>
+        <link>https://huizhou92.com/p/analyzing-performance-bottlenecks-in-go-applications-with-expvar/</link>
+        <pubDate>Thu, 14 Mar 2024 00:00:00 +0000</pubDate>
+        
+        <guid>https://huizhou92.com/p/analyzing-performance-bottlenecks-in-go-applications-with-expvar/</guid>
+        <description>&lt;img src="https://cdn-images-1.medium.com/max/800/1*S4exlYVs0FrMrNls3gxS9w.jpeg" alt="Featured image of post Analyzing Performance Bottlenecks in Go Applications with expvar" /&gt;&lt;h3 id=&#34;_analyzing-performance-bottlenecks-in-go-applications-withexpvar_&#34;&gt;&lt;em&gt;Analyzing Performance Bottlenecks in Go Applications with expvar&lt;/em&gt;
+&lt;/h3&gt;&lt;p&gt;In the development process, to analyze the performance bottlenecks of Go applications, it’s essential to collect and sample performance data using pprof. There are two methods for collecting and sampling data:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;At the micro level, using performance benchmark tests to collect and sample data, is suitable for identifying performance bottleneck points within functions or method implementations.&lt;/li&gt;
+&lt;li&gt;At the macro level, using independent programs to collect and sample data. However, when sampling performance data through independent programs, it’s often challenging to quickly capture the real bottleneck points, especially for complex internal structures, excessive business logic, and concurrent Go programs. When sampling performance for such programs, the real bottleneck points may be overshadowed by other data.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;So, how can we efficiently capture the performance bottleneck points of an application?&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;We can deploy agents or use other methods to obtain probing data by querying external features of the application (such as checking if a certain port of the application responds and returns the correct data or status code). In addition to these messages, we may also want to know some introspective messages, such as more context information about the application’s state. This context information can be about the application’s usage of various resources, such as how much memory the application is consuming, or custom performance metric information, such as the number of external requests processed per unit time, response latency, queue backlog, etc.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;At this point, we need another package provided by Go’s official,&lt;/strong&gt; &lt;a class=&#34;link&#34; href=&#34;https://pkg.go.dev/expvar&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;&lt;strong&gt;expvar&lt;/strong&gt;&lt;/a&gt; &lt;strong&gt;.&lt;/strong&gt;&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;em&gt;Package expvar provides a standardized interface to public variables, such as operation counters in servers. It exposes these variables via HTTP at /debug/vars in JSON format.&lt;/em&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;We can easily use the expvar package provided by the Go standard library to output custom measurement data in a unified interface, with consistent data format and metric definitions. In this post, let’s explore how to use expvar to output custom performance measurement data together.&lt;/p&gt;
+&lt;h3 id=&#34;an-example&#34;&gt;An Example
+&lt;/h3&gt;&lt;p&gt;Let’s start with an example:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;14
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;15
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kn&#34;&gt;package&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;main&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;kn&#34;&gt;import&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;     &lt;span class=&#34;nx&#34;&gt;_&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;#34;expvar&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;     &lt;span class=&#34;s&#34;&gt;&amp;#34;fmt&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;     &lt;span class=&#34;s&#34;&gt;&amp;#34;net/http&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;main&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;     &lt;span class=&#34;nx&#34;&gt;http&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Handle&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;/hi&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;http&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;HandlerFunc&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;w&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;http&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ResponseWriter&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;nx&#34;&gt;r&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;http&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Request&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;nx&#34;&gt;w&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Write&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;([]&lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;byte&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;hi\n&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;     &lt;span class=&#34;p&#34;&gt;}))&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;     &lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;http&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;ListenAndServe&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;localhost:8080&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;kc&#34;&gt;nil&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;run main.go and then we access &lt;code&gt;http://localhost:8080/debug/vars&lt;/code&gt; &lt;a class=&#34;link&#34; href=&#34;http://localhost:8080/debug/vars.&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;.&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://cdn-images-1.medium.com/max/800/0*P3_JM84HN1x8H-gi.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;expvar returns data in standard JSON format.&lt;/p&gt;
+&lt;p&gt;The default returned status data contains two fields: &lt;code&gt;cmdline&lt;/code&gt; and &lt;code&gt;memstats&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;These output data are variables published by the expvar package in the &lt;code&gt;init&lt;/code&gt; function:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nx&#34;&gt;src&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;expvar&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;expvar&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;go&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;init&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;   &lt;span class=&#34;nx&#34;&gt;http&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;HandleFunc&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;/debug/vars&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;expvarHandler&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;   &lt;span class=&#34;nf&#34;&gt;Publish&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;cmdline&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;Func&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;cmdline&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;   &lt;span class=&#34;nf&#34;&gt;Publish&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;memstats&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;Func&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;memstats&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;&lt;code&gt;cmdline: &lt;/code&gt; The meaning of the &lt;code&gt;cmdline&lt;/code&gt; field is the application name of the output data. Here, since it is an application run through &lt;code&gt;go run&lt;/code&gt;, the value &lt;code&gt;cmdline&lt;/code&gt; is an application under a temporary path.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;memstats: &lt;/code&gt; The data output &lt;code&gt;memstats&lt;/code&gt; corresponds to the &lt;code&gt;runtime.Memstats&lt;/code&gt; structure, reflecting the status of heap memory allocation, stack memory allocation, and GC during the application&amp;rsquo;s runtime. The fields of the &lt;code&gt;runtime.Memstats&lt;/code&gt; structure may change with the evolution of Go versions, and their specific meanings can be found in the comments of the &lt;code&gt;Memstats&lt;/code&gt; structure.&lt;/p&gt;
+&lt;h3 id=&#34;outputting-custom-measurement-data-throughexpvar&#34;&gt;Outputting Custom Measurement Data through expvar
+&lt;/h3&gt;&lt;p&gt;Similarly, let’s illustrate how to output custom measurement data with an example:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;14
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;15
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;16
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;17
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;18
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;19
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;20
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;21
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;22
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;23
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;24
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;25
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;26
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kn&#34;&gt;package&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;main&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;kn&#34;&gt;import&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;     &lt;span class=&#34;s&#34;&gt;&amp;#34;expvar&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;     &lt;span class=&#34;nx&#34;&gt;_&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;#34;expvar&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;     &lt;span class=&#34;s&#34;&gt;&amp;#34;fmt&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;     &lt;span class=&#34;s&#34;&gt;&amp;#34;net/http&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;err&#34;&gt;​&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;kd&#34;&gt;var&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;customVar&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;new&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;expvar&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Map&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;).&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Init&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;init&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;     &lt;span class=&#34;nx&#34;&gt;customVar&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Set&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;hi_count&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;new&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;expvar&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Int&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;     &lt;span class=&#34;nx&#34;&gt;expvar&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Publish&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;custom&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;customVar&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;err&#34;&gt;​&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;main&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;     &lt;span class=&#34;nx&#34;&gt;http&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Handle&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;/hi&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;http&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;HandlerFunc&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;w&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;http&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ResponseWriter&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;nx&#34;&gt;r&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;http&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Request&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;k&#34;&gt;defer&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;           &lt;span class=&#34;nx&#34;&gt;customVar&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Add&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;hi_count&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;p&#34;&gt;}()&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;nx&#34;&gt;w&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Write&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;([]&lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;byte&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;hi\n&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;     &lt;span class=&#34;p&#34;&gt;}))&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;     &lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;http&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;ListenAndServe&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;localhost:8080&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;kc&#34;&gt;nil&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;As shown in the example above, after defining a &lt;code&gt;expvar.Map&lt;/code&gt; type variable, we can add metrics to this composite metric variable, such as &amp;ldquo;hi_count&amp;rdquo; in the example.&lt;/p&gt;
+&lt;p&gt;Then rerun the example. First, call &lt;code&gt;localhost:8080/hi&lt;/code&gt; twice:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-shell&#34; data-lang=&#34;shell&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;➜  &lt;span class=&#34;nb&#34;&gt;test&lt;/span&gt; git:&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;main&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt; ✗ curl localhost:8080/hi
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; hi
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; ➜  &lt;span class=&#34;nb&#34;&gt;test&lt;/span&gt; git:&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;main&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt; ✗ curl localhost:8080/hi
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; hi
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; ➜  &lt;span class=&#34;nb&#34;&gt;test&lt;/span&gt; git:&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;main&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt; ✗ curl http://localhost:8080/debug/vars
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;o&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;s2&#34;&gt;&amp;#34;cmdline&amp;#34;&lt;/span&gt;: &lt;span class=&#34;o&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;s2&#34;&gt;&amp;#34;/Users/hxzhouh/Library/Caches/JetBrains/GoLand2023.3/tmp/GoLand/___go_build_github_com_hxzhouh_go_example_expvar&amp;#34;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;]&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;s2&#34;&gt;&amp;#34;custom&amp;#34;&lt;/span&gt;: &lt;span class=&#34;o&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;s2&#34;&gt;&amp;#34;hi_count&amp;#34;&lt;/span&gt;: 2&lt;span class=&#34;o&#34;&gt;}&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;s2&#34;&gt;&amp;#34;memstats&amp;#34;&lt;/span&gt;:&lt;span class=&#34;s2&#34;&gt;&amp;#34;.....&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; &lt;span class=&#34;o&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;expvar outputs the desired results. Expvar can output any desired results, but we won’t delve into that here.&lt;/p&gt;
+&lt;h3 id=&#34;displaying-outputdata&#34;&gt;Displaying Output Data
+&lt;/h3&gt;&lt;p&gt;Through the &lt;code&gt;/debug/vars&lt;/code&gt; service endpoint, we can obtain application internal state data in standard JSON format. Once the data is collected, it can be transformed and displayed according to the needs of different developers. JSON format text is easy to deserialize, and developers can parse and use it themselves, such as writing a Prometheus exporter to import data into the storage behind Prometheus (such as InfluxDB) and visually displaying it through some web-based graphical methods; or importing it into Elasticsearch, and then displaying it through Kibana or Grafana.&lt;/p&gt;
+&lt;p&gt;Here we showcase &lt;code&gt;expvarmon&lt;/code&gt; developed by Go developer &lt;a class=&#34;link&#34; href=&#34;https://twitter.com/idanyliuk&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Ivan Daniluk&lt;/a&gt;. First, install it:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-shell&#34; data-lang=&#34;shell&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;go get github.com/divan/expvarmon
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;Then view the data:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-gdscript3&#34; data-lang=&#34;gdscript3&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;n&#34;&gt;expvarmon&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;-&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;ports&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;s2&#34;&gt;&amp;#34;8080&amp;#34;&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;-&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;vars&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;s2&#34;&gt;&amp;#34;custom.hi_count,mem:memstats.Alloc,mem:memstats.Sys,mem:memstats.HeapAlloc,mem:memstats.HeapInuse,duration:memstats.PauseNs,duration:memstats.PauseTotalNs&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;The result is quite geeky.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://cdn-images-1.medium.com/max/800/0*pXVFAEMOIwlgNIka.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;The expvar package can not only assist in narrowing down the range of performance bottlenecks but also be used to output measurement data to monitor the running status of the application. In this way, when problems occur in the program, we can quickly identify the problem and diagnose and locate it quickly using the output measurement data.&lt;/p&gt;
+&lt;h3 id=&#34;difference-frompprof&#34;&gt;Difference from pprof
+&lt;/h3&gt;&lt;p&gt;&lt;code&gt;pprof&lt;/code&gt; is another built-in performance profiling tool in Go, mainly used to analyze the CPU usage and memory consumption of programs. Unlike, which provides real-time monitoring of internal variables, &lt;code&gt;pprof&lt;/code&gt; is more focused on performance analysis and optimization. In short, &lt;code&gt;expvar&lt;/code&gt; helps us observe the &amp;ldquo;active&amp;rdquo; data of the program while &lt;code&gt;pprof&lt;/code&gt; focusing on &amp;ldquo;performance&amp;rdquo; data.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;expvar&lt;/code&gt; exposes real-time status data of the application simply, such as the current number of active connections or the counter of requests processed. Its design intent is to monitor the application state over the long term, making it a very direct tool for developers who want to quickly understand the health status of the application.&lt;/p&gt;
+&lt;h3 id=&#34;conclusion&#34;&gt;Conclusion
+&lt;/h3&gt;&lt;p&gt;expvar is a powerful tool that can help us monitor the internal situation of applications and easily integrate with other monitoring platforms. It is a tool that every gopher should master.&lt;/p&gt;
+</description>
+        </item>
+        <item>
         <title>Go: Internal Data Structure: heap</title>
         <link>https://huizhou92.com/p/go-internal-data-structure-heap/</link>
         <pubDate>Tue, 12 Mar 2024 10:27:31 +0000</pubDate>
@@ -8938,6 +9156,96 @@ So, further, let&amp;rsquo;s see which processes are causing frequent context sw
 &lt;/ul&gt;
 &lt;p&gt;However, some people have implemented simpler alternatives. An article titled &lt;a class=&#34;link&#34; href=&#34;https://www.dolthub.com/blog/2023-12-01-why-are-go-heaps-confusing/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;Why Are Golang Heaps So Complicated&lt;/a&gt; discusses this issue.&lt;/p&gt;
+</description>
+        </item>
+        <item>
+        <title>Redis stream VS Kafka, A Clash Of Two Kings</title>
+        <link>https://huizhou92.com/p/redis-stream-vs-kafka-a-clash-of-two-kings/</link>
+        <pubDate>Fri, 01 Mar 2024 14:55:16 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/p/redis-stream-vs-kafka-a-clash-of-two-kings/</guid>
+        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2024/06/2320e4fa0276aa272f2516ae5b793337.png" alt="Featured image of post Redis stream VS Kafka, A Clash Of Two Kings" /&gt;&lt;p&gt;Kafka is known for addressing large-scale data processing problems and is widely deployed in the infrastructure of many well-known companies. As early as 2015, LinkedIn had 60 clusters with 1100 Brokers, processing 13 million messages per second.&lt;/p&gt;
+&lt;p&gt;But it turns out that scale isn&amp;rsquo;t the only thing Kafka excels at. Its advocated programming paradigm &amp;ndash; partitioned, ordered, event processing &amp;ndash; is a good solution for many problems you may encounter. For example, if events represent rows to be indexed into a search database, the last modification is the last index, which is essential, otherwise, searches will indefinitely return stale data. Similarly, if events represent user behavior, processing the second event (&amp;ldquo;user account upgrade&amp;rdquo;) may depend on the first (&amp;ldquo;user account creation&amp;rdquo;). This paradigm differs from traditional job queue systems, where many workers simultaneously pop up events from the queue, which is simple and scalable but breaks any ordering guarantee. Suppose you want ordered processing, but perhaps you don&amp;rsquo;t want to use Kafka because of its reputation as a difficult-to-operate or expensive heavyweight system. How does Redis, with its &amp;ldquo;stream&amp;rdquo; data structure released with version 5.0, compare? Does it solve the same problems?&lt;/p&gt;
+&lt;!-- more--&gt;
+&lt;blockquote&gt;
+&lt;p&gt;This article is first published in the medium MPP plan. If you are a medium user, please follow me in &lt;a class=&#34;link&#34; href=&#34;https://medium.hxzhouh.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;medium&lt;/a&gt;. Thank you very much.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h3 id=&#34;kafka-architecture&#34;&gt;Kafka Architecture
+&lt;/h3&gt;&lt;p&gt;Let&amp;rsquo;s first take a look at the basic architecture of Kafka. The fundamental data structure is the topic. It&amp;rsquo;s a time-ordered record sequence, appended-only. The benefits of using this data structure are well described in Jay Kreps&amp;rsquo; classic blog post, The Log.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/06/cea5c39ec7687f2268da4d1d1f5d9ec8.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20240619144940&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;Topics are partitioned to allow them to scale: each topic can be hosted on separate Kafka instances. Records in each partition are assigned consecutive IDs called offsets, which uniquely identify each record in the partition. Consumers process records sequentially, keeping track of the last offset they&amp;rsquo;ve seen. Since records persist in a topic, &lt;strong&gt;multiple consumers can independently process records&lt;/strong&gt;.&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/06/29fd2c0ea08602d7556126ac5ba94335.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20240619145120&#34;
+	
+	
+&gt;&lt;br&gt;
+In practice, you may distribute your processing across many machines. To achieve this, Kafka provides an abstraction called a &amp;ldquo;consumer group,&amp;rdquo; a group of cooperating processes consuming data from a topic. Partitions of a topic are assigned to members of the group. Then, when members join or leave the group, partitions must be reassigned to ensure each member gets a fair share of the partitions. This is called the rebalancing algorithm.&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/06/5499bbd164535ca831e10aba27a13f7c.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20240619150023&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;Note that a partition is processed by only one member of the consumer group. (A member may be responsible for multiple partitions.) This ensures strictly ordered processing.&lt;br&gt;
+This toolkit is handy. You can quickly scale your processing by adding more workers, while Kafka handles distributed coordination problems.&lt;/p&gt;
+&lt;h3 id=&#34;redis-stream-data-structure&#34;&gt;Redis Stream Data Structure
+&lt;/h3&gt;&lt;p&gt;How does Redis&amp;rsquo; &amp;ldquo;stream&amp;rdquo; data structure compare? Redis streams conceptually equate to partitioning the abovementioned Kafka topic but with minor differences.&lt;br&gt;
+It&amp;rsquo;s a persistent, ordered event storage (similar to Kafka). It has a configurable maximum length (as opposed to a retention period in Kafka). Events store keys and values akin to Redis Hash (as opposed to a single key value in Kafka). &lt;strong&gt;The most significant difference is that consumer groups in Redis are entirely different from those in Kafka.&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;In Redis, a consumer group is a set of processes that read from the same stream. Redis ensures that events are only delivered to one consumer within the group. For example, in the diagram below, Consumer 1 won&amp;rsquo;t process &amp;lsquo;9&amp;rsquo;. It will skip it because Consumer 2 has already seen it. Consumer 1 will get the next event not seen by any other group member.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/06/2d6b8982fb5b7fdd58f4a2533f619cfc.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20240619145008&#34;
+	
+	
+&gt;&lt;br&gt;
+The role of groups in Redis is to parallelize the processing of a single stream. This structure resembles a traditional job queue. Unfortunately, it loses the ordering guarantee essential to stream processing.&lt;/p&gt;
+&lt;h3 id=&#34;stream-processing-as-a-clientlibrary&#34;&gt;Stream Processing as a Client Library
+&lt;/h3&gt;&lt;p&gt;So, if Redis effectively only provides topics with job queue semantics, how can we build a stream processing engine on top of Redis? If you want Kafka&amp;rsquo;s features, you need to make them yourself. That means implementing.&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Event partitioning. You need to create N streams and treat each stream as a partition. Then, upon sending, you must decide which partition should receive it based on the event&amp;rsquo;s hash value or one of its fields.&lt;/li&gt;
+&lt;li&gt;A worker partition assignment system. To scale and support multiple workers, you must create an algorithm to distribute partitions among them, ensuring each worker has an exclusive subset, akin to Kafka&amp;rsquo;s &amp;ldquo;rebalancing&amp;rdquo; system.&lt;/li&gt;
+&lt;li&gt;Ordered processing with acknowledgment. Each worker needs to iterate through each partition, tracking its offset. Though Redis consumer groups have job queue semantics, they can help here. The trick is to have each group use one consumer and then create a group for each partition. Then, each partition will be processed sequentially, and you can leverage built-in consumer group state tracking. Redis can track not only offsets but also acknowledgments for each event, which is powerful.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;This is the absolute minimum requirement. Suppose you want your solution to be robust. In that case, you might also consider error handling: In addition to crashing your workers, perhaps you&amp;rsquo;d like a mechanism to forward errors to a &amp;ldquo;dead letter&amp;rdquo; stream and continue processing.&lt;/p&gt;
+&lt;p&gt;The good news is that &lt;strong&gt;&lt;em&gt;if you&amp;rsquo;re a Python enthusiast&lt;/em&gt;&lt;/strong&gt;&lt;em&gt;,&lt;/em&gt; a newly released library called &lt;a class=&#34;link&#34; href=&#34;https://github.com/mjwestcott/runnel&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;&lt;strong&gt;Runnel&lt;/strong&gt;&lt;/a&gt; addresses these problems and more. You can check out Kafka-like semantics on Redis. Below is what it looks like in one of the Kafka diagrams above.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/06/c5b89aa6c1c98b78ac90f36dab850dd9.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20240619145031&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;Workers coordinate their ownership of partitions via locks implemented in Redis. They communicate with each other through a special &amp;ldquo;control&amp;rdquo; stream. For more information, including a detailed breakdown of the architecture and rebalancing algorithm, please refer to the Runnel documentation.&lt;/p&gt;
+&lt;h3 id=&#34;summary&#34;&gt;summary
+&lt;/h3&gt;&lt;p&gt;Is Redis a good choice for large-scale event processing? There&amp;rsquo;s a fundamental trade-off: because everything is in memory, you get unparalleled processing speed, but it&amp;rsquo;s &lt;strong&gt;unsuitable for storing unlimited data&lt;/strong&gt;. With Kafka, you can retain all your events indefinitely. Still, with Redis, you&amp;rsquo;re storing a fixed window of the most recent events &amp;ndash; just enough for your processors to have a comfortable buffer in case they slow down or crash. This means you should also use an external long-term event store, such as S3, to be able to replay them, which adds complexity to your architecture but reduces costs.&lt;/p&gt;
+&lt;p&gt;The primary motivation for researching this issue is the ease of use and low cost of deploying and operating Redis. That&amp;rsquo;s why it&amp;rsquo;s attractive compared to Kafka. It&amp;rsquo;s also a magical toolkit that stood the test of time, quite impressive. It turns out that, with effort, it can also support the distributed stream processing paradigm.&lt;/p&gt;
 </description>
         </item>
         <item>
@@ -10435,17 +10743,10 @@ Now it’s your turn to share your thoughts!&lt;/li&gt;
         
         <guid>https://huizhou92.com/p/aws-ec2-switch-to-ipv6save-43-per-year/</guid>
         <description>&lt;img src="https://cdn-images-1.medium.com/max/800/0*32WLSHGCAPKEBvI3" alt="Featured image of post Aws ec2 switch to ipv6,Save $43 per year" /&gt;&lt;p&gt;IPv6 has been around for a long time, and I have dealt with many IPv6 tasks in my work. However, I never thought about switching my EC2 instance to IPv4. Yesterday, while going through my email trash, I came across a message stating that AWS will start charging for IPv4 addresses from February 1, 2024. This caught my attention, so I decided to switch my EC2 instance to IPv6 today. The process was a bit of a hassle. This article is not only applicable to EC2 instances but should also work for other Linux hosts.&lt;/p&gt;
-&lt;p&gt;&lt;img src=&#34;https://cdn-images-1.medium.com/max/800/0*SHE5MfrCO4t2ckNL.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-	
-&gt;&lt;/p&gt;
+&lt;p&gt;![[Pasted image 20240619101143.png]]&lt;/p&gt;
 &lt;blockquote&gt;
-&lt;p&gt;This article is first published in the medium MPP plan. If you are a medium user, please follow me in &lt;a class=&#34;link&#34; href=&#34;https://medium.hxzhouh.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;medium&lt;/a&gt;. Thank you very much.&lt;/p&gt;
+&lt;p&gt;This article was first published in the medium MPP plan. If you are a medium user, please follow me on Medium](&lt;a class=&#34;link&#34; href=&#34;https://medium.hxzhouh.com/%29&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;https://medium.hxzhouh.com/)&lt;/a&gt;. Thank you very much.&lt;/p&gt;
 &lt;/blockquote&gt;
 &lt;h1 id=&#34;adding-an-ipv6-address-toec2&#34;&gt;Adding an IPv6 Address to EC2
 &lt;/h1&gt;&lt;p&gt;Since my EC2 instance’s DNS resolution is handled by Cloudflare, I mainly referred to this blog post: &lt;a class=&#34;link&#34; href=&#34;https://blog.cloudflare.com/zh-cn/amazon-2bn-ipv4-tax-how-avoid-paying-zh-cn/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
