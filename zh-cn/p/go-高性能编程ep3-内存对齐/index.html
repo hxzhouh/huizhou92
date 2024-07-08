@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="zh-cn" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="本文写作所有的例子以 macbookpro M1 为例，该CPU为64位架构 本文是Go语言高性能编程第三篇，分析了为什么需要内存对齐，Go语言内存对齐的规则，以及实际例子中内存对齐的使用，最后分享了两个工具，帮助我们在开发过程中发现内存对齐问题。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much. 什么是内存对齐？ 在程序员眼里，内存可能就是一个巨大的数组，我们可以在内存中写一个int16 ,占用两个字节。也可以写一个int32，占用四个字节。 比如 1 2 3 4 5 type T1 struct { a int8 b int64 c int16 } 这个 struce 不熟悉Go语言的人可能认为是下面这种布局。 总共占用11字节空间。 Figure 1: Memory layout as understood by some people 一个挨着一个，很紧凑，很完美。 但是实际上并不是这样的。如果我们打印 T1 的变量地址，会发现，他们大概长这样。总共占用 24字节空间。 Figure 2: T1 的实际内存布局">
+<title>go 高性能编程EP3: 内存对齐</title>
+
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8Bep3-%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90/'>
+
+<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="go 高性能编程EP3: 内存对齐">
+<meta property='og:description' content="本文写作所有的例子以 macbookpro M1 为例，该CPU为64位架构 本文是Go语言高性能编程第三篇，分析了为什么需要内存对齐，Go语言内存对齐的规则，以及实际例子中内存对齐的使用，最后分享了两个工具，帮助我们在开发过程中发现内存对齐问题。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much. 什么是内存对齐？ 在程序员眼里，内存可能就是一个巨大的数组，我们可以在内存中写一个int16 ,占用两个字节。也可以写一个int32，占用四个字节。 比如 1 2 3 4 5 type T1 struct { a int8 b int64 c int16 } 这个 struce 不熟悉Go语言的人可能认为是下面这种布局。 总共占用11字节空间。 Figure 1: Memory layout as understood by some people 一个挨着一个，很紧凑，很完美。 但是实际上并不是这样的。如果我们打印 T1 的变量地址，会发现，他们大概长这样。总共占用 24字节空间。 Figure 2: T1 的实际内存布局">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8Bep3-%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:published_time' content='2024-07-03T15:48:59&#43;08:00'/><meta property='article:modified_time' content='2024-07-03T15:48:54&#43;08:00'/><meta property='og:image' content='https://images.hxzhouh.com/blog-images/2024/07/b3eca51256266ff32f8a27c85544e1c8.jpg' />
+<meta name="twitter:site" content="@https://x.com/piaopiaopig">
+    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="go 高性能编程EP3: 内存对齐">
+<meta name="twitter:description" content="本文写作所有的例子以 macbookpro M1 为例，该CPU为64位架构 本文是Go语言高性能编程第三篇，分析了为什么需要内存对齐，Go语言内存对齐的规则，以及实际例子中内存对齐的使用，最后分享了两个工具，帮助我们在开发过程中发现内存对齐问题。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much. 什么是内存对齐？ 在程序员眼里，内存可能就是一个巨大的数组，我们可以在内存中写一个int16 ,占用两个字节。也可以写一个int32，占用四个字节。 比如 1 2 3 4 5 type T1 struct { a int8 b int64 c int16 } 这个 struce 不熟悉Go语言的人可能认为是下面这种布局。 总共占用11字节空间。 Figure 1: Memory layout as understood by some people 一个挨着一个，很紧凑，很完美。 但是实际上并不是这样的。如果我们打印 T1 的变量地址，会发现，他们大概长这样。总共占用 24字节空间。 Figure 2: T1 的实际内存布局"><meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content='https://images.hxzhouh.com/blog-images/2024/07/b3eca51256266ff32f8a27c85544e1c8.jpg' />
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="切换菜单">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/zh-cn/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+                    <span class="emoji">😄</span>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/zh-cn">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/zh-cn/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>主页</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/%E5%85%B3%E4%BA%8E/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>关于</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/categories/newsletter/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>NewsLetter</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>归档</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>搜索</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" >English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" selected>中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>暗色模式</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+    
+
+            <main class="main full-width">
+    <article class="has-image main-article">
+    <header class="article-header">
+        <div class="article-image">
+            <a href="/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8Bep3-%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90/">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/07/b3eca51256266ff32f8a27c85544e1c8.jpg" loading="lazy" alt="Featured image of post go 高性能编程EP3: 内存对齐" />
+                
+            </a>
+        </div>
+    
+
+    <div class="article-details">
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8Bep3-%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90/">go 高性能编程EP3: 内存对齐</a>
+        </h2>
+    
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Jul 03, 2024</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    阅读时长: 4 分钟
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <blockquote>
+<p>本文写作所有的例子以 macbookpro  M1 为例，该CPU为64位架构</p>
+</blockquote>
+<p>本文是Go语言高性能编程第三篇，分析了为什么需要内存对齐，Go语言内存对齐的规则，以及实际例子中内存对齐的使用，最后分享了两个工具，帮助我们在开发过程中发现内存对齐问题。</p>
+<!-- more-->
+<blockquote>
+<p>This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >Medium</a>. Thank you very much.</p>
+</blockquote>
+<h2 id="什么是内存对齐">什么是内存对齐？
+</h2><p>在程序员眼里，内存可能就是一个巨大的数组，我们可以在内存中写一个<code>int16</code> ,占用两个字节。也可以写一个<code>int32</code>，占用四个字节。 比如</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">T1</span> <span class="kd">struct</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">a</span> <span class="kt">int8</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">b</span> <span class="kt">int64</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">c</span> <span class="kt">int16</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>这个 struce 不熟悉Go语言的人可能认为是下面这种布局。  总共占用11字节空间。<br>
+Figure 1: Memory layout as understood by some people<br>
+<img src="https://images.hxzhouh.com/blog-images/2024/07/24a23bf2c9ae0de3f2fbf29aee913d12.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Memory layout as understood by some people"
+	
+	
+><br>
+一个挨着一个，很紧凑，很完美。<br>
+但是实际上并不是这样的。如果我们打印 T1 的变量地址，会发现，他们大概长这样。总共占用 24字节空间。</p>
+<p>Figure 2: T1 的实际内存布局<br>
+<img src="https://images.hxzhouh.com/blog-images/2024/07/68972162938a0536a4a9e3f13cbb8df6.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="T1 的实际内存布局"
+	
+	
+><br>
+List 1：T1 size</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">t</span> <span class="o">:=</span> <span class="nx">T1</span><span class="p">{}</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;%d %d %d %d&#34;</span><span class="p">,</span> <span class="nx">unsafe</span><span class="p">.</span><span class="nf">Sizeof</span><span class="p">(</span><span class="nx">t</span><span class="p">.</span><span class="nx">a</span><span class="p">),</span> <span class="nx">unsafe</span><span class="p">.</span><span class="nf">Sizeof</span><span class="p">(</span><span class="nx">t</span><span class="p">.</span><span class="nx">b</span><span class="p">),</span> <span class="nx">unsafe</span><span class="p">.</span><span class="nf">Sizeof</span><span class="p">(</span><span class="nx">t</span><span class="p">.</span><span class="nx">c</span><span class="p">),</span> <span class="nx">unsafe</span><span class="p">.</span><span class="nf">Sizeof</span><span class="p">(</span><span class="nx">t</span><span class="p">)))</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;%p %p %p&#34;</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">t</span><span class="p">.</span><span class="nx">a</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">t</span><span class="p">.</span><span class="nx">b</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">t</span><span class="p">.</span><span class="nx">c</span><span class="p">))</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nx">unsafe</span><span class="p">.</span><span class="nf">Alignof</span><span class="p">(</span><span class="nx">t</span><span class="p">))</span>    
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="c1">// output
+</span></span></span><span class="line"><span class="cl"><span class="c1">// 1 8 2 24
+</span></span></span><span class="line"><span class="cl"><span class="c1">// 0x14000114018 0x14000114020 0x14000114028
+</span></span></span><span class="line"><span class="cl"><span class="c1">// 8
+</span></span></span></code></pre></td></tr></table>
+</div>
+</div><p>因为CPU从内存里面拿数据，是根据word size 来拿的，比如 64 位的 CPU ，word size 为 8字节，那么 CPU 访问内存的单位也是 8 字节，我们将处理器访问内存的大小称为<code>内存访问粒度。</code><br>
+这种现象，会造成几个严重的问题</p>
+<ol>
+<li>性能降低，因为多了一次CPU指令</li>
+<li>原本读一个变量是原子操作的，现在变得不原子</li>
+<li>一些其他意想不到的情况。<br>
+所以一般编译器都会实现内存对齐，用牺牲内存空间的方式，保证了：</li>
+</ol>
+<ul>
+<li>平台（移植性）<br>
+不是所有的硬件平台都能够访问任意地址上的任意数据。例如：特定的硬件平台只允许在特定地址获取特定类型的数据，否则会导致异常情况。</li>
+<li>性能<br>
+若访问未对齐的内存，将会导致 CPU 进行两次内存访问，并且要花费额外的时钟周期来处理对齐及运算。而本身就对齐的内存仅需要一次访问就可以完成读取动作，这显然高效很多，是标准的空间换时间做法。</li>
+</ul>
+<h2 id="go语言内存对齐">GO语言内存对齐
+</h2><p><a class="link" href="https://go.dev/ref/spec#Size_and_alignment_guarantees"  target="_blank" rel="noopener"
+    >go spec</a> 中约定了 go 对齐的规则。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl"><span class="nb">type</span>                                 size in bytes
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">byte, uint8, int8                     <span class="m">1</span>
+</span></span><span class="line"><span class="cl">uint16, int16                         <span class="m">2</span>
+</span></span><span class="line"><span class="cl">uint32, int32, float32                <span class="m">4</span>
+</span></span><span class="line"><span class="cl">uint64, int64, float64, complex64     <span class="m">8</span>
+</span></span><span class="line"><span class="cl">complex128                           <span class="m">16</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><blockquote>
+<ol>
+<li>For a variable <code>x</code> of any type: <code>unsafe.Alignof(x)</code> is at least 1.</li>
+<li>For a variable <code>x</code> of struct type: <code>unsafe.Alignof(x)</code> is the largest of all the values <code>unsafe.Alignof(x.f)</code> for each field <code>f</code> of <code>x</code>, but at least 1.</li>
+<li>For a variable <code>x</code> of array type: <code>unsafe.Alignof(x)</code> is the same as the alignment of a variable of the array&rsquo;s element type.</li>
+</ol>
+</blockquote>
+<p>绝大部分情况下，go编译器会帮我们自动内存对齐，我们不需要关心内存是否对齐，但是在有一种情况下，需要手动对齐。</p>
+<p>在 x86 平台上原子操作 64bit 指针。之所以要强制对齐，是因为在 32bit 平台下进行 64bit 原子操作要求必须 8 字节对齐，否则程序会 panic。<br>
+比如下面这段代码：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">main</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="s">&#34;sync/atomic&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">T3</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">b</span> <span class="kt">int64</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">c</span> <span class="kt">int32</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">d</span> <span class="kt">int64</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">a</span> <span class="o">:=</span> <span class="nx">T3</span><span class="p">{}</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">atomic</span><span class="p">.</span><span class="nf">AddInt64</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">a</span><span class="p">.</span><span class="nx">d</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>在 amd64 架构下运行不会报错，但是在i386 架构下面就会panic。<br>
+Figure 3: T3 panic<br>
+<img src="https://images.hxzhouh.com/blog-images/2024/07/9b757f62feff33363a0ea6fedc41c531.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="T3 panic"
+	
+	
+><br>
+原因就是 T3 在 32bit 平台上是 4 字节对齐，而在 64bit 平台上是 8 字节对齐。在 64bit 平台上其内存布局为：<br>
+Figure 4: T3在 amd64 的内存布局</p>
+<p><img src="https://images.hxzhouh.com/blog-images/2024/07/6dcff9b0b4025f8956a6cd86f5ea02b7.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Pasted image 20240707204743"
+	
+	
+><br>
+但是在I386 的布局为：<br>
+Figure 5: T3在 i386的内存布局<br>
+<img src="https://images.hxzhouh.com/blog-images/2024/07/dc6facef95176dd991b10bf6d18de6ee.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="T3在 i386的内存布局"
+	
+	
+><br>
+这个问题在 <a class="link" href="https://godoc.org/sync/atomic#pkg-note-bug"  target="_blank" rel="noopener"
+    >atomic</a> 的 文档中有写。</p>
+<blockquote>
+<ul>
+<li>On 386, the 64-bit functions use instructions unavailable before the Pentium MMX.<br>
+On non-Linux ARM, the 64-bit functions use instructions unavailable before the ARMv6k core.<br>
+On ARM, 386, and 32-bit MIPS, it is the caller&rsquo;s responsibility to arrange for 64-bit alignment of 64-bit words accessed atomically via the primitive atomic functions (types <a class="link" href="https://pkg.go.dev/sync/atomic#Int64"  target="_blank" rel="noopener"
+    >Int64</a> and <a class="link" href="https://pkg.go.dev/sync/atomic#Uint64"  target="_blank" rel="noopener"
+    >Uint64</a> are automatically aligned). The first word in an allocated struct, array, or slice; in a global variable; or in a local variable (because the subject of all atomic operations will escape to the heap) can be relied upon to be 64-bit aligned.</li>
+</ul>
+</blockquote>
+<p>为了解决这种情况，我们必须手动 padding T3，让其 “看起来” 像是 8 字节对齐的：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">T3</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">b</span> <span class="kt">int64</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">c</span> <span class="kt">int32</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">_</span> <span class="kt">int32</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">d</span> <span class="kt">int64</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>在go源码和开源库中也能看到很多类似的操作。<br>
+比如</p>
+<ol>
+<li><a class="link" href="https://go.googlesource.com/go/blob/82c371a307116450e9ab4dbce1853da3e69f4061/src/runtime/mgc.go#L334"  target="_blank" rel="noopener"
+    >mgc</a></li>
+<li><a class="link" href="https://github.com/golang/groupcache/blob/41bb18bfe9da5321badc438f91158cd790a33aa3/groupcache.go#L170"  target="_blank" rel="noopener"
+    >groupcache</a></li>
+</ol>
+<p>所幸的是，我们其实有很多工具来帮助我们识别与优化 这些问题。</p>
+<h2 id="工程实践">工程实践
+</h2><h3 id="fieldalignmenthttpspkggodevgolangorgxtoolsgoanalysispassesfieldalignment"><a class="link" href="https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/fieldalignment"  target="_blank" rel="noopener"
+    >fieldalignment</a>
+</h3><p>fieldalignment 是golang 官方的工具，它会帮我们发现代码中可能的内存对齐优化以及自动帮我们对齐。 比如<code>T1</code> 它会自动 转成内存对齐的。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span><span class="lnt">8
+</span><span class="lnt">9
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">➜  go_mem_alignment git:<span class="o">(</span>main<span class="o">)</span> ✗ fieldalignment -fix .          
+</span></span><span class="line"><span class="cl">/Users/hxzhouh/workspace/github/blog-example/go/go_mem_alignment/main.go:8:8: struct of size <span class="m">24</span> could be <span class="m">16</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">// change
+</span></span><span class="line"><span class="cl"><span class="nb">type</span> T1 struct <span class="o">{</span>  
+</span></span><span class="line"><span class="cl">    b int64  
+</span></span><span class="line"><span class="cl">    c int16  
+</span></span><span class="line"><span class="cl">    a int8  
+</span></span><span class="line"><span class="cl"><span class="o">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>也可以在 golangci-link 中使用它，fieldalignment 是隶属于 govet 的一个子功能，在 .golangci.yaml 中可以这样启用它：<br>
+list :</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-yml" data-lang="yml"><span class="line"><span class="cl"><span class="c"># .golangci.yml</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w"></span><span class="nt">linters</span><span class="p">:</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">disable-all</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">enable</span><span class="p">:</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="l">govet  </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">fast</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w"></span><span class="nt">linters-settings</span><span class="p">:</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">govet</span><span class="p">:</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c"># report about shadowed variables  </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">check-shadowing</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nt">fast</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c"># disable:  </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c">#  - fieldalignment # I&#39;m ok to waste some bytes    enable:  </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span>- <span class="l">fieldalignment</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
+</div>
+</div><p>但是，fieldalignment 有一个比较恼火的地方：它会在重新排布结构体成员的时候，将所有空行、注释通通删去。  所以有时候，你应该 git commit 一次，然后用一下这个工具，然后通过 git diff 来 review 它所做的变更，然后进行若干后处理。所以我再生产环境很少使用这个 工具，一般使用<code>structlayout</code></p>
+<h3 id="structlayouthttpsgithubcomdominikhgo-toolstabreadme-ov-file"><a class="link" href="https://github.com/dominikh/go-tools?tab=readme-ov-file"  target="_blank" rel="noopener"
+    >structlayout</a>
+</h3><p><code>structlayout</code> 可以显示struct的布局以及大小，可以输出svg或者json格式的数据。如果一个struct 比较复杂，可以用这个工具来优化。<br>
+安装方式</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">go install honnef.co/go/tools/cmd/structlayout@latest 
+</span></span><span class="line"><span class="cl">go install honnef.co/go/tools/cmd/structlayout-pretty@latest
+</span></span><span class="line"><span class="cl">go install honnef.co/go/tools/cmd/structlayout-optimize@latest
+</span></span><span class="line"><span class="cl">go install github.com/ajstarks/svgo/structlayout-svg@latest
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>用<code>structlayout</code> 分析一下 T1</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">structlayout -json ./main.go T1 <span class="p">|</span> structlayout-svg  &gt;T1.svg
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>Figure 6: T1 Structure Layout<br>
+<img src="https://images.hxzhouh.com/blog-images/2024/07/5bec6b734ba74548a5301a4051343696.svg"
+	
+	
+	
+	loading="lazy"
+	
+		alt=" T1 Structure Layout"
+	
+	
+><br>
+我们可以很清楚的看到有两个padding。 7 size  和 6size<br>
+优化后的T2：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">T2</span> <span class="kd">struct</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">a</span> <span class="kt">int8</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">c</span> <span class="kt">int16</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">b</span> <span class="kt">int64</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>Figure 7: T2 Structure Layout<br>
+<img src="https://images.hxzhouh.com/blog-images/2024/07/2b63c698fbe3b8501670b5c33863027e.svg"
+	
+	
+	
+	loading="lazy"
+	
+		alt="T2 Structure Layout "
+	
+	
+><br>
+只有也有两个地方有padding，但是只有5个size。</p>
+<h2 id="总结">总结
+</h2><p>在程序设计中，内存对齐是一项关键技术，旨在提高程序性能和兼容性。本文以Go语言为例，详细讲解了内存对齐的基本概念和必要性，并通过代码示例展示了不同结构体在内存中的实际布局。</p>
+<p>Go语言中的内存对齐规则主要体现在结构体字段的排列顺序上。编译器通过自动对齐来保证性能和平台移植性，但在某些情况下需要开发者手动调整结构体字段以避免性能问题和潜在的错误。</p>
+<p>empty struct 是内存对齐优化的一个好帮手，具体操作可以参考我的另外一篇文章：<a class="link" href="https://medium.com/gitconnected/decrypt-go-empty-struct-56640cd668e5"  target="_blank" rel="noopener"
+    >Golang High-Performance Programming EP1: Empty Struct</a></p>
+<p>为帮助开发者检测和优化内存对齐问题，本文介绍了两个实用工具：</p>
+<ol>
+<li><code>fieldalignment</code>：Go官方工具，能自动优化结构体的内存对齐。</li>
+<li><code>structlayout</code>：显示结构体的内存布局，帮助开发者更直观地理解和优化内存使用。</li>
+</ol>
+<p>通过合理使用这些工具，开发者可以在保证程序性能和稳定性的同时，减少内存浪费，提升开发效率。</p>
+<h2 id="参考资料">参考资料
+</h2><ol>
+<li><a class="link" href="https://web.archive.org/web/20080607055623/http://www.ibm.com/developerworks/library/pa-dalign/"  target="_blank" rel="noopener"
+    >IBM DeveloperWorks: Data Alignment</a></li>
+<li><a class="link" href="https://golang.google.cn/ref/spec#Size_and_alignment_guarantees"  target="_blank" rel="noopener"
+    >Go Specification: Size and Alignment Guarantees</a></li>
+</ol>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            最后更新于 Jul 03, 2024 15:48 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+     
+    
+        
+    <script src="//cdn.jsdelivr.net/npm/twikoo@1.6.21/dist/twikoo.all.min.js"></script>
+<div id="tcomment"></div>
+<style>
+    .twikoo {
+        background-color: var(--card-background);
+        border-radius: var(--card-border-radius);
+        box-shadow: var(--shadow-l1);
+        padding: var(--card-padding);
+    }
+    :root[data-scheme="dark"] {
+        --twikoo-body-text-color-main: rgba(255, 255, 255, 0.9);
+        --twikoo-body-text-color: rgba(255, 255, 255, 0.7);
+    }
+    .twikoo .el-input-group__prepend,
+    .twikoo .tk-action-icon,
+    .twikoo .tk-submit-action-icon,
+    .twikoo .tk-time,
+    .twikoo .tk-comments-no,
+    .twikoo .tk-comments-count {
+        color: var(--twikoo-body-text-color);
+    }
+    .twikoo .el-input__inner,
+    .twikoo .el-textarea__inner,
+    .twikoo .tk-preview-container,
+    .twikoo .tk-content,
+    .twikoo .tk-nick,
+    .twikoo .tk-send {
+        color: var(--twikoo-body-text-color-main);
+    }
+    .twikoo .el-button{
+        color: var(--twikoo-body-text-color)!important;
+    }
+    .twikoo .el-input__count {
+        color: var(--twikoo-body-text-color) !important;
+    }
+    .OwO .OwO-body {
+        background-color: var(--body-background) !important;
+        color: var(--body-text-color) !important;
+    }
+</style><script>
+    twikoo.init({
+        envId: 'https:\/\/twikoo.yixiao9206.cn',
+        el: '#tcomment',lang: 'en',})
+</script>
+
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2024 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+    </section>
+    
+     	
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>
