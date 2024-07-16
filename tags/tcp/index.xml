@@ -7,7 +7,145 @@
         <generator>Hugo -- gohugo.io</generator>
         <language>en</language>
         <copyright>Copyright © 2023 huizhou92</copyright>
-        <lastBuildDate>Thu, 01 Feb 2024 11:11:00 +0000</lastBuildDate><atom:link href="https://huizhou92.com/tags/tcp/index.xml" rel="self" type="application/rss+xml" /><item>
+        <lastBuildDate>Fri, 28 Jun 2024 18:24:40 +0800</lastBuildDate><atom:link href="https://huizhou92.com/tags/tcp/index.xml" rel="self" type="application/rss+xml" /><item>
+        <title>Why does HTTPS need 7 handshakes and 9 times delay?</title>
+        <link>https://huizhou92.com/p/why-does-https-need-7-handshakes-and-9-times-delay/</link>
+        <pubDate>Fri, 28 Jun 2024 18:24:40 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/p/why-does-https-need-7-handshakes-and-9-times-delay/</guid>
+        <description>&lt;p&gt;HTTP (Hypertext Transfer Protocol) has become the most widely used application layer protocol on the Internet. However, it is primarily a network protocol for transferring hypertext and provides no security guarantees. Transmitting data packets in plaintext over the Internet makes eavesdropping and man-in-the-middle attacks possible. Transmitting passwords over HTTP is essentially the same as running naked on the Internet.&lt;/p&gt;
+&lt;!-- more--&gt;
+&lt;blockquote&gt;
+&lt;p&gt;This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on &lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt;. Thank you very much.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;In 1994, Netscape designed the HTTPS (Hypertext Transfer Protocol Secure) protocol, which uses the Secure Sockets Layer (SSL) to ensure secure data transmission. With the development of the Transport Layer Security (TLS) protocol, we have replaced the deprecated SSL protocol with TLS, although the term &amp;ldquo;SSL certificate&amp;rdquo; is still used.&lt;/p&gt;
+&lt;p&gt;HTTPS is an extension of the HTTP protocol that allows us to transmit data over the Internet securely. However, the initial request in an HTTPS connection requires 4.5 times the round-trip time (RTT) compared to HTTP. This article will provide a detailed explanation of the request and response process, analyzing why the HTTPS protocol requires 4.5 RTT to obtain a response from the service provider:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;TCP Protocol: Both communication parties establish a TCP connection through a three-way handshake.&lt;/li&gt;
+&lt;li&gt;TLS Protocol: Both communication parties establish a TLS connection through a four-way handshake.&lt;/li&gt;
+&lt;li&gt;HTTP Protocol: The client sends a request to the server, and the server responds.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;The analysis is based on specific versions of protocol implementations and common scenarios. With the advancement of network technology, we can reduce the number of required network communications. This article will mention some common optimization solutions in the corresponding sections.&lt;/p&gt;
+&lt;h3 id=&#34;tcp&#34;&gt;TCP
+&lt;/h3&gt;&lt;p&gt;As an application layer protocol, HTTP relies on a lower-level transport layer protocol to provide basic data transmission functionality. TCP is commonly used as the underlying protocol for HTTP. To prevent the establishment of erroneous historical connections, TCP communication parties perform a three-way handshake to establish a TCP connection&lt;sup id=&#34;fnref:6&#34;&gt;&lt;a href=&#34;https://draveness.me/whys-the-design-https-latency/#fn:6&#34; role=&#34;doc-noteref&#34;&gt;6&lt;/a&gt;&lt;/sup&gt;. Let&amp;rsquo;s briefly review the entire process of establishing a TCP connection.&lt;br&gt;
+&lt;img src=&#34;https://images.yixiao9206.cn/blog-images/2024/02/8b676b2c6764adbe073c57f12fcdf1af.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20240220200057&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;The client sends a segment with the &lt;code&gt;SYN&lt;/code&gt; flag and the initial sequence number of the data segment (&lt;code&gt;SEQ = M&lt;/code&gt;) to the server.&lt;/li&gt;
+&lt;li&gt;Upon receiving the segment, the server sends a segment with the &lt;code&gt;SYN&lt;/code&gt; and &lt;code&gt;ACK&lt;/code&gt; flags to the client:
+&lt;ul&gt;
+&lt;li&gt;The server acknowledges the initial sequence number of the client&amp;rsquo;s data segment by returning &lt;code&gt;ACK = M+1&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;The server notifies the client of the initial sequence number of the server&amp;rsquo;s data segment by sending &lt;code&gt;SEQ = N&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;The client sends a segment with the &lt;code&gt;ACK&lt;/code&gt; flag to the server, confirming the server&amp;rsquo;s initial sequence number, including &lt;code&gt;ACK = N+1&lt;/code&gt;.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Through the three-way handshake, the TCP connection parties determine the initial sequence number, window size, and maximum segment size of the TCP connection. This allows the communication parties to ensure that the data segments are not duplicated or missed, control the flow through the window size, and avoid IP fragmentation by using the maximum segment size.&lt;/p&gt;
+&lt;p&gt;The original version of the TCP protocol did require a three-way communication to establish a TCP connection. In most current scenarios, the three-way handshake is unavoidable. However, TCP Fast Open (TFO), proposed in 2014, can establish a TCP connection in certain scenarios with just one communication.&lt;br&gt;
+&lt;img src=&#34;https://images.yixiao9206.cn/blog-images/2024/02/296cc901d35ef44ebd13290948a29b73.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20240220200245&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;The TFO strategy uses a TFO Cookie stored on the client to establish a connection with the server quickly. When the client initiates a TCP connection to the server, it includes the TFO option in the SYN message. The server generates a Cookie and sends it to the client. The client caches the Cookie and uses it to establish a TCP connection directly with the server when reconnecting. After verifying the Cookie, the server sends SYN and ACK to the client, initiating data transmission. This reduces the number of communications required.&lt;/p&gt;
+&lt;h3 id=&#34;tls&#34;&gt;TLS
+&lt;/h3&gt;&lt;p&gt;The purpose of TLS is to build a secure transmission channel on top of the reliable TCP protocol. However, TLS itself does not provide reliability guarantees, so we still need a reliable transport layer protocol underneath. After establishing a reliable TCP connection between the communication parties, we need to exchange keys through the TLS handshake. Here, we will explain the connection establishment process of TLS 1.2:&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.yixiao9206.cn/blog-images/2024/02/094fa30c0ac0ea649dcb30db7ce478a8.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20240220195816&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;The client sends a Client Hello message to the server, including the client&amp;rsquo;s supported protocol version, encryption algorithms, compression algorithms, and &lt;strong&gt;client-generated random number&lt;/strong&gt;.&lt;/li&gt;
+&lt;li&gt;Upon receiving the information about the client&amp;rsquo;s supported protocol version and encryption algorithms, the server:
+&lt;ul&gt;
+&lt;li&gt;Sends a Server Hello message to the client, specifying the chosen protocol version, encryption method, session ID, and &lt;strong&gt;server-generated random number&lt;/strong&gt;.&lt;/li&gt;
+&lt;li&gt;Sends a Certificate message to the client, which includes the server&amp;rsquo;s certificate chain, including information about supported domains, issuers, and expiration dates.&lt;/li&gt;
+&lt;li&gt;Sends a Server Key Exchange message, transmitting the &lt;strong&gt;public key&lt;/strong&gt; and signature information.&lt;/li&gt;
+&lt;li&gt;Optionally sends a CertificateRequest message, requesting the client&amp;rsquo;s certificate for verification.&lt;/li&gt;
+&lt;li&gt;Sends a Server Hello Done message to the client, indicating that all relevant information has been sent.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;Upon receiving the server&amp;rsquo;s protocol version, encryption method, session ID, and certificate, the client verifies the server&amp;rsquo;s certificate:
+&lt;ul&gt;
+&lt;li&gt;Sends a Client Key Exchange message to the server, including the &lt;strong&gt;pre-master secret&lt;/strong&gt;, which is a random string encrypted with the server&amp;rsquo;s public key.&lt;/li&gt;
+&lt;li&gt;Sends a Change Cipher Spec message to the server, indicating that subsequent data segments will be encrypted.&lt;/li&gt;
+&lt;li&gt;Sends a Finished message to the server, which includes an encrypted handshake message.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;Upon receiving the Change Cipher Spec and Finished messages from the client:
+&lt;ul&gt;
+&lt;li&gt;Sends a Change Cipher Spec message to the client, indicating that subsequent data segments will be encrypted.&lt;/li&gt;
+&lt;li&gt;Sends a Finished message to the client, verifying the client&amp;rsquo;s Finished message and completing the TLS handshake.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;The key to the TLS handshake uses the random strings generated by both communication parties and the server&amp;rsquo;s public key to generate a negotiated key. This symmetric key allows both parties to encrypt messages, preventing eavesdropping and attacks by intermediaries and ensuring secure communication.&lt;/p&gt;
+&lt;p&gt;In TLS 1.2, establishing a TLS connection takes 2 RTT. However, TLS 1.3 optimizes the protocol, reducing the round-trip time to one, significantly reducing the time required. After 1 RTT, the client can already transmit application-layer data to the server.&lt;/p&gt;
+&lt;p&gt;We won&amp;rsquo;t go into detail about the TLS 1.3 connection establishment process here. In addition to reducing the network overhead in regular handshakes, TLS 1.3 introduces a 0-RTT connection establishment process. 60% of network connections are established when users first visit a website or after a certain interval, while the remaining 40% can be addressed using the 0-RTT strategy of TLS 1.3. However, this strategy, similar to TFO, carries some security risks and should be used with consideration for specific business scenarios.&lt;/p&gt;
+&lt;h3 id=&#34;http&#34;&gt;HTTP
+&lt;/h3&gt;&lt;p&gt;Transmitting data over a well-established TCP and TLS channel is relatively straightforward. The HTTP protocol can directly utilize the reliable and secure channel established at the lower layers to transmit data. The client writes data to the server using the TCP socket interface, and the server responds through the same means after processing the data. Since the entire process involves the client sending a request and the server returning a response, it takes 1 RTT.&lt;/p&gt;
+&lt;p&gt;The data exchange in the HTTP protocol consumes only 1 RTT. When the client and server handle a single HTTP request, we cannot optimize beyond the HTTP protocol itself. However, as the number of requests increases, HTTP/2 allows the reuse of established TCP connections to reduce the additional overhead of TCP and TLS handshakes.&lt;/p&gt;
+&lt;h2 id=&#34;summary&#34;&gt;Summary
+&lt;/h2&gt;&lt;p&gt;When a client wants to access a server via HTTPS, the entire process requires 7 handshakes and consumes 9 times the latency. If the RTT is approximately 40ms due to physical distance limitations, the first request requires ~180ms. However, if we want to access a server in the United States with an RTT of approximately 200ms, the HTTPS request will take ~900ms, which is a significant delay. Let&amp;rsquo;s summarize the reasons why the HTTPS protocol requires 9 times the latency to complete communication:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;The TCP protocol requires a three-way handshake to establish a reliable TCP connection (1.5 RTT).&lt;/li&gt;
+&lt;li&gt;The TLS protocol establishes a TLS connection over TCP through a four-way handshake to ensure communication security (2 RTT).&lt;/li&gt;
+&lt;li&gt;The HTTP protocol sends a request and receives a response over TCP and TLS in one round trip (1 RTT).&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;It is important to note that the calculations of round-trip delay in this article are based on specific scenarios and protocol versions. Network protocols are constantly evolving, and issues that were initially overlooked are often addressed through patch updates. However, in the end, a complete rewrite from the ground up is still necessary.&lt;/p&gt;
+&lt;p&gt;HTTP/3 is an example of this. It uses the UDP-based QUIC protocol for handshakes, combining the TCP and TLS handshake processes to reduce the 7 handshakes to 3. It directly establishes a reliable and secure transmission channel, reducing the time required from ~900ms to ~500ms. We will cover HTTP/3-related content in future articles. Finally, let&amp;rsquo;s consider some open-ended questions for further exploration. Interested readers can carefully consider the following questions:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;What are the similarities and differences between the QUIC protocol and the TCP protocol as transport layer protocols?&lt;/li&gt;
+&lt;li&gt;How is it possible to establish a client-server connection using 0-RTT?&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h1 id=&#34;further-reading&#34;&gt;Further Reading
+&lt;/h1&gt;&lt;p&gt;Here are some excellent articles that explain TCP three-way handshake, TLS connection, and TCP Fast Open in detail:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://books.google.com.hk/books?id=FLvsis4_QhEC&amp;amp;pg=PA344&amp;amp;redir_esc=y#v=onepage&amp;amp;q&amp;amp;f=false&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Walls, Colin (2005). Embedded Software: The Works. Newnes. p. 344. ISBN 0-7506-7954-9. Archived from the original on 2019-02-09. Retrieved 2018-10-20.&lt;/a&gt; &lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://www.websecurity.digicert.com/security-topics/what-is-ssl-tls-https&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;What is an SSL Certificate?&lt;/a&gt; &lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://en.wikipedia.org/wiki/HTTPS&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Wikipedia: HTTPS&lt;/a&gt; &lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://en.wikipedia.org/wiki/TCP_Fast_Open&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Wikipedia: TCP Fast Open&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://tools.ietf.org/html/rfc793&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RFC793 Transmission Control Protocol, September 1981 RFC793&lt;/a&gt; &lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://tools.ietf.org/html/rfc5246&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RFC5246 The Transport Layer Security (TLS) Protocol. Version 1.2. Aug 2008 RFC5246&lt;/a&gt; &lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://www.rfc-editor.org/info/rfc7413&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Cheng, Y., Chu, J., Radhakrishnan, S., and A. Jain, “TCP Fast Open”, RFC 7413, DOI 10.17487/RFC7413, December 2014,&lt;/a&gt;. &lt;a class=&#34;link&#34; href=&#34;https://draveness.me/whys-the-design-https-latency/#fnref:8&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;↩︎&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://tlseminar.github.io/first-few-milliseconds/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;The First Few Milliseconds of an TLS 1.2 Connection&lt;/a&gt; &lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://www.thesslstore.com/blog/tls-1-3-handshake-tls-1-2/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;TLS 1.3 Handshake: Taking a Closer Look&lt;/a&gt; &lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://blog.cloudflare.com/introducing-0-rtt/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Introducing Zero Round Trip Time Resumption (0-RTT) &lt;/a&gt; &lt;/li&gt;
+&lt;/ol&gt;
+</description>
+        </item>
+        <item>
         <title>Why Does It Take Four Waves For TCP To Disconnect?</title>
         <link>https://huizhou92.com/p/why-does-it-take-four-waves-for-tcp-to-disconnect/</link>
         <pubDate>Thu, 01 Feb 2024 11:11:00 +0000</pubDate>
