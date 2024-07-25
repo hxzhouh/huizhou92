@@ -7,13 +7,13 @@
         <generator>Hugo -- gohugo.io</generator>
         <language>en</language>
         <copyright>Copyright © 2023 huizhou92</copyright>
-        <lastBuildDate>Fri, 12 Jul 2024 15:05:32 +0800</lastBuildDate><atom:link href="https://huizhou92.com/post/index.xml" rel="self" type="application/rss+xml" /><item>
+        <lastBuildDate>Wed, 24 Jul 2024 20:01:59 +0800</lastBuildDate><atom:link href="https://huizhou92.com/post/index.xml" rel="self" type="application/rss+xml" /><item>
         <title>Golang High-Performance Programming EP4 : reflect</title>
         <link>https://huizhou92.com/p/golang-high-performance-programming-ep4-reflect/</link>
         <pubDate>Thu, 11 Jul 2024 11:03:15 +0800</pubDate>
         
         <guid>https://huizhou92.com/p/golang-high-performance-programming-ep4-reflect/</guid>
-        <description>&lt;p&gt;&lt;a class=&#34;link&#34; href=&#34;https://golang.org/pkg/reflect/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2024/07/fafe2d9c964dbdd44c76d86834fd745b.png" alt="Featured image of post Golang High-Performance Programming EP4 : reflect" /&gt;&lt;p&gt;&lt;a class=&#34;link&#34; href=&#34;https://golang.org/pkg/reflect/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;reflect&lt;/a&gt; provides Go with the ability to dynamically obtain the types and values of objects at runtime and create objects dynamically. Reflection can help abstract and simplify code, enhancing development efficiency. The Go standard library and many open-source projects utilize Go&amp;rsquo;s reflection capabilities, such as the &lt;code&gt;json&lt;/code&gt; package for serialization and deserialization, and ORM frameworks like &lt;code&gt;gorm/xorm&lt;/code&gt;. This article aims to explore &lt;code&gt;reflect&lt;/code&gt; and how to improve its performance.&lt;/p&gt;
 &lt;!-- more--&gt;
 &lt;blockquote&gt;
@@ -501,6 +501,400 @@ We&amp;rsquo;ll test the performance of both modes separately.&lt;/p&gt;
 &lt;li&gt;You can optimize performance using Field index + cache.&lt;/li&gt;
 &lt;/ol&gt;
 &lt;p&gt;Do you have any other thoughts on reflection? Leave a comment and discuss it with me.&lt;/p&gt;
+</description>
+        </item>
+        <item>
+        <title>Golang High-Performance Programming EP3 : Memory Alignment</title>
+        <link>https://huizhou92.com/p/golang-high-performance-programming-ep3-memory-alignment/</link>
+        <pubDate>Sun, 07 Jul 2024 22:03:43 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/p/golang-high-performance-programming-ep3-memory-alignment/</guid>
+        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2024/07/b3eca51256266ff32f8a27c85544e1c8.jpg" alt="Featured image of post Golang High-Performance Programming EP3 : Memory Alignment" /&gt;&lt;blockquote&gt;
+&lt;p&gt;All examples in this article use a MacBook Pro M1, a 64-bit architecture CPU.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;This is the third article on high-performance programming in Go, analyzing why memory alignment is needed, the rules of Go memory alignment, and practical examples of memory alignment usage. Finally, it shares two tools to help us identify memory alignment issues during development.&lt;/p&gt;
+&lt;!-- more--&gt;
+&lt;blockquote&gt;
+&lt;p&gt;This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on &lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt;. Thank you very much.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h2 id=&#34;what-is-memory-alignment&#34;&gt;What is Memory Alignment?
+&lt;/h2&gt;&lt;p&gt;To a programmer, memory might just be a huge array. We can write an &lt;code&gt;int16&lt;/code&gt;, which occupies two bytes, or an &lt;code&gt;int32&lt;/code&gt;, which occupies four bytes. For example:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;type&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;T1&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;a&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int8&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;b&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int64&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;c&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int16&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;Those unfamiliar with Go might think the structure is laid out like this, taking up a total of 11 bytes of space.&lt;/p&gt;
+&lt;p&gt;Figure 1: Memory layout as understood by some people&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/07/24a23bf2c9ae0de3f2fbf29aee913d12.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Memory layout as understood by some people&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;One after another, very compact and perfect. But in reality, it&amp;rsquo;s not like this. If we print the addresses of T1 variables, we&amp;rsquo;ll find they look something like this, occupying a total of 24 bytes of space.&lt;/p&gt;
+&lt;p&gt;Figure 2: Actual memory layout of T1&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/07/68972162938a0536a4a9e3f13cbb8df6.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Actual memory layout of T1&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;List 1: T1 size&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;main&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;t&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;T1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{}&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Sprintf&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;%d %d %d %d&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;unsafe&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Sizeof&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;t&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;a&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;),&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;unsafe&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Sizeof&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;t&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;b&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;),&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;unsafe&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Sizeof&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;t&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;c&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;),&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;unsafe&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Sizeof&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;t&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)))&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Sprintf&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;%p %p %p&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;t&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;a&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;t&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;b&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;t&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;c&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;unsafe&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Alignof&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;t&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;    
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// output
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// 1 8 2 24
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// 0x14000114018 0x14000114020 0x14000114028
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// 8
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;The CPU fetches data from memory based on word size. For example, a 64-bit CPU has a word size of 8 bytes, meaning the CPU accesses memory in 8-byte units, referred to as &lt;code&gt;memory access granularity&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;This phenomenon can cause several serious problems:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Performance degradation due to an extra CPU instruction.&lt;/li&gt;
+&lt;li&gt;What was originally an atomic operation for reading a variable is no longer atomic.&lt;/li&gt;
+&lt;li&gt;Other unexpected situations.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Therefore, compilers generally implement memory alignment, sacrificing memory space to ensure:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Platform Compatibility&lt;/strong&gt;: Not all hardware platforms can access arbitrary data at arbitrary addresses. For example, specific hardware platforms only allow fetching specific types of data at specific addresses, otherwise leading to exceptions.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Performance&lt;/strong&gt;: Accessing unaligned memory causes the CPU to perform two memory accesses and spend extra clock cycles handling alignment and computation. Aligned memory can be accessed in a single operation, improving efficiency—a typical space-for-time tradeoff.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;memory-alignment-in-go&#34;&gt;Memory Alignment in Go
+&lt;/h2&gt;&lt;p&gt;The &lt;a class=&#34;link&#34; href=&#34;https://go.dev/ref/spec#Size_and_alignment_guarantees&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Go spec&lt;/a&gt; stipulates Go&amp;rsquo;s alignment rules.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;7
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-shell&#34; data-lang=&#34;shell&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nb&#34;&gt;type&lt;/span&gt;                                 size in bytes
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;byte, uint8, int8                     &lt;span class=&#34;m&#34;&gt;1&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;uint16, int16                         &lt;span class=&#34;m&#34;&gt;2&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;uint32, int32, float32                &lt;span class=&#34;m&#34;&gt;4&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;uint64, int64, float64, complex64     &lt;span class=&#34;m&#34;&gt;8&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;complex128                           &lt;span class=&#34;m&#34;&gt;16&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;blockquote&gt;
+&lt;ol&gt;
+&lt;li&gt;For a variable &lt;code&gt;x&lt;/code&gt; of any type: &lt;code&gt;unsafe.Alignof(x)&lt;/code&gt; is at least 1.&lt;/li&gt;
+&lt;li&gt;For a variable &lt;code&gt;x&lt;/code&gt; of struct type: &lt;code&gt;unsafe.Alignof(x)&lt;/code&gt; is the largest of all the values &lt;code&gt;unsafe.Alignof(x.f)&lt;/code&gt; for each field &lt;code&gt;f&lt;/code&gt; of &lt;code&gt;x&lt;/code&gt;, but at least 1.&lt;/li&gt;
+&lt;li&gt;For a variable &lt;code&gt;x&lt;/code&gt; of array type: &lt;code&gt;unsafe.Alignof(x)&lt;/code&gt; is the same as the alignment of a variable of the array&amp;rsquo;s element type.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;In most cases, the Go compiler automatically aligns memory for us, and we don&amp;rsquo;t need to worry about it. However, in one particular case, manual alignment is required.&lt;/p&gt;
+&lt;p&gt;For 64-bit pointer atomic operations on the x86 platform, alignment is mandatory because 64-bit atomic operations on a 32-bit platform require 8-byte alignment, or the program will panic. For example, consider the following code:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;14
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kn&#34;&gt;package&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;main&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kn&#34;&gt;import&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;#34;sync/atomic&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;type&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;T3&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;b&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int64&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;c&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int32&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;d&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int64&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;main&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;a&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;T3&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;atomic&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;AddInt64&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;a&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;d&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;Running this on the amd64 architecture won&amp;rsquo;t cause an error, but on the i386 architecture, it will panic.&lt;/p&gt;
+&lt;p&gt;Figure 3: T3 panic&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/07/9b757f62feff33363a0ea6fedc41c531.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;T3 panic&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;The reason is that T3 is 4-byte aligned on a 32-bit platform and 8-byte aligned on a 64-bit platform. On a 64-bit platform, its memory layout is:&lt;/p&gt;
+&lt;p&gt;Figure 4: T3 memory layout on amd64&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/07/6dcff9b0b4025f8956a6cd86f5ea02b7.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;T3 memory layout on amd64&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;But on the i386 layout:&lt;/p&gt;
+&lt;p&gt;Figure 5: T3 memory layout on i386&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/07/dc6facef95176dd991b10bf6d18de6ee.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;T3 memory layout on i386&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;This issue is documented in the &lt;a class=&#34;link&#34; href=&#34;https://godoc.org/sync/atomic#pkg-note-bug&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;atomic package&lt;/a&gt;.&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;ul&gt;
+&lt;li&gt;On 386, the 64-bit functions use instructions unavailable before the Pentium MMX.&lt;br&gt;
+On non-Linux ARM, the 64-bit functions use instructions unavailable before the ARMv6k core.&lt;br&gt;
+On ARM, 386, and 32-bit MIPS, it is the caller&amp;rsquo;s responsibility to arrange for 64-bit alignment of 64-bit words accessed atomically via the primitive atomic functions (types &lt;a class=&#34;link&#34; href=&#34;https://pkg.go.dev/sync/atomic#Int64&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Int64&lt;/a&gt; and &lt;a class=&#34;link&#34; href=&#34;https://pkg.go.dev/sync/atomic#Uint64&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Uint64&lt;/a&gt; are automatically aligned). The first word in an allocated struct, array, or slice; in a global variable; or in a local variable (because the subject of all atomic operations will escape to the heap) can be relied upon to be 64-bit aligned.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;To resolve this, we must manually pad T3 to make it &amp;ldquo;look&amp;rdquo; 8-byte aligned:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;type&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;T3&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;b&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int64&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;c&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int32&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;_&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int32&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;d&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int64&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;Similar operations can be seen in the Go source code and open-source libraries, such as:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://go.googlesource.com/go/blob/82c371a307116450e9ab4dbce1853da3e69f4061/src/runtime/mgc.go#L334&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;mgc&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/groupcache/blob/41bb18bfe9da5321badc438f91158cd790a33aa3/groupcache.go#L170&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;groupcache&lt;/a&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Fortunately, we have many tools to help identify and optimize these issues.&lt;/p&gt;
+&lt;h2 id=&#34;practical-engineering&#34;&gt;Practical Engineering
+&lt;/h2&gt;&lt;h3 id=&#34;fieldalignmenthttpspkggodevgolangorgxtoolsgoanalysispassesfieldalignment&#34;&gt;&lt;a class=&#34;link&#34; href=&#34;https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/fieldalignment&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;fieldalignment&lt;/a&gt;
+&lt;/h3&gt;&lt;p&gt;fieldalignment is an official Go tool that helps us identify potential memory alignment optimizations in code and automatically aligns them. For example, it will automatically convert &lt;code&gt;T1&lt;/code&gt; to be memory-aligned.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;9
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-shell&#34; data-lang=&#34;shell&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;➜  go_mem_alignment git:&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;main&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt; ✗ fieldalignment -fix .          
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;/Users/hxzhouh/workspace/github/blog-example/go/go_mem_alignment/main.go:8:8: struct of size &lt;span class=&#34;m&#34;&gt;24&lt;/span&gt; could be &lt;span class=&#34;m&#34;&gt;16&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;// change
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nb&#34;&gt;type&lt;/span&gt; T1 struct &lt;span class=&#34;o&#34;&gt;{&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    b int64  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    c int16  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    a int8  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;o&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;It can also be used in golangci-lint. fieldalignment is a sub-function of govet, enabled in .golangci.yaml as follows:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;14
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;15
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;16
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-yml&#34; data-lang=&#34;yml&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c&#34;&gt;# .golangci.yml&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;linters&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;  &lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;disable-all&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;kc&#34;&gt;true&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;  &lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;enable&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;- &lt;span class=&#34;l&#34;&gt;govet  &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;  &lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;fast&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;kc&#34;&gt;false&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;linters-settings&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;  &lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;govet&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;c&#34;&gt;# report about shadowed variables  &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;check-shadowing&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;kc&#34;&gt;false&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;fast&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;kc&#34;&gt;false&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;c&#34;&gt;# disable:  &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;c&#34;&gt;#  - fieldalignment # I&amp;#39;m ok to waste some bytes&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;enable&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;      &lt;/span&gt;- &lt;span class=&#34;l&#34;&gt;fieldalignment&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;However, fieldalignment has a frustrating drawback: it removes all blank lines and comments when rearranging struct members. Therefore, you should git commit once, use this tool, then review its changes via git diff and make necessary post-processing adjustments. Thus, I rarely use this tool in production, preferring &lt;code&gt;structlayout&lt;/code&gt;.&lt;/p&gt;
+&lt;h3 id=&#34;structlayouthttpsgithubcomdominikhgo-toolstabreadme-ov-file&#34;&gt;&lt;a class=&#34;link&#34; href=&#34;https://github.com/dominikh/go-tools?tab=readme-ov-file&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;structlayout&lt;/a&gt;
+&lt;/h3&gt;&lt;p&gt;&lt;code&gt;structlayout&lt;/code&gt; displays the layout and size of structs and can output data in svg or json formats. If a struct is complex, this tool can help optimize it.&lt;/p&gt;
+&lt;h1 id=&#34;visualize-and-optimize-go-struct-layout-with-structlayout&#34;&gt;Visualize and Optimize Go Struct Layout with &lt;code&gt;structlayout&lt;/code&gt;
+&lt;/h1&gt;&lt;p&gt;&lt;code&gt;structlayout&lt;/code&gt; allows you to display the layout and size of structs, outputting data in SVG or JSON format. If a struct is complex, this tool can be used to optimize it.&lt;/p&gt;
+&lt;h2 id=&#34;installation&#34;&gt;Installation
+&lt;/h2&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-shell&#34; data-lang=&#34;shell&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;go install honnef.co/go/tools/cmd/structlayout@latest 
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;go install honnef.co/go/tools/cmd/structlayout-pretty@latest
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;go install honnef.co/go/tools/cmd/structlayout-optimize@latest
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;go install github.com/ajstarks/svgo/structlayout-svg@latest
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;h2 id=&#34;analyze-t1-with-structlayout&#34;&gt;Analyze T1 with &lt;code&gt;structlayout&lt;/code&gt;
+&lt;/h2&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-shell&#34; data-lang=&#34;shell&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;structlayout -json ./main.go T1 &lt;span class=&#34;p&#34;&gt;|&lt;/span&gt; structlayout-svg &amp;gt; T1.svg
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;Figure 6: T1 Structure Layout&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/07/5bec6b734ba74548a5301a4051343696.svg&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;T1 Structure Layout&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;We can clearly see two padding areas: 7 size and 6 size.&lt;/p&gt;
+&lt;h3 id=&#34;optimized-t2&#34;&gt;Optimized T2
+&lt;/h3&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;type&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;T2&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;a&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int8&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;c&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int16&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;b&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int64&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;Figure 7: T2 Structure Layout&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/07/2b63c698fbe3b8501670b5c33863027e.svg&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;T2 Structure Layout&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;There are still two padding areas, but only 5 sizes.&lt;/p&gt;
+&lt;h2 id=&#34;summary&#34;&gt;Summary
+&lt;/h2&gt;&lt;p&gt;In programming, memory alignment is a crucial technique designed to enhance program performance and compatibility. This article uses Go as an example to explain the basic concepts and necessity of memory alignment in detail, demonstrating the actual layout of different structs in memory through code examples.&lt;/p&gt;
+&lt;p&gt;Memory alignment rules in Go are primarily reflected in the order of struct fields. The compiler ensures performance and platform portability through automatic alignment, but in some cases, developers need to manually adjust struct fields to avoid performance issues and potential errors.&lt;/p&gt;
+&lt;p&gt;The empty struct is a helpful tool for memory alignment optimization. For specific operations, refer to my other article: &lt;a class=&#34;link&#34; href=&#34;https://medium.com/gitconnected/decrypt-go-empty-struct-56640cd668e5&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Golang High-Performance Programming EP1: Empty Struct&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;To help developers detect and optimize memory alignment issues, this article introduces two practical tools:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;code&gt;fieldalignment&lt;/code&gt;: An official Go tool that can automatically optimize struct memory alignment.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;structlayout&lt;/code&gt;: Displays the memory layout of structs, helping developers understand and optimize memory usage more intuitively.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;By using these tools effectively, developers can reduce memory waste and improve development efficiency while ensuring program performance and stability.&lt;/p&gt;
+&lt;h2 id=&#34;references&#34;&gt;References
+&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://web.archive.org/web/20080607055623/http://www.ibm.com/developerworks/library/pa-dalign/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;IBM DeveloperWorks: Data Alignment&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://golang.google.cn/ref/spec#Size_and_alignment_guarantees&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Go Specification: Size and Alignment Guarantees&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
 </description>
         </item>
         <item>
@@ -4402,6 +4796,52 @@ We hope this article has been helpful to you. We encourage you to try it out you
 </description>
         </item>
         <item>
+        <title>Information Channels  I Use -2024</title>
+        <link>https://huizhou92.com/p/information-channels-i-use-2024/</link>
+        <pubDate>Sat, 29 Jun 2024 20:49:29 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/p/information-channels-i-use-2024/</guid>
+        <description>&lt;h2 id=&#34;channels&#34;&gt;Channels
+&lt;/h2&gt;&lt;p&gt;Let me get straight to the point and share the channels I rely on to gather information:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;RSS&lt;/li&gt;
+&lt;li&gt;Podcasts&lt;/li&gt;
+&lt;li&gt;Newsletters&lt;/li&gt;
+&lt;li&gt;YouTube&lt;/li&gt;
+&lt;li&gt;Books&lt;/li&gt;
+&lt;li&gt;Research papers&lt;/li&gt;
+&lt;/ul&gt;
+&lt;!-- more--&gt;
+&lt;blockquote&gt;
+&lt;p&gt;This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on &lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt;. Thank you very much.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h2 id=&#34;text&#34;&gt;Text
+&lt;/h2&gt;&lt;p&gt;RSS is my go-to channel for information. I use Reeder 5 to subscribe to RSS feeds locally. As soon as I arrive at the office, the first thing I do is open the software and browse through the newly added articles. If I come across any useful ones, I tag them and save them for later when I have some free time. I try to keep the number of unread articles to a minimum, as an overwhelming backlog might lead to a loss of interest in using Reeder 5.&lt;/p&gt;
+&lt;p&gt;Starting in 2023, I began exploring newsletters as a way to stay informed. Initially, I was hesitant to clutter my email inbox (I only have a personal and a work email) with various newsletters. However, I stumbled upon &lt;a class=&#34;link&#34; href=&#34;https://omnivore.app/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;omnivore&lt;/a&gt;, an absolute gem of an application. It allows me to subscribe to articles and emails, import books, and make annotations. I can even export these annotations to Obsidian, which perfectly aligns with my workflow. At times, I find myself storing and annotating content from RSS feeds in &lt;a class=&#34;link&#34; href=&#34;https://omnivore.app/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;omnivore&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;Newsletters come in two types. The first type is the weekly kind, where others curate and provide brief comments. I often discover interesting articles in these newsletters and add them to my RSS list. Reading them feels light and enjoyable. The second type consists of meticulously crafted articles by authors, offering in-depth and rich content. Reading such articles requires setting aside dedicated time as they can be quite extensive.&lt;/p&gt;
+&lt;p&gt;Both email and RSS are considered &amp;ldquo;ancient&amp;rdquo; internet protocols. However, the longer I use them (or perhaps as I grow older), the more I appreciate their stability, longevity, and the rich ecosystem they provide.&lt;/p&gt;
+&lt;p&gt;Books and research papers have been a constant in my life since my student days. Every year, I make it a point to read a substantial number of physical books. Newsletters offer a different experience, even compared to e-books. I find it hard to describe the feeling, but I believe that even in this digital age, we should not forget the value of physical books.&lt;/p&gt;
+&lt;h2 id=&#34;podcasts&#34;&gt;Podcasts
+&lt;/h2&gt;&lt;p&gt;Podcasts have become an integral part of my daily routine, particularly during my commute to work. I have developed a fondness for finance and history podcasts. Auditory information consumption is faster for me than visual information, although podcasts don&amp;rsquo;t offer the same information density as text. Instead, they provide a comforting presence during commutes, workouts, or when engaging in mechanical tasks—a voice that often brings a smile to my face.&lt;/p&gt;
+&lt;h2 id=&#34;videos&#34;&gt;Videos
+&lt;/h2&gt;&lt;p&gt;More and more people are recognizing YouTube as the ultimate university. Nowadays, I often turn to YouTube for search queries rather than Google, especially when I&amp;rsquo;m seeking practical knowledge. Finding a video tutorial allows me to quickly grasp concepts without the complexity of reading lengthy instruction manuals. YouTube hosts a vast array of knowledge-based videos, with many creators specializing in their respective fields. For instance, the technology videos I frequently watch are always up to date. Whenever a new technology emerges, particularly in the realm of front-end development, YouTube promptly provides videos for trial, evaluation, troubleshooting, and tutorials. If I wish to learn computer fundamentals, there are content creators who explain them in a comprehensive yet accessible manner. Personally, I find that absorbing knowledge from YouTube is faster than reading books. However, I tend to avoid investment-related videos on the platform.&lt;/p&gt;
+&lt;h2 id=&#34;summary&#34;&gt;Summary
+&lt;/h2&gt;&lt;p&gt;To summarize, the software tools I rely on include:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Reeder 5: A highly efficient local RSS client.&lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://omnivore.app/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Omnivore&lt;/a&gt;:&lt;/li&gt;
+&lt;li&gt;Obsidian: A note-taking software.&lt;/li&gt;
+&lt;li&gt;Apple Podcasts:&lt;/li&gt;
+&lt;li&gt;YouTube&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;I hope that each person can discover their own preferred methods of information acquisition.&lt;/p&gt;
+</description>
+        </item>
+        <item>
         <title>How to analyze Go code in assembly</title>
         <link>https://huizhou92.com/p/how-to-analyze-go-code-in-assembly/</link>
         <pubDate>Sat, 29 Jun 2024 20:47:20 +0800</pubDate>
@@ -6974,6 +7414,116 @@ So, further, let&amp;rsquo;s see which processes are causing frequent context sw
 &lt;/div&gt;&lt;p&gt;In this article, we have analyzed the design elements of the three popular logging libraries, &lt;code&gt;logrus&lt;/code&gt;, &lt;code&gt;zap&lt;/code&gt;, and &lt;code&gt;slog&lt;/code&gt;. Although they have differences in the details of creating log instances, they all rely on the &lt;code&gt;io.Writer&lt;/code&gt; interface parameter to handle log output. By mastering how to configure the &lt;code&gt;io.Writer&lt;/code&gt; parameter and combining it with the use of the &lt;code&gt;lumberjack&lt;/code&gt; library, we can achieve log file rotation and segmentation functionality.&lt;/p&gt;
 &lt;p&gt;Even if new logging libraries are introduced in the future, we can quickly integrate log file rotation and segmentation functionality using similar methods.&lt;/p&gt;
 </description>
+        </item>
+        <item>
+        <title>Why TCP requires three handshakes to establish a connection</title>
+        <link>https://huizhou92.com/p/why-tcp-requires-three-handshakes-to-establish-a-connection/</link>
+        <pubDate>Fri, 28 Jun 2024 16:33:50 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/p/why-tcp-requires-three-handshakes-to-establish-a-connection/</guid>
+        <description>&lt;p&gt;TCP protocol is a network protocol that we encounter almost every day. The majority of network connections are established based on the TCP protocol. People who have studied computer networks or have some understanding of the TCP protocol know that establishing a connection using TCP requires a three-way handshake.&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;This article is first published in the medium MPP plan. If you are a medium user, please follow me in &lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;medium&lt;/a&gt;. Thank you very much.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.yixiao9206.cn/blog-images/2024/05/c680b2ef5dc88552c1838e5bf7f1ba65.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20240517205741&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;If we briefly explain the process of establishing a TCP connection, many people who have prepared for interviews would be familiar with it. However, when it comes to delving into the question of “Why does TCP require a three-way handshake to establish a connection?” most people would not be able to answer this question or might provide incorrect answers. This article will discuss why we need a three-way handshake to establish a TCP connection instead of four or two.&lt;/p&gt;
+&lt;h1 id=&#34;overview&#34;&gt;Overview
+&lt;/h1&gt;&lt;p&gt;Before analyzing the question at hand, let’s first address a common misconception that has misled many people regarding the TCP connection process. For a long time, the author of this article also believed that it provided a good explanation for why a TCP connection requires a three-way handshake:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&amp;ndash;&amp;gt; Can you hear me?&lt;br&gt;
+&amp;lt;&amp;ndash; I can hear you. Can you hear me?&lt;br&gt;
+&amp;ndash;&amp;gt; I can hear you too.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;Using analogies to explain a problem often leads to a situation where “nine out of ten analogies are wrong.” If someone uses an analogy to answer your “why” question, you need to carefully consider the flaws in their analogy. Analogies can only provide a partial similarity, and we can never find an absolutely correct analogy. Analogies are only useful when we want to present the characteristics of something in a simple and understandable way. In the rest of the article, we will explain why this analogy is flawed, and readers can read the remaining content with this question in mind.&lt;/p&gt;
+&lt;p&gt;When many people try to answer or think about this question, they tend to focus on the “three” in the three-way handshake, which is indeed important. However, if we reexamine the question, do we really understand what a “connection” is? Only when we know the definition of a “connection” can we attempt to answer why TCP requires a three-way handshake.&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;em&gt;The reliability and flow control mechanisms described above require that TCPs initialize and maintain certain status information for each data stream. The combination of this information, including sockets, sequence numbers, and window sizes, is called a connection.&lt;/em&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;The &lt;a class=&#34;link&#34; href=&#34;https://tools.ietf.org/html/rfc793&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RFC 793 — Transmission Control Protocol&lt;/a&gt; document clearly defines what a connection is in TCP. In summary, a connection is the information used to ensure reliability and flow control mechanisms, including sockets, sequence numbers, and window sizes.&lt;/p&gt;
+&lt;p&gt;Therefore, establishing a TCP connection means that the two parties involved in communication need to reach a consensus on the three types of information mentioned above. A pair of sockets in a connection is composed of an Internet address identifier and a port. The window size is mainly used for flow control, and the sequence number is used to track the sequence of data packets sent by the initiating party, allowing the receiving party to confirm the successful receipt of a particular data packet based on the sequence number.&lt;/p&gt;
+&lt;p&gt;At this point, we have transformed the original question into “Why do we need a three-way handshake to initialize sockets, window sizes, and initial sequence numbers?” Next, we will analyze and seek explanations for this refined question.&lt;/p&gt;
+&lt;h1 id=&#34;design&#34;&gt;Design
+&lt;/h1&gt;&lt;p&gt;This article will mainly discuss why we need a three-way handshake to initialize sockets, window sizes, initial sequence numbers, and establish a TCP connection from the following aspects:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;A three-way handshake is required to prevent the initialization of duplicate historical connections.&lt;/li&gt;
+&lt;li&gt;A three-way handshake is required to initialize the initial sequence numbers of both communicating parties.&lt;/li&gt;
+&lt;li&gt;Discuss the possibility of establishing a connection with a different number of handshakes.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Among these arguments, the first one is the primary reason why TCP chooses to use a three-way handshake. The other reasons are secondary in comparison. We discuss them here to provide a more comprehensive perspective and understand this interesting design decision from multiple angles.&lt;/p&gt;
+&lt;h1 id=&#34;historical-connections&#34;&gt;Historical Connections
+&lt;/h1&gt;&lt;p&gt;The &lt;a class=&#34;link&#34; href=&#34;https://tools.ietf.org/html/rfc793&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RFC 793 — Transmission Control Protocol&lt;/a&gt; clearly points out the primary reason why TCP uses a three-way handshake: to prevent confusion caused by the initiation of old duplicate connections.&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;em&gt;The principle reason for the three-way handshake is to prevent old duplicate connection initiations from causing confusion.&lt;/em&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.yixiao9206.cn/blog-images/2024/05/6679e5256608619c68d265cab45e3c3c.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;img for geeksforgeeks.org&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;Imagine this scenario: if the number of communications between the two parties is only two, once the sender sends a connection establishment request, it cannot retract this request. In a complex or poor network condition, if the sender continuously sends multiple connection establishment requests and TCP establishes a connection with only two communications, the receiver can only choose to accept or reject the sender’s request. The receiver is not sure whether this request is an expired connection due to network congestion.&lt;/p&gt;
+&lt;p&gt;Therefore, TCP chooses to use a three-way handshake to establish a connection and introduces the &lt;code&gt;RST&lt;/code&gt; control message. When the receiver receives the request, it sends the sender&amp;rsquo;s &lt;code&gt;SEQ+1&lt;/code&gt; as part of the &lt;code&gt;ACK&lt;/code&gt; control message. At this point, the sender can determine whether the current connection is a historical connection:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;If the current connection is a historical connection, meaning the &lt;code&gt;SEQ&lt;/code&gt; has expired or timed out, the sender will directly send an &lt;code&gt;RST&lt;/code&gt; control message to terminate this connection.&lt;/li&gt;
+&lt;li&gt;If the current connection is not a historical connection, the sender will send an &lt;code&gt;ACK&lt;/code&gt; control message, and the two parties will successfully establish a connection.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;By using a three-way handshake and the &lt;code&gt;RST&lt;/code&gt; control message, the ultimate control over whether to establish a connection is given to the sender. Only the sender has enough context to determine if the current connection is erroneous or expired. This is also the primary reason why TCP uses a three-way handshake to establish a connection.&lt;/p&gt;
+&lt;h1 id=&#34;initial-sequencenumbers&#34;&gt;Initial Sequence Numbers
+&lt;/h1&gt;&lt;p&gt;Another important reason for using a three-way handshake is that both communicating parties need to obtain an initial sequence number for sending information. As a reliable transport layer protocol, TCP needs to build a reliable transport layer in an unstable network environment. The uncertainty of the network can lead to issues such as packet loss and out-of-order delivery. Common problems may include:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Data packets being repeatedly sent by the sender, resulting in duplicate data.&lt;/li&gt;
+&lt;li&gt;Data packets being lost during transmission due to routing or other network nodes.&lt;/li&gt;
+&lt;li&gt;Data packets arriving at the receiver may not be in the order they were sent.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;To address these potential issues, the TCP protocol requires the sender to include a “sequence number” field in the data packet. With the sequence number corresponding to each data packet, we can:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;The receiver can deduplicate repeated data packets based on the sequence number.&lt;/li&gt;
+&lt;li&gt;The sender will resend the corresponding data packet until it is acknowledged.&lt;/li&gt;
+&lt;li&gt;The receiver can reorder the data packets based on their sequence numbers.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Sequence numbers play a crucial role in TCP connections, and the initial sequence number, as part of a TCP connection, needs to be initialized during the three-way handshake. Since both parties in a TCP connection need to obtain the initial sequence number, they need to send a &lt;code&gt;SYN&lt;/code&gt; control message to each other, carrying their expected initial sequence number &lt;code&gt;SEQ&lt;/code&gt;. Upon receiving the &lt;code&gt;SYN&lt;/code&gt; message, the receiver will confirm it using the &lt;code&gt;ACK&lt;/code&gt; control message and &lt;code&gt;SEQ+1&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;As shown in the above diagram, the two TCPs, A and B, send &lt;code&gt;SYN&lt;/code&gt; and &lt;code&gt;ACK&lt;/code&gt; control messages to each other. After both parties obtain their expected initial sequence numbers, they can start communication. Due to the design of the TCP message header, we can combine the two middle communications into one. TCP B can send both the &lt;code&gt;ACK&lt;/code&gt; and &lt;code&gt;SYN&lt;/code&gt; control messages to TCP A simultaneously, reducing the four communications to three.&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;em&gt;A three-way handshake is necessary because sequence numbers are not tied to a global clock in the network, and TCPs may have different mechanisms for picking the ISN’s. The receiver of the first SYN has no way of knowing whether the segment was an old delayed one or not unless it remembers the last sequence number used on the connection (which is not always possible), and so it must ask the sender to verify this SYN. The three-way handshake and the advantages of a clock-driven scheme are discussed in [3].&lt;/em&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;Furthermore, as a distributed system, the network does not have a global clock for counting. TCP can initialize sequence numbers using different mechanisms. As the receiver of a TCP connection, we cannot determine if the initial sequence number received from the other party is expired. Therefore, we need the other party to make this determination. It is not practical for the receiver to save and verify the sequence numbers, which reinforces the point we made in the previous section — avoiding the initialization of historical wrong connections.&lt;/p&gt;
+&lt;h1 id=&#34;number-of-communications&#34;&gt;Number of Communications
+&lt;/h1&gt;&lt;p&gt;When discussing the number of communications required to establish a TCP connection, we often focus on why it takes three communications instead of two or four. Discussing using more communications to establish a connection is often meaningless because we can always “exchange the same information using more communications.” Therefore, it is technically possible to establish a connection using four, five, or even more communications.&lt;/p&gt;
+&lt;p&gt;The issue of increasing the number of communications in a TCP connection often does not require discussion. What we pursue is actually completing the information exchange with the fewest number of communications (the theoretical minimum). This is why we repeatedly emphasize in the previous sections that using a “two-way handshake” cannot establish a TCP connection, and using a three-way handshake is the minimum number of communications required to establish a connection.&lt;/p&gt;
+&lt;h1 id=&#34;conclusion&#34;&gt;Conclusion
+&lt;/h1&gt;&lt;p&gt;In this article, we discussed why TCP requires a three-way handshake to establish a connection. Before analyzing this question in detail, we first reconsidered what a TCP connection is. The &lt;a class=&#34;link&#34; href=&#34;https://tools.ietf.org/html/rfc793&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RFC 793 — Transmission Control Protocol — IETF Tools&lt;/a&gt; provides a clear definition of a TCP connection — the data used for ensuring reliability and flow control mechanisms, including sockets, sequence numbers, and window sizes.&lt;/p&gt;
+&lt;p&gt;The three-way handshake in TCP can effectively prevent the initiation of erroneous historical connections and reduce unnecessary resource consumption for both communicating parties. The three-way handshake helps both parties obtain the initial sequence numbers, ensuring that data packets are transmitted without duplication or loss and maintaining their order. At this point, it is clear why “two-way handshake” and “four-way handshake” are not used:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;“Two-way handshake”: It cannot prevent the initialization of erroneous historical connections and wastes resources for the receiver.&lt;/li&gt;
+&lt;li&gt;“Four-way handshake”: The design of the TCP protocol allows us to simultaneously transmit both the &lt;code&gt;ACK&lt;/code&gt; and &lt;code&gt;SYN&lt;/code&gt; control messages, reducing the number of communications. Therefore, there is no need to use more communications to transmit the same information.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Returning to the question raised at the beginning of the article, why is using an analogy to explain TCP’s three-way handshake incorrect? This is mainly because the analogy does not clearly explain the core issue — avoiding the initialization of historical duplicate connections.&lt;/p&gt;
+&lt;h1 id=&#34;reference&#34;&gt;Reference
+&lt;/h1&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://tools.ietf.org/html/rfc793&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RFC 793 — Transmission Control Protocol — IETF Tools&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://networkengineering.stackexchange.com/questions/24068/why-do-we-need-a-3-way-handshake-why-not-just-2-way&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Why do we need a 3-way handshake? Why not just 2-way?&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://www.geeksforgeeks.org/tcp-3-way-handshake-process/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;# TCP 3-Way Handshake Process&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;</description>
         </item>
         <item>
         <title>7 Amazing Rust Project on GitHub</title>
@@ -14823,8 +15373,8 @@ So, further, let&amp;rsquo;s see which processes are causing frequent context sw
         <description>&lt;img src="https://cdn-images-1.medium.com/max/800/1*S4exlYVs0FrMrNls3gxS9w.jpeg" alt="Featured image of post Analyzing Performance Bottlenecks in Go Applications with expvar" /&gt;&lt;h3 id=&#34;_analyzing-performance-bottlenecks-in-go-applications-withexpvar_&#34;&gt;&lt;em&gt;Analyzing Performance Bottlenecks in Go Applications with expvar&lt;/em&gt;
 &lt;/h3&gt;&lt;p&gt;In the development process, to analyze the performance bottlenecks of Go applications, it’s essential to collect and sample performance data using pprof. There are two methods for collecting and sampling data:&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;At the micro level, using performance benchmark tests to collect and sample data, is suitable for identifying performance bottleneck points within functions or method implementations.&lt;/li&gt;
-&lt;li&gt;At the macro level, using independent programs to collect and sample data. However, when sampling performance data through independent programs, it’s often challenging to quickly capture the real bottleneck points, especially for complex internal structures, excessive business logic, and concurrent Go programs. When sampling performance for such programs, the real bottleneck points may be overshadowed by other data.&lt;/li&gt;
+&lt;li&gt;At the micro level, performance benchmark tests can be used to collect and sample data, which is suitable for identifying performance bottleneck points within functions or method implementations.&lt;/li&gt;
+&lt;li&gt;At the macro level, independent programs are used to collect and sample data. However, when sampling performance data through independent programs, it’s often challenging to quickly capture the real bottleneck points, especially for complex internal structures, excessive business logic, and concurrent Go programs. When sampling performance for such programs, the real bottleneck points may be overshadowed by other data.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;&lt;strong&gt;So, how can we efficiently capture the performance bottleneck points of an application?&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;We can deploy agents or use other methods to obtain probing data by querying external features of the application (such as checking if a certain port of the application responds and returns the correct data or status code). In addition to these messages, we may also want to know some introspective messages, such as more context information about the application’s state. This context information can be about the application’s usage of various resources, such as how much memory the application is consuming, or custom performance metric information, such as the number of external requests processed per unit time, response latency, queue backlog, etc.&lt;/p&gt;
@@ -15029,7 +15579,7 @@ So, further, let&amp;rsquo;s see which processes are causing frequent context sw
 &lt;/h3&gt;&lt;p&gt;&lt;code&gt;pprof&lt;/code&gt; is another built-in performance profiling tool in Go, mainly used to analyze the CPU usage and memory consumption of programs. Unlike, which provides real-time monitoring of internal variables, &lt;code&gt;pprof&lt;/code&gt; is more focused on performance analysis and optimization. In short, &lt;code&gt;expvar&lt;/code&gt; helps us observe the &amp;ldquo;active&amp;rdquo; data of the program while &lt;code&gt;pprof&lt;/code&gt; focusing on &amp;ldquo;performance&amp;rdquo; data.&lt;/p&gt;
 &lt;p&gt;&lt;code&gt;expvar&lt;/code&gt; exposes real-time status data of the application simply, such as the current number of active connections or the counter of requests processed. Its design intent is to monitor the application state over the long term, making it a very direct tool for developers who want to quickly understand the health status of the application.&lt;/p&gt;
 &lt;h3 id=&#34;conclusion&#34;&gt;Conclusion
-&lt;/h3&gt;&lt;p&gt;expvar is a powerful tool that can help us monitor the internal situation of applications and easily integrate with other monitoring platforms. It is a tool that every gopher should master.&lt;/p&gt;
+&lt;/h3&gt;&lt;p&gt;&lt;code&gt;expvar&lt;/code&gt; is a powerful tool that can help us monitor the internal situation of applications and easily integrate with other monitoring platforms. It is a tool that every gopher should master.&lt;/p&gt;
 </description>
         </item>
         <item>
