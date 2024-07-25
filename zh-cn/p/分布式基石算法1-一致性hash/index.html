@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="zh-cn" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="什么是 一致性hash 算法 首先摘抄一段维基百科的定义 一致哈希 是一种特殊的哈希算法。在使用一致哈希算法后，哈希表槽位数（大小）的改变平均只需要对𝐾/𝑛 个关键字重新映射，其中 𝐾 是关键字的数量，𝑛是槽位数量。然而在传统的哈希表中，添加或删除一个槽位的几乎需要对所有关键字进行重新映射。 &mdash; wikipedia 分布式系统中, 一致性hash无处不在，CDN，KV，负载均衡等地方都有它的影子，是分布式系统的基石算法之一。一致性hash 有以下几个优点。 均衡负载： 一致性哈希算法能够将数据在节点上均匀分布。 扩展性： 在一致性哈希算法中，当节点数量增加或减少时，只有部分数据需要重新映射，系统能够进行水平扩展更容易，可以增加节点数量以应对更大的负载需求； 减少数据迁移： 相比传统的哈希算法，一致性哈希算法在节点增减时需要重新映射的数据量较少，可以大幅降低数据迁移的开销，减少系统的不稳定性和延迟； 本篇文章的目标就是学习一致性hash 算法以及它的简单实现。 This article is first published in the medium MPP plan. If you are a medium user, please follow me in medium. Thank you very much. 一致性hash算法的原理 基本一致性hash 算法 最基础的一致性 hash 算法就是把节点直接分布到环上，从而划分出值域， key 经过\u00a0hash( x )\u00a0之后，落到不同的值域，则由对应的节点处理。最常见的值域空间大小是：2^32 - 1，节点落到这个空间，来划分不同节点所属的值域。如图所示。 Node A 存储 的 hash 范围为 [0,2^12) . Node B 存储 的 hash 范围为 [2^12,2^28) .">
+<title>分布式基石算法1:  一致性hash</title>
+
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/%E5%88%86%E5%B8%83%E5%BC%8F%E5%9F%BA%E7%9F%B3%E7%AE%97%E6%B3%951-%E4%B8%80%E8%87%B4%E6%80%A7hash/'>
+
+<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="分布式基石算法1:  一致性hash">
+<meta property='og:description' content="什么是 一致性hash 算法 首先摘抄一段维基百科的定义 一致哈希 是一种特殊的哈希算法。在使用一致哈希算法后，哈希表槽位数（大小）的改变平均只需要对𝐾/𝑛 个关键字重新映射，其中 𝐾 是关键字的数量，𝑛是槽位数量。然而在传统的哈希表中，添加或删除一个槽位的几乎需要对所有关键字进行重新映射。 &mdash; wikipedia 分布式系统中, 一致性hash无处不在，CDN，KV，负载均衡等地方都有它的影子，是分布式系统的基石算法之一。一致性hash 有以下几个优点。 均衡负载： 一致性哈希算法能够将数据在节点上均匀分布。 扩展性： 在一致性哈希算法中，当节点数量增加或减少时，只有部分数据需要重新映射，系统能够进行水平扩展更容易，可以增加节点数量以应对更大的负载需求； 减少数据迁移： 相比传统的哈希算法，一致性哈希算法在节点增减时需要重新映射的数据量较少，可以大幅降低数据迁移的开销，减少系统的不稳定性和延迟； 本篇文章的目标就是学习一致性hash 算法以及它的简单实现。 This article is first published in the medium MPP plan. If you are a medium user, please follow me in medium. Thank you very much. 一致性hash算法的原理 基本一致性hash 算法 最基础的一致性 hash 算法就是把节点直接分布到环上，从而划分出值域， key 经过\u00a0hash( x )\u00a0之后，落到不同的值域，则由对应的节点处理。最常见的值域空间大小是：2^32 - 1，节点落到这个空间，来划分不同节点所属的值域。如图所示。 Node A 存储 的 hash 范围为 [0,2^12) . Node B 存储 的 hash 范围为 [2^12,2^28) .">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/%E5%88%86%E5%B8%83%E5%BC%8F%E5%9F%BA%E7%9F%B3%E7%AE%97%E6%B3%951-%E4%B8%80%E8%87%B4%E6%80%A7hash/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:tag' content='hash' /><meta property='article:published_time' content='2024-06-19T21:22:15&#43;08:00'/><meta property='article:modified_time' content='2024-06-19T21:22:13&#43;08:00'/><meta property='og:image' content='https://images.yixiao9206.cn/blog-images/2024/06/f3b53488c2407a75d85406be58526010.png' />
+<meta name="twitter:site" content="@https://x.com/piaopiaopig">
+    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="分布式基石算法1:  一致性hash">
+<meta name="twitter:description" content="什么是 一致性hash 算法 首先摘抄一段维基百科的定义 一致哈希 是一种特殊的哈希算法。在使用一致哈希算法后，哈希表槽位数（大小）的改变平均只需要对𝐾/𝑛 个关键字重新映射，其中 𝐾 是关键字的数量，𝑛是槽位数量。然而在传统的哈希表中，添加或删除一个槽位的几乎需要对所有关键字进行重新映射。 &mdash; wikipedia 分布式系统中, 一致性hash无处不在，CDN，KV，负载均衡等地方都有它的影子，是分布式系统的基石算法之一。一致性hash 有以下几个优点。 均衡负载： 一致性哈希算法能够将数据在节点上均匀分布。 扩展性： 在一致性哈希算法中，当节点数量增加或减少时，只有部分数据需要重新映射，系统能够进行水平扩展更容易，可以增加节点数量以应对更大的负载需求； 减少数据迁移： 相比传统的哈希算法，一致性哈希算法在节点增减时需要重新映射的数据量较少，可以大幅降低数据迁移的开销，减少系统的不稳定性和延迟； 本篇文章的目标就是学习一致性hash 算法以及它的简单实现。 This article is first published in the medium MPP plan. If you are a medium user, please follow me in medium. Thank you very much. 一致性hash算法的原理 基本一致性hash 算法 最基础的一致性 hash 算法就是把节点直接分布到环上，从而划分出值域， key 经过\u00a0hash( x )\u00a0之后，落到不同的值域，则由对应的节点处理。最常见的值域空间大小是：2^32 - 1，节点落到这个空间，来划分不同节点所属的值域。如图所示。 Node A 存储 的 hash 范围为 [0,2^12) . Node B 存储 的 hash 范围为 [2^12,2^28) ."><meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content='https://images.yixiao9206.cn/blog-images/2024/06/f3b53488c2407a75d85406be58526010.png' />
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="切换菜单">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/zh-cn/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+                    <span class="emoji">😄</span>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/zh-cn">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/zh-cn/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>主页</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/%E5%85%B3%E4%BA%8E/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>关于</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/categories/newsletter/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>NewsLetter</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>归档</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>搜索</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" >English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" selected>中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>暗色模式</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">目录</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li>
+      <ol>
+        <li><a href="#什么是-一致性hash-算法">什么是 一致性hash 算法</a></li>
+        <li><a href="#一致性hash算法的原理">一致性hash算法的原理</a>
+          <ol>
+            <li><a href="#基本一致性hash-算法">基本一致性hash 算法</a></li>
+            <li><a href="#虚拟节点">虚拟节点</a></li>
+          </ol>
+        </li>
+        <li><a href="#go语言实现">go语言实现</a></li>
+        <li><a href="#参考资料">参考资料</a></li>
+      </ol>
+    </li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="has-image main-article">
+    <header class="article-header">
+        <div class="article-image">
+            <a href="/zh-cn/p/%E5%88%86%E5%B8%83%E5%BC%8F%E5%9F%BA%E7%9F%B3%E7%AE%97%E6%B3%951-%E4%B8%80%E8%87%B4%E6%80%A7hash/">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/06/f3b53488c2407a75d85406be58526010.png" loading="lazy" alt="Featured image of post 分布式基石算法1:  一致性hash" />
+                
+            </a>
+        </div>
+    
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/zh-cn/categories/tech/" style="background-color: #2a9d8f; color: #fff;">
+                tech
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/zh-cn/p/%E5%88%86%E5%B8%83%E5%BC%8F%E5%9F%BA%E7%9F%B3%E7%AE%97%E6%B3%951-%E4%B8%80%E8%87%B4%E6%80%A7hash/">分布式基石算法1:  一致性hash</a>
+        </h2>
+    
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Jun 19, 2024</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    阅读时长: 3 分钟
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+        <footer class="article-translations">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+            <div>
+                
+                    <a href="https://huizhou92.com/p/distributed-cornerstone-algorithm-consistent-hash/" class="link">English</a>
+                
+            </div>
+        </footer>
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <h3 id="什么是-一致性hash-算法">什么是 一致性hash 算法
+</h3><p>首先摘抄一段维基百科的定义</p>
+<blockquote>
+<p> 一致哈希 是一种特殊的哈希算法。在使用一致哈希算法后，哈希表槽位数（大小）的改变平均只需要对𝐾/𝑛 个关键字重新映射，其中 𝐾 是关键字的数量，𝑛是槽位数量。然而在传统的哈希表中，添加或删除一个槽位的几乎需要对所有关键字进行重新映射。 &mdash; wikipedia</p>
+</blockquote>
+<p>分布式系统中, 一致性hash无处不在，CDN，KV，负载均衡等地方都有它的影子，是分布式系统的基石算法之一。一致性hash 有以下几个优点。</p>
+<ul>
+<li><strong>均衡负载：</strong> 一致性哈希算法能够将数据在节点上均匀分布。</li>
+<li><strong>扩展性：</strong> 在一致性哈希算法中，当节点数量增加或减少时，只有部分数据需要重新映射，系统能够进行水平扩展更容易，可以增加节点数量以应对更大的负载需求；</li>
+<li><strong>减少数据迁移：</strong> 相比传统的哈希算法，一致性哈希算法在节点增减时需要重新映射的数据量较少，可以大幅降低数据迁移的开销，减少系统的不稳定性和延迟；<br>
+本篇文章的目标就是学习一致性hash 算法以及它的简单实现。</li>
+</ul>
+<!-- more-->
+<blockquote>
+<p>This article is first published in the medium MPP plan. If you are a medium user, please follow me in <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >medium</a>. Thank you very much.</p>
+</blockquote>
+<h3 id="一致性hash算法的原理">一致性hash算法的原理
+</h3><h4 id="基本一致性hash-算法">基本一致性hash 算法
+</h4><p>最基础的一致性 hash 算法就是把节点直接分布到环上，从而划分出值域， key 经过 <code>hash( x )</code> 之后，落到不同的值域，则由对应的节点处理。最常见的值域空间大小是：<code>2^32 - 1</code>，节点落到这个空间，来划分不同节点所属的值域。如图所示。</p>
+<p><img src="https://images.yixiao9206.cn/blog-images/2024/06/e1d987029e77819ff66e67a87b04fd97.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Pasted image 20240620095057"
+	
+	
+><br>
+Node A 存储 的 hash 范围为 [0,2^12) .<br>
+Node B 存储 的 hash 范围为 [2^12,2^28) .<br>
+Node C 存储 的 hash 范围为 [2^28,0) .<br>
+上述基本的一致性哈希算法有明显的缺点：</p>
+<ol>
+<li>随机分布节点的方式使得很难均匀的分布哈希值域，从上面可以看出，三个节点存储的数据不均匀。</li>
+<li>在动态增加节点后，原先的分布就算均匀也很难再继续保证均匀；</li>
+<li>增删节点带来的一个较为严重的缺点是：
+<ol>
+<li>当一个节点异常时，该节点的压力全部转移到相邻的一个节点；</li>
+<li>当一个新节点加入时只能为一个相邻节点分摊压力；</li>
+</ol>
+</li>
+</ol>
+<h4 id="虚拟节点">虚拟节点
+</h4><p>Go语言之父<code> rob pike</code>  曾今说过 <code>计算机领域里，没有什么问题是加一层间接寻址解决不了的</code>. 一致性hash 也是一样。<br>
+如果三个节点 存在不均衡的问题，那么我们就把他虚拟成N个节点。A[a1,a2&hellip;.a1024], 然后将他们映射到hash_ring 上，就是这样样子的。<br>
+<img src="https://images.yixiao9206.cn/blog-images/2024/06/b7f4809e8c3eab33d93cdb841f452508.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Pasted image 20240620100713"
+	
+	
+><br>
+每个虚拟节点都有对应的hash区间。负责一段key，然后根据虚拟node 的名字找到对应的物理node读写数据。<br>
+引入虚拟节点后，就完美的解决了上面的三个问题。</p>
+<ol>
+<li>只要我们的虚拟节点足够多，各个节点的数据就能平衡，（⚠️：这个再工程上是有代价的）</li>
+<li>如果一个节点宕机了，它的数据会均衡的分布到整个集群所有节点，同理，新增的节点 也能负担所有节点的压力。</li>
+</ol>
+<p><img src="https://images.yixiao9206.cn/blog-images/2024/06/12ffda6dc50ce16f33c9fb48076af264.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Pasted image 20240620101803"
+	
+	
+></p>
+<h3 id="go语言实现">go语言实现
+</h3><p>完整的代码：https://github.com/hxzhouh/blog-example/tree/main/Distributed/consistent_hashing<br>
+首先定义一个hash_ring, 使用 <code>crc32.ChecksumIEEE </code> 作为默认的hash function</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">VirtualNode</span> <span class="kd">struct</span> <span class="p">{</span>   <span class="c1">// 虚拟节点
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">Hash</span> <span class="kt">uint32</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">Node</span> <span class="o">*</span><span class="nx">Node</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Node</span> <span class="kd">struct</span> <span class="p">{</span>   <span class="c1">// 物理节点
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">ID</span>   <span class="kt">string</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">Addr</span> <span class="kt">string</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">HashRing</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">Nodes</span>        <span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="o">*</span><span class="nx">Node</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">VirtualNodes</span> <span class="p">[]</span><span class="nx">VirtualNode</span><span class="p">.</span> 
+</span></span><span class="line"><span class="cl">	<span class="nx">mu</span>           <span class="nx">sync</span><span class="p">.</span><span class="nx">Mutex</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">hash</span>         <span class="nx">HashFunc</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">NewHashRing</span><span class="p">(</span><span class="nx">hash</span> <span class="nx">HashFunc</span><span class="p">)</span> <span class="o">*</span><span class="nx">HashRing</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">hash</span> <span class="o">==</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">hash</span> <span class="p">=</span> <span class="nx">crc32</span><span class="p">.</span><span class="nx">ChecksumIEEE</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="o">&amp;</span><span class="nx">HashRing</span><span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">Nodes</span><span class="p">:</span>        <span class="nb">make</span><span class="p">(</span><span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="o">*</span><span class="nx">Node</span><span class="p">),</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">VirtualNodes</span><span class="p">:</span> <span class="nb">make</span><span class="p">([]</span><span class="nx">VirtualNode</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">hash</span><span class="p">:</span>         <span class="nx">hash</span><span class="p">,</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>我们来看一下怎么添加节点：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">hr</span> <span class="o">*</span><span class="nx">HashRing</span><span class="p">)</span> <span class="nf">AddNode</span><span class="p">(</span><span class="nx">node</span> <span class="o">*</span><span class="nx">Node</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">hr</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nf">Lock</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nx">hr</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">    <span class="nx">hr</span><span class="p">.</span><span class="nx">Nodes</span><span class="p">[</span><span class="nx">node</span><span class="p">.</span><span class="nx">ID</span><span class="p">]</span> <span class="p">=</span> <span class="nx">node</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nx">VirtualNodesPerNode</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">virtualNodeID</span> <span class="o">:=</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;%s-%d&#34;</span><span class="p">,</span> <span class="nx">node</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span> <span class="nx">i</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">hash</span> <span class="o">:=</span> <span class="nx">hr</span><span class="p">.</span><span class="nf">hash</span><span class="p">([]</span><span class="nb">byte</span><span class="p">(</span><span class="nx">virtualNodeID</span><span class="p">))</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">hr</span><span class="p">.</span><span class="nx">VirtualNodes</span> <span class="p">=</span> <span class="nb">append</span><span class="p">(</span><span class="nx">hr</span><span class="p">.</span><span class="nx">VirtualNodes</span><span class="p">,</span> <span class="nx">VirtualNode</span><span class="p">{</span><span class="nx">Hash</span><span class="p">:</span> <span class="nx">hash</span><span class="p">,</span> <span class="nx">Node</span><span class="p">:</span> <span class="nx">node</span><span class="p">})</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">sort</span><span class="p">.</span><span class="nf">Slice</span><span class="p">(</span><span class="nx">hr</span><span class="p">.</span><span class="nx">VirtualNodes</span><span class="p">,</span> <span class="kd">func</span><span class="p">(</span><span class="nx">i</span><span class="p">,</span> <span class="nx">j</span> <span class="kt">int</span><span class="p">)</span> <span class="kt">bool</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="k">return</span> <span class="nx">hr</span><span class="p">.</span><span class="nx">VirtualNodes</span><span class="p">[</span><span class="nx">i</span><span class="p">].</span><span class="nx">Hash</span> <span class="p">&lt;</span> <span class="nx">hr</span><span class="p">.</span><span class="nx">VirtualNodes</span><span class="p">[</span><span class="nx">j</span><span class="p">].</span><span class="nx">Hash</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">})</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>我们每添加一个节点，就要创建对应数量的虚拟节点，并且要保证虚拟节点有序（这样才能查找）<br>
+同样，remove 的时候，也需要删除虚拟节点</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">hr</span> <span class="o">*</span><span class="nx">HashRing</span><span class="p">)</span> <span class="nf">RemoveNode</span><span class="p">(</span><span class="nx">nodeID</span> <span class="kt">string</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">hr</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nf">Lock</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nx">hr</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">    <span class="nb">delete</span><span class="p">(</span><span class="nx">hr</span><span class="p">.</span><span class="nx">Nodes</span><span class="p">,</span> <span class="nx">nodeID</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">virtualNodes</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">([]</span><span class="nx">VirtualNode</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">vn</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">hr</span><span class="p">.</span><span class="nx">VirtualNodes</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="k">if</span> <span class="nx">vn</span><span class="p">.</span><span class="nx">Node</span><span class="p">.</span><span class="nx">ID</span> <span class="o">!=</span> <span class="nx">nodeID</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">virtualNodes</span> <span class="p">=</span> <span class="nb">append</span><span class="p">(</span><span class="nx">virtualNodes</span><span class="p">,</span> <span class="nx">vn</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">       <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">hr</span><span class="p">.</span><span class="nx">VirtualNodes</span> <span class="p">=</span> <span class="nx">virtualNodes</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>查询的时候，我们先找到对应的虚拟节点，然后再根据虚拟节点找到对应的物理节点</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">hr</span> <span class="o">*</span><span class="nx">HashRing</span><span class="p">)</span> <span class="nf">GetNode</span><span class="p">(</span><span class="nx">key</span> <span class="kt">string</span><span class="p">)</span> <span class="o">*</span><span class="nx">Node</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">hr</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nf">Lock</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nx">hr</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="nx">hr</span><span class="p">.</span><span class="nx">VirtualNodes</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="k">return</span> <span class="kc">nil</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">    <span class="nx">hash</span> <span class="o">:=</span> <span class="nx">hr</span><span class="p">.</span><span class="nf">hash</span><span class="p">([]</span><span class="nb">byte</span><span class="p">(</span><span class="nx">key</span><span class="p">))</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">idx</span> <span class="o">:=</span> <span class="nx">sort</span><span class="p">.</span><span class="nf">Search</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="nx">hr</span><span class="p">.</span><span class="nx">VirtualNodes</span><span class="p">),</span> <span class="kd">func</span><span class="p">(</span><span class="nx">i</span> <span class="kt">int</span><span class="p">)</span> <span class="kt">bool</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="k">return</span> <span class="nx">hr</span><span class="p">.</span><span class="nx">VirtualNodes</span><span class="p">[</span><span class="nx">i</span><span class="p">].</span><span class="nx">Hash</span> <span class="o">&gt;=</span> <span class="nx">hash</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">})</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">idx</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="nx">hr</span><span class="p">.</span><span class="nx">VirtualNodes</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">idx</span> <span class="p">=</span> <span class="mi">0</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">hr</span><span class="p">.</span><span class="nx">VirtualNodes</span><span class="p">[</span><span class="nx">idx</span><span class="p">].</span><span class="nx">Node</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>最后我们来看看，业务如何使用 这个hash_ring</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span><span class="lnt">25
+</span><span class="lnt">26
+</span><span class="lnt">27
+</span><span class="lnt">28
+</span><span class="lnt">29
+</span><span class="lnt">30
+</span><span class="lnt">31
+</span><span class="lnt">32
+</span><span class="lnt">33
+</span><span class="lnt">34
+</span><span class="lnt">35
+</span><span class="lnt">36
+</span><span class="lnt">37
+</span><span class="lnt">38
+</span><span class="lnt">39
+</span><span class="lnt">40
+</span><span class="lnt">41
+</span><span class="lnt">42
+</span><span class="lnt">43
+</span><span class="lnt">44
+</span><span class="lnt">45
+</span><span class="lnt">46
+</span><span class="lnt">47
+</span><span class="lnt">48
+</span><span class="lnt">49
+</span><span class="lnt">50
+</span><span class="lnt">51
+</span><span class="lnt">52
+</span><span class="lnt">53
+</span><span class="lnt">54
+</span><span class="lnt">55
+</span><span class="lnt">56
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">KVSystem</span> <span class="kd">struct</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">hashRing</span> <span class="o">*</span><span class="nx">HashRing</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">kvStores</span> <span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="o">*</span><span class="nx">kvstorage</span><span class="p">.</span><span class="nx">KVStore</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">NewKVSystem</span><span class="p">(</span><span class="nx">nodes</span> <span class="kt">int</span><span class="p">)</span> <span class="o">*</span><span class="nx">KVSystem</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">hashRing</span> <span class="o">:=</span> <span class="nf">NewHashRing</span><span class="p">(</span><span class="nx">crc32</span><span class="p">.</span><span class="nx">ChecksumIEEE</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nx">nodes</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>  <span class="c1">// init node
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>       <span class="nx">node</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">Node</span><span class="p">{</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">ID</span><span class="p">:</span>   <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;Node%d&#34;</span><span class="p">,</span> <span class="nx">i</span><span class="p">),</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">Addr</span><span class="p">:</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;192.168.1.%d&#34;</span><span class="p">,</span> <span class="nx">i</span><span class="o">+</span><span class="mi">1</span><span class="p">),</span>  
+</span></span><span class="line"><span class="cl">       <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">hashRing</span><span class="p">.</span><span class="nf">AddNode</span><span class="p">(</span><span class="nx">node</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">kvStores</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">(</span><span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="o">*</span><span class="nx">kvstorage</span><span class="p">.</span><span class="nx">KVStore</span><span class="p">)</span>   <span class="c1">//init storage
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">for</span> <span class="nx">id</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">hashRing</span><span class="p">.</span><span class="nx">Nodes</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">kvStores</span><span class="p">[</span><span class="nx">id</span><span class="p">]</span> <span class="p">=</span> <span class="nx">kvstorage</span><span class="p">.</span><span class="nf">NewKVStore</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="o">&amp;</span><span class="nx">KVSystem</span><span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">hashRing</span><span class="p">:</span> <span class="nx">hashRing</span><span class="p">,</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">kvStores</span><span class="p">:</span> <span class="nx">kvStores</span><span class="p">,</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">kv</span> <span class="o">*</span><span class="nx">KVSystem</span><span class="p">)</span> <span class="nf">Get</span><span class="p">(</span><span class="nx">key</span> <span class="kt">string</span><span class="p">)</span> <span class="p">(</span><span class="kt">string</span><span class="p">,</span> <span class="kt">bool</span><span class="p">)</span> <span class="p">{</span>   <span class="c1">//get value
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">node</span> <span class="o">:=</span> <span class="nx">kv</span><span class="p">.</span><span class="nx">hashRing</span><span class="p">.</span><span class="nf">GetNode</span><span class="p">(</span><span class="nx">key</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">kv</span><span class="p">.</span><span class="nx">kvStores</span><span class="p">[</span><span class="nx">node</span><span class="p">.</span><span class="nx">ID</span><span class="p">].</span><span class="nf">Get</span><span class="p">(</span><span class="nx">key</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">kv</span> <span class="o">*</span><span class="nx">KVSystem</span><span class="p">)</span> <span class="nf">Set</span><span class="p">(</span><span class="nx">key</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">value</span> <span class="kt">string</span><span class="p">)</span> <span class="p">{</span>  <span class="c1">// set value 
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">node</span> <span class="o">:=</span> <span class="nx">kv</span><span class="p">.</span><span class="nx">hashRing</span><span class="p">.</span><span class="nf">GetNode</span><span class="p">(</span><span class="nx">key</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">kv</span><span class="p">.</span><span class="nx">kvStores</span><span class="p">[</span><span class="nx">node</span><span class="p">.</span><span class="nx">ID</span><span class="p">].</span><span class="nf">Set</span><span class="p">(</span><span class="nx">key</span><span class="p">,</span> <span class="nx">value</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">kv</span> <span class="o">*</span><span class="nx">KVSystem</span><span class="p">)</span> <span class="nf">Delete</span><span class="p">(</span><span class="nx">key</span> <span class="kt">string</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">node</span> <span class="o">:=</span> <span class="nx">kv</span><span class="p">.</span><span class="nx">hashRing</span><span class="p">.</span><span class="nf">GetNode</span><span class="p">(</span><span class="nx">key</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">kv</span><span class="p">.</span><span class="nx">kvStores</span><span class="p">[</span><span class="nx">node</span><span class="p">.</span><span class="nx">ID</span><span class="p">].</span><span class="nf">Delete</span><span class="p">(</span><span class="nx">key</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>  
+</span></span><span class="line"><span class="cl"><span class="c1">// DeleteNode 需要将存储在节点上的数据重新分配。
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">kv</span> <span class="o">*</span><span class="nx">KVSystem</span><span class="p">)</span> <span class="nf">DeleteNode</span><span class="p">(</span><span class="nx">nodeID</span> <span class="kt">string</span><span class="p">)</span> <span class="p">{</span>   
+</span></span><span class="line"><span class="cl">    <span class="nx">allData</span> <span class="o">:=</span> <span class="nx">kv</span><span class="p">.</span><span class="nx">kvStores</span><span class="p">[</span><span class="nx">nodeID</span><span class="p">].</span><span class="nf">GetAll</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">kv</span><span class="p">.</span><span class="nx">hashRing</span><span class="p">.</span><span class="nf">RemoveNode</span><span class="p">(</span><span class="nx">nodeID</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="nb">delete</span><span class="p">(</span><span class="nx">kv</span><span class="p">.</span><span class="nx">kvStores</span><span class="p">,</span> <span class="nx">nodeID</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">key</span><span class="p">,</span> <span class="nx">value</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">allData</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">kv</span><span class="p">.</span><span class="nf">Set</span><span class="p">(</span><span class="nx">key</span><span class="p">,</span> <span class="nx">value</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">kv</span> <span class="o">*</span><span class="nx">KVSystem</span><span class="p">)</span> <span class="nf">AddNode</span><span class="p">()</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">node</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">Node</span><span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">ID</span><span class="p">:</span>   <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;Node%d&#34;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="nx">kv</span><span class="p">.</span><span class="nx">hashRing</span><span class="p">.</span><span class="nx">Nodes</span><span class="p">)),</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">Addr</span><span class="p">:</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;192.168.1.%d&#34;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="nx">kv</span><span class="p">.</span><span class="nx">hashRing</span><span class="p">.</span><span class="nx">Nodes</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span><span class="p">),</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">kv</span><span class="p">.</span><span class="nx">hashRing</span><span class="p">.</span><span class="nf">AddNode</span><span class="p">(</span><span class="nx">node</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">kv</span><span class="p">.</span><span class="nx">kvStores</span><span class="p">[</span><span class="nx">node</span><span class="p">.</span><span class="nx">ID</span><span class="p">]</span> <span class="p">=</span> <span class="nx">kvstorage</span><span class="p">.</span><span class="nf">NewKVStore</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>这样我们就实现了一个最简单的基于一致性hash的kv 存储，是不是特别简单? 但是它却支撑了我们整个网络世界的运转。</p>
+<h3 id="参考资料">参考资料
+</h3><p><a class="link" href="https://en.wikipedia.org/wiki/Consistent_hashing"  target="_blank" rel="noopener"
+    >Consistent_hashing</a></p>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/zh-cn/tags/golang/">Golang</a>
+        
+            <a href="/zh-cn/tags/hash/">Hash</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            最后更新于 Jun 19, 2024 21:22 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+<aside class="related-content--wrapper">
+    <h2 class="section-title">相关文章</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/grpc-%E4%BD%BF%E7%94%A8%E8%87%AA%E7%AD%BE%E5%90%8D%E8%AF%81%E4%B9%A6san%E5%BB%BA%E7%AB%8Btls-%E8%BF%9E%E6%8E%A5.zh-cn/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/05/4976a194a8daca00ff6991a866c2ee53.png" loading="lazy" data-key="" data-hash="https://images.yixiao9206.cn/blog-images/2024/05/4976a194a8daca00ff6991a866c2ee53.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">gRPC 使用自签名证书SAN建立TLS 连接.zh-cn</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/%E8%A7%A3%E5%AF%86go-empty-struct/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/06/c78d096394f1791445b7c10f88dd0378.jpg" loading="lazy" data-key="" data-hash="https://images.yixiao9206.cn/blog-images/2024/06/c78d096394f1791445b7c10f88dd0378.jpg"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">解密go: empty struct</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/%E6%B7%B1%E5%85%A5-go-%E4%B8%AD%E5%90%84%E4%B8%AA%E9%AB%98%E6%80%A7%E8%83%BD-json-%E8%A7%A3%E6%9E%90%E5%BA%93/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">深入 Go 中各个高性能 JSON 解析库</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/go-1.23-new-iter-package/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 1.23: 新包 Iter</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/golang-1.23-%E6%96%B0%E7%9A%84-unique-%E5%8C%85/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/06/0a8a9a271b2db6d5922f8e58e589b187.png" loading="lazy" data-key="" data-hash="https://images.yixiao9206.cn/blog-images/2024/06/0a8a9a271b2db6d5922f8e58e589b187.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Golang 1.23: 新的 unique 包</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+     
+    
+        
+    <script src="//cdn.jsdelivr.net/npm/twikoo@1.6.21/dist/twikoo.all.min.js"></script>
+<div id="tcomment"></div>
+<style>
+    .twikoo {
+        background-color: var(--card-background);
+        border-radius: var(--card-border-radius);
+        box-shadow: var(--shadow-l1);
+        padding: var(--card-padding);
+    }
+    :root[data-scheme="dark"] {
+        --twikoo-body-text-color-main: rgba(255, 255, 255, 0.9);
+        --twikoo-body-text-color: rgba(255, 255, 255, 0.7);
+    }
+    .twikoo .el-input-group__prepend,
+    .twikoo .tk-action-icon,
+    .twikoo .tk-submit-action-icon,
+    .twikoo .tk-time,
+    .twikoo .tk-comments-no,
+    .twikoo .tk-comments-count {
+        color: var(--twikoo-body-text-color);
+    }
+    .twikoo .el-input__inner,
+    .twikoo .el-textarea__inner,
+    .twikoo .tk-preview-container,
+    .twikoo .tk-content,
+    .twikoo .tk-nick,
+    .twikoo .tk-send {
+        color: var(--twikoo-body-text-color-main);
+    }
+    .twikoo .el-button{
+        color: var(--twikoo-body-text-color)!important;
+    }
+    .twikoo .el-input__count {
+        color: var(--twikoo-body-text-color) !important;
+    }
+    .OwO .OwO-body {
+        background-color: var(--body-background) !important;
+        color: var(--body-text-color) !important;
+    }
+</style><script>
+    twikoo.init({
+        envId: 'https:\/\/twikoo.yixiao9206.cn',
+        el: '#tcomment',lang: 'en',})
+</script>
+
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2024 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+    </section>
+    
+     	
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>

@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="HTTP (Hypertext Transfer Protocol) has become the most widely used application layer protocol on the Internet. However, it is primarily a network protocol for transferring hypertext and provides no security guarantees. Transmitting data packets in plaintext over the Internet makes eavesdropping and man-in-the-middle attacks possible. Transmitting passwords over HTTP is essentially the same as running naked on the Internet. This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium.">
+<meta name="keywords" content="https"><title>Why does HTTPS need 7 handshakes and 9 times delay?</title>
+
+<link rel='canonical' href='https://huizhou92.com/p/why-does-https-need-7-handshakes-and-9-times-delay/'>
+
+<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="Why does HTTPS need 7 handshakes and 9 times delay?">
+<meta property='og:description' content="HTTP (Hypertext Transfer Protocol) has become the most widely used application layer protocol on the Internet. However, it is primarily a network protocol for transferring hypertext and provides no security guarantees. Transmitting data packets in plaintext over the Internet makes eavesdropping and man-in-the-middle attacks possible. Transmitting passwords over HTTP is essentially the same as running naked on the Internet. This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium.">
+<meta property='og:url' content='https://huizhou92.com/p/why-does-https-need-7-handshakes-and-9-times-delay/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='https' /><meta property='article:tag' content='tcp' /><meta property='article:published_time' content='2024-06-28T18:24:40&#43;08:00'/><meta property='article:modified_time' content='2024-06-28T18:24:38&#43;08:00'/>
+<meta name="twitter:site" content="@https://x.com/piaopiaopig">
+    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="Why does HTTPS need 7 handshakes and 9 times delay?">
+<meta name="twitter:description" content="HTTP (Hypertext Transfer Protocol) has become the most widely used application layer protocol on the Internet. However, it is primarily a network protocol for transferring hypertext and provides no security guarantees. Transmitting data packets in plaintext over the Internet makes eavesdropping and man-in-the-middle attacks possible. Transmitting passwords over HTTP is essentially the same as running naked on the Internet. This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium.">
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="Toggle Menu">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+                    <span class="emoji">😄</span>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>Home</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/about/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>About</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/categories/newsletter/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>NewsLetter</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>Archives</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>Search</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" selected>English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" >中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>Dark Mode</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">Table of contents</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li>
+      <ol>
+        <li><a href="#tcp">TCP</a></li>
+        <li><a href="#tls">TLS</a></li>
+        <li><a href="#http">HTTP</a></li>
+      </ol>
+    </li>
+    <li><a href="#summary">Summary</a></li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="main-article">
+    <header class="article-header">
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/categories/tech/" style="background-color: #2a9d8f; color: #ffff;">
+                tech
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/p/why-does-https-need-7-handshakes-and-9-times-delay/">Why does HTTPS need 7 handshakes and 9 times delay?</a>
+        </h2>
+    
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Jun 28, 2024</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    8 minute read
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <p>HTTP (Hypertext Transfer Protocol) has become the most widely used application layer protocol on the Internet. However, it is primarily a network protocol for transferring hypertext and provides no security guarantees. Transmitting data packets in plaintext over the Internet makes eavesdropping and man-in-the-middle attacks possible. Transmitting passwords over HTTP is essentially the same as running naked on the Internet.</p>
+<!-- more-->
+<blockquote>
+<p>This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >Medium</a>. Thank you very much.</p>
+</blockquote>
+<p>In 1994, Netscape designed the HTTPS (Hypertext Transfer Protocol Secure) protocol, which uses the Secure Sockets Layer (SSL) to ensure secure data transmission. With the development of the Transport Layer Security (TLS) protocol, we have replaced the deprecated SSL protocol with TLS, although the term &ldquo;SSL certificate&rdquo; is still used.</p>
+<p>HTTPS is an extension of the HTTP protocol that allows us to transmit data over the Internet securely. However, the initial request in an HTTPS connection requires 4.5 times the round-trip time (RTT) compared to HTTP. This article will provide a detailed explanation of the request and response process, analyzing why the HTTPS protocol requires 4.5 RTT to obtain a response from the service provider:</p>
+<ul>
+<li>TCP Protocol: Both communication parties establish a TCP connection through a three-way handshake.</li>
+<li>TLS Protocol: Both communication parties establish a TLS connection through a four-way handshake.</li>
+<li>HTTP Protocol: The client sends a request to the server, and the server responds.</li>
+</ul>
+<p>The analysis is based on specific versions of protocol implementations and common scenarios. With the advancement of network technology, we can reduce the number of required network communications. This article will mention some common optimization solutions in the corresponding sections.</p>
+<h3 id="tcp">TCP
+</h3><p>As an application layer protocol, HTTP relies on a lower-level transport layer protocol to provide basic data transmission functionality. TCP is commonly used as the underlying protocol for HTTP. To prevent the establishment of erroneous historical connections, TCP communication parties perform a three-way handshake to establish a TCP connection<sup id="fnref:6"><a href="https://draveness.me/whys-the-design-https-latency/#fn:6" role="doc-noteref">6</a></sup>. Let&rsquo;s briefly review the entire process of establishing a TCP connection.<br>
+<img src="https://images.yixiao9206.cn/blog-images/2024/02/8b676b2c6764adbe073c57f12fcdf1af.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Pasted image 20240220200057"
+	
+	
+></p>
+<ol>
+<li>The client sends a segment with the <code>SYN</code> flag and the initial sequence number of the data segment (<code>SEQ = M</code>) to the server.</li>
+<li>Upon receiving the segment, the server sends a segment with the <code>SYN</code> and <code>ACK</code> flags to the client:
+<ul>
+<li>The server acknowledges the initial sequence number of the client&rsquo;s data segment by returning <code>ACK = M+1</code>.</li>
+<li>The server notifies the client of the initial sequence number of the server&rsquo;s data segment by sending <code>SEQ = N</code>.</li>
+</ul>
+</li>
+<li>The client sends a segment with the <code>ACK</code> flag to the server, confirming the server&rsquo;s initial sequence number, including <code>ACK = N+1</code>.</li>
+</ol>
+<p>Through the three-way handshake, the TCP connection parties determine the initial sequence number, window size, and maximum segment size of the TCP connection. This allows the communication parties to ensure that the data segments are not duplicated or missed, control the flow through the window size, and avoid IP fragmentation by using the maximum segment size.</p>
+<p>The original version of the TCP protocol did require a three-way communication to establish a TCP connection. In most current scenarios, the three-way handshake is unavoidable. However, TCP Fast Open (TFO), proposed in 2014, can establish a TCP connection in certain scenarios with just one communication.<br>
+<img src="https://images.yixiao9206.cn/blog-images/2024/02/296cc901d35ef44ebd13290948a29b73.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Pasted image 20240220200245"
+	
+	
+></p>
+<p>The TFO strategy uses a TFO Cookie stored on the client to establish a connection with the server quickly. When the client initiates a TCP connection to the server, it includes the TFO option in the SYN message. The server generates a Cookie and sends it to the client. The client caches the Cookie and uses it to establish a TCP connection directly with the server when reconnecting. After verifying the Cookie, the server sends SYN and ACK to the client, initiating data transmission. This reduces the number of communications required.</p>
+<h3 id="tls">TLS
+</h3><p>The purpose of TLS is to build a secure transmission channel on top of the reliable TCP protocol. However, TLS itself does not provide reliability guarantees, so we still need a reliable transport layer protocol underneath. After establishing a reliable TCP connection between the communication parties, we need to exchange keys through the TLS handshake. Here, we will explain the connection establishment process of TLS 1.2:</p>
+<p><img src="https://images.yixiao9206.cn/blog-images/2024/02/094fa30c0ac0ea649dcb30db7ce478a8.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Pasted image 20240220195816"
+	
+	
+></p>
+<ol>
+<li>The client sends a Client Hello message to the server, including the client&rsquo;s supported protocol version, encryption algorithms, compression algorithms, and <strong>client-generated random number</strong>.</li>
+<li>Upon receiving the information about the client&rsquo;s supported protocol version and encryption algorithms, the server:
+<ul>
+<li>Sends a Server Hello message to the client, specifying the chosen protocol version, encryption method, session ID, and <strong>server-generated random number</strong>.</li>
+<li>Sends a Certificate message to the client, which includes the server&rsquo;s certificate chain, including information about supported domains, issuers, and expiration dates.</li>
+<li>Sends a Server Key Exchange message, transmitting the <strong>public key</strong> and signature information.</li>
+<li>Optionally sends a CertificateRequest message, requesting the client&rsquo;s certificate for verification.</li>
+<li>Sends a Server Hello Done message to the client, indicating that all relevant information has been sent.</li>
+</ul>
+</li>
+<li>Upon receiving the server&rsquo;s protocol version, encryption method, session ID, and certificate, the client verifies the server&rsquo;s certificate:
+<ul>
+<li>Sends a Client Key Exchange message to the server, including the <strong>pre-master secret</strong>, which is a random string encrypted with the server&rsquo;s public key.</li>
+<li>Sends a Change Cipher Spec message to the server, indicating that subsequent data segments will be encrypted.</li>
+<li>Sends a Finished message to the server, which includes an encrypted handshake message.</li>
+</ul>
+</li>
+<li>Upon receiving the Change Cipher Spec and Finished messages from the client:
+<ul>
+<li>Sends a Change Cipher Spec message to the client, indicating that subsequent data segments will be encrypted.</li>
+<li>Sends a Finished message to the client, verifying the client&rsquo;s Finished message and completing the TLS handshake.</li>
+</ul>
+</li>
+</ol>
+<p>The key to the TLS handshake uses the random strings generated by both communication parties and the server&rsquo;s public key to generate a negotiated key. This symmetric key allows both parties to encrypt messages, preventing eavesdropping and attacks by intermediaries and ensuring secure communication.</p>
+<p>In TLS 1.2, establishing a TLS connection takes 2 RTT. However, TLS 1.3 optimizes the protocol, reducing the round-trip time to one, significantly reducing the time required. After 1 RTT, the client can already transmit application-layer data to the server.</p>
+<p>We won&rsquo;t go into detail about the TLS 1.3 connection establishment process here. In addition to reducing the network overhead in regular handshakes, TLS 1.3 introduces a 0-RTT connection establishment process. 60% of network connections are established when users first visit a website or after a certain interval, while the remaining 40% can be addressed using the 0-RTT strategy of TLS 1.3. However, this strategy, similar to TFO, carries some security risks and should be used with consideration for specific business scenarios.</p>
+<h3 id="http">HTTP
+</h3><p>Transmitting data over a well-established TCP and TLS channel is relatively straightforward. The HTTP protocol can directly utilize the reliable and secure channel established at the lower layers to transmit data. The client writes data to the server using the TCP socket interface, and the server responds through the same means after processing the data. Since the entire process involves the client sending a request and the server returning a response, it takes 1 RTT.</p>
+<p>The data exchange in the HTTP protocol consumes only 1 RTT. When the client and server handle a single HTTP request, we cannot optimize beyond the HTTP protocol itself. However, as the number of requests increases, HTTP/2 allows the reuse of established TCP connections to reduce the additional overhead of TCP and TLS handshakes.</p>
+<h2 id="summary">Summary
+</h2><p>When a client wants to access a server via HTTPS, the entire process requires 7 handshakes and consumes 9 times the latency. If the RTT is approximately 40ms due to physical distance limitations, the first request requires ~180ms. However, if we want to access a server in the United States with an RTT of approximately 200ms, the HTTPS request will take ~900ms, which is a significant delay. Let&rsquo;s summarize the reasons why the HTTPS protocol requires 9 times the latency to complete communication:</p>
+<ol>
+<li>The TCP protocol requires a three-way handshake to establish a reliable TCP connection (1.5 RTT).</li>
+<li>The TLS protocol establishes a TLS connection over TCP through a four-way handshake to ensure communication security (2 RTT).</li>
+<li>The HTTP protocol sends a request and receives a response over TCP and TLS in one round trip (1 RTT).</li>
+</ol>
+<p>It is important to note that the calculations of round-trip delay in this article are based on specific scenarios and protocol versions. Network protocols are constantly evolving, and issues that were initially overlooked are often addressed through patch updates. However, in the end, a complete rewrite from the ground up is still necessary.</p>
+<p>HTTP/3 is an example of this. It uses the UDP-based QUIC protocol for handshakes, combining the TCP and TLS handshake processes to reduce the 7 handshakes to 3. It directly establishes a reliable and secure transmission channel, reducing the time required from ~900ms to ~500ms. We will cover HTTP/3-related content in future articles. Finally, let&rsquo;s consider some open-ended questions for further exploration. Interested readers can carefully consider the following questions:</p>
+<ul>
+<li>What are the similarities and differences between the QUIC protocol and the TCP protocol as transport layer protocols?</li>
+<li>How is it possible to establish a client-server connection using 0-RTT?</li>
+</ul>
+<h1 id="further-reading">Further Reading
+</h1><p>Here are some excellent articles that explain TCP three-way handshake, TLS connection, and TCP Fast Open in detail:</p>
+<ol>
+<li><a class="link" href="https://books.google.com.hk/books?id=FLvsis4_QhEC&amp;pg=PA344&amp;redir_esc=y#v=onepage&amp;q&amp;f=false"  target="_blank" rel="noopener"
+    >Walls, Colin (2005). Embedded Software: The Works. Newnes. p. 344. ISBN 0-7506-7954-9. Archived from the original on 2019-02-09. Retrieved 2018-10-20.</a> </li>
+<li><a class="link" href="https://www.websecurity.digicert.com/security-topics/what-is-ssl-tls-https"  target="_blank" rel="noopener"
+    >What is an SSL Certificate?</a> </li>
+<li><a class="link" href="https://en.wikipedia.org/wiki/HTTPS"  target="_blank" rel="noopener"
+    >Wikipedia: HTTPS</a> </li>
+<li><a class="link" href="https://en.wikipedia.org/wiki/TCP_Fast_Open"  target="_blank" rel="noopener"
+    >Wikipedia: TCP Fast Open</a></li>
+<li><a class="link" href="https://tools.ietf.org/html/rfc793"  target="_blank" rel="noopener"
+    >RFC793 Transmission Control Protocol, September 1981 RFC793</a> </li>
+<li><a class="link" href="https://tools.ietf.org/html/rfc5246"  target="_blank" rel="noopener"
+    >RFC5246 The Transport Layer Security (TLS) Protocol. Version 1.2. Aug 2008 RFC5246</a> </li>
+<li><a class="link" href="https://www.rfc-editor.org/info/rfc7413"  target="_blank" rel="noopener"
+    >Cheng, Y., Chu, J., Radhakrishnan, S., and A. Jain, “TCP Fast Open”, RFC 7413, DOI 10.17487/RFC7413, December 2014,</a>. <a class="link" href="https://draveness.me/whys-the-design-https-latency/#fnref:8"  target="_blank" rel="noopener"
+    >↩︎</a></li>
+<li><a class="link" href="https://tlseminar.github.io/first-few-milliseconds/"  target="_blank" rel="noopener"
+    >The First Few Milliseconds of an TLS 1.2 Connection</a> </li>
+<li><a class="link" href="https://www.thesslstore.com/blog/tls-1-3-handshake-tls-1-2/"  target="_blank" rel="noopener"
+    >TLS 1.3 Handshake: Taking a Closer Look</a> </li>
+<li><a class="link" href="https://blog.cloudflare.com/introducing-0-rtt/"  target="_blank" rel="noopener"
+    >Introducing Zero Round Trip Time Resumption (0-RTT) </a> </li>
+</ol>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/tags/https/">Https</a>
+        
+            <a href="/tags/tcp/">Tcp</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>true</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            Last updated on Jun 28, 2024 18:24 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+<aside class="related-content--wrapper">
+    <h2 class="section-title">Related content</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="has-image">
+    <a href="/p/the-key-points-of-https/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/05/9113c36ee94b362ffe79a997b75c8efe.png" loading="lazy" data-key="the-key-points-of-https" data-hash="https://images.yixiao9206.cn/blog-images/2024/05/9113c36ee94b362ffe79a997b75c8efe.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Understanding HTTPS: Key Points and Processes Explained in Detail</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/p/golang-high-performance-programming-ep2-reduce-the-size-of-executable-binary-files-with-upx/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/07/5f408427cbeaa5018a5af3e3499fdb82.png" loading="lazy" data-key="" data-hash="https://images.yixiao9206.cn/blog-images/2024/07/5f408427cbeaa5018a5af3e3499fdb82.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Golang High-Performance Programming EP2:  Reduce The Size Of Executable Binary Files With upx</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/p/performance-profiling-of-golangs-biggest-killers-pprof/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Performance Profiling of Golang&#39;s Biggest Killers: PProf</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/p/how-to-analyze-go-code-in-assembly/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">How to analyze Go code in assembly</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/p/golang-vs-node/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/03/19f465a70b3b13a1bcf9d608bb5d5f3f.jpeg" loading="lazy" data-key="" data-hash="https://images.yixiao9206.cn/blog-images/2024/03/19f465a70b3b13a1bcf9d608bb5d5f3f.jpeg"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Golang vs node</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+     
+    
+        
+    <script src="//cdn.jsdelivr.net/npm/twikoo@1.6.21/dist/twikoo.all.min.js"></script>
+<div id="tcomment"></div>
+<style>
+    .twikoo {
+        background-color: var(--card-background);
+        border-radius: var(--card-border-radius);
+        box-shadow: var(--shadow-l1);
+        padding: var(--card-padding);
+    }
+    :root[data-scheme="dark"] {
+        --twikoo-body-text-color-main: rgba(255, 255, 255, 0.9);
+        --twikoo-body-text-color: rgba(255, 255, 255, 0.7);
+    }
+    .twikoo .el-input-group__prepend,
+    .twikoo .tk-action-icon,
+    .twikoo .tk-submit-action-icon,
+    .twikoo .tk-time,
+    .twikoo .tk-comments-no,
+    .twikoo .tk-comments-count {
+        color: var(--twikoo-body-text-color);
+    }
+    .twikoo .el-input__inner,
+    .twikoo .el-textarea__inner,
+    .twikoo .tk-preview-container,
+    .twikoo .tk-content,
+    .twikoo .tk-nick,
+    .twikoo .tk-send {
+        color: var(--twikoo-body-text-color-main);
+    }
+    .twikoo .el-button{
+        color: var(--twikoo-body-text-color)!important;
+    }
+    .twikoo .el-input__count {
+        color: var(--twikoo-body-text-color) !important;
+    }
+    .OwO .OwO-body {
+        background-color: var(--body-background) !important;
+        color: var(--body-text-color) !important;
+    }
+</style><script>
+    twikoo.init({
+        envId: 'https:\/\/twikoo.yixiao9206.cn',
+        el: '#tcomment',lang: 'en',})
+</script>
+
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2024 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        Built with <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> <br />
+        Theme <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> designed by <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a>
+    </section>
+    
+     	
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>

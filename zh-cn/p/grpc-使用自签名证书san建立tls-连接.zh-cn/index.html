@@ -1,0 +1,1295 @@
+<!DOCTYPE html>
+<html lang="zh-cn" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="gRPC 是Google开发的一个高性能RPC框架，gRPC 默认内置了两种认证方式： SSL/TLS 认证方式 基于 Token 的认证方式 没有启用证书的gRPC服务和客户端进行的是明文通信，信息面临被任何第三方监听的风险。为了保证gRPC通信不被第三方监听、篡改或伪造，可以对服务器启动TLS加密特性。 从 go 1.15 版本开始废弃 CommonName，因此推荐使用 SAN 证书。如果按照之前的步骤通过 OpenSSL 来生成密钥、CSR、证书，会出现这样的错误： This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much. 1 rpc error: code = Unavailable desc = connection error: desc = &#34;transport: authentication handshake failed: x509: certificate relies on legacy Common Name field, use SANs instead&#34;| 什么是SAN SAN(Subject Alternative Name) 是\u00a0SSL\u00a0标准\u00a0x509\u00a0中定义的一个扩展。使用了\u00a0SAN\u00a0字段的\u00a0SSL\u00a0证书，可以扩展此证书支持的域名，使得一个证书可以支持多个不同域名的解析。">
+<title>gRPC 使用自签名证书SAN建立TLS 连接.zh-cn</title>
+
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/grpc-%E4%BD%BF%E7%94%A8%E8%87%AA%E7%AD%BE%E5%90%8D%E8%AF%81%E4%B9%A6san%E5%BB%BA%E7%AB%8Btls-%E8%BF%9E%E6%8E%A5.zh-cn/'>
+
+<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="gRPC 使用自签名证书SAN建立TLS 连接.zh-cn">
+<meta property='og:description' content="gRPC 是Google开发的一个高性能RPC框架，gRPC 默认内置了两种认证方式： SSL/TLS 认证方式 基于 Token 的认证方式 没有启用证书的gRPC服务和客户端进行的是明文通信，信息面临被任何第三方监听的风险。为了保证gRPC通信不被第三方监听、篡改或伪造，可以对服务器启动TLS加密特性。 从 go 1.15 版本开始废弃 CommonName，因此推荐使用 SAN 证书。如果按照之前的步骤通过 OpenSSL 来生成密钥、CSR、证书，会出现这样的错误： This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much. 1 rpc error: code = Unavailable desc = connection error: desc = &#34;transport: authentication handshake failed: x509: certificate relies on legacy Common Name field, use SANs instead&#34;| 什么是SAN SAN(Subject Alternative Name) 是\u00a0SSL\u00a0标准\u00a0x509\u00a0中定义的一个扩展。使用了\u00a0SAN\u00a0字段的\u00a0SSL\u00a0证书，可以扩展此证书支持的域名，使得一个证书可以支持多个不同域名的解析。">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/grpc-%E4%BD%BF%E7%94%A8%E8%87%AA%E7%AD%BE%E5%90%8D%E8%AF%81%E4%B9%A6san%E5%BB%BA%E7%AB%8Btls-%E8%BF%9E%E6%8E%A5.zh-cn/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:tag' content='tech' /><meta property='article:published_time' content='2024-06-29T21:41:50&#43;08:00'/><meta property='article:modified_time' content='2024-06-29T21:41:45&#43;08:00'/><meta property='og:image' content='https://images.yixiao9206.cn/blog-images/2024/05/4976a194a8daca00ff6991a866c2ee53.png' />
+<meta name="twitter:site" content="@https://x.com/piaopiaopig">
+    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="gRPC 使用自签名证书SAN建立TLS 连接.zh-cn">
+<meta name="twitter:description" content="gRPC 是Google开发的一个高性能RPC框架，gRPC 默认内置了两种认证方式： SSL/TLS 认证方式 基于 Token 的认证方式 没有启用证书的gRPC服务和客户端进行的是明文通信，信息面临被任何第三方监听的风险。为了保证gRPC通信不被第三方监听、篡改或伪造，可以对服务器启动TLS加密特性。 从 go 1.15 版本开始废弃 CommonName，因此推荐使用 SAN 证书。如果按照之前的步骤通过 OpenSSL 来生成密钥、CSR、证书，会出现这样的错误： This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much. 1 rpc error: code = Unavailable desc = connection error: desc = &#34;transport: authentication handshake failed: x509: certificate relies on legacy Common Name field, use SANs instead&#34;| 什么是SAN SAN(Subject Alternative Name) 是\u00a0SSL\u00a0标准\u00a0x509\u00a0中定义的一个扩展。使用了\u00a0SAN\u00a0字段的\u00a0SSL\u00a0证书，可以扩展此证书支持的域名，使得一个证书可以支持多个不同域名的解析。"><meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content='https://images.yixiao9206.cn/blog-images/2024/05/4976a194a8daca00ff6991a866c2ee53.png' />
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="切换菜单">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/zh-cn/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+                    <span class="emoji">😄</span>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/zh-cn">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/zh-cn/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>主页</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/%E5%85%B3%E4%BA%8E/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>关于</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/categories/newsletter/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>NewsLetter</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>归档</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>搜索</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" >English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" selected>中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>暗色模式</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">目录</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#什么是san">什么是<code>SAN</code></a></li>
+    <li><a href="#在本地创建san-证书">在本地创建SAN 证书</a></li>
+    <li><a href="#测试">测试</a>
+      <ol>
+        <li><a href="#服务端实现">服务端实现</a></li>
+        <li><a href="#客户端">客户端</a></li>
+      </ol>
+    </li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="has-image main-article">
+    <header class="article-header">
+        <div class="article-image">
+            <a href="/zh-cn/p/grpc-%E4%BD%BF%E7%94%A8%E8%87%AA%E7%AD%BE%E5%90%8D%E8%AF%81%E4%B9%A6san%E5%BB%BA%E7%AB%8Btls-%E8%BF%9E%E6%8E%A5.zh-cn/">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/05/4976a194a8daca00ff6991a866c2ee53.png" loading="lazy" alt="Featured image of post gRPC 使用自签名证书SAN建立TLS 连接.zh-cn" />
+                
+            </a>
+        </div>
+    
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/zh-cn/categories/tech/" style="background-color: #2a9d8f; color: #fff;">
+                tech
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/zh-cn/p/grpc-%E4%BD%BF%E7%94%A8%E8%87%AA%E7%AD%BE%E5%90%8D%E8%AF%81%E4%B9%A6san%E5%BB%BA%E7%AB%8Btls-%E8%BF%9E%E6%8E%A5.zh-cn/">gRPC 使用自签名证书SAN建立TLS 连接.zh-cn</a>
+        </h2>
+    
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Jun 29, 2024</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    阅读时长: 5 分钟
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <p><a class="link" href="https://grpc.io/"  target="_blank" rel="noopener"
+    >gRPC</a> 是Google开发的一个高性能RPC框架，gRPC 默认内置了两种认证方式：</p>
+<ul>
+<li>SSL/TLS 认证方式</li>
+<li>基于 Token 的认证方式<br>
+没有启用证书的<code>gRPC</code>服务和客户端进行的是明文通信，信息面临被任何第三方监听的风险。为了保证<code>gRPC</code>通信不被第三方监听、篡改或伪造，可以对服务器启动<code>TLS</code>加密特性。<br>
+从 go 1.15 版本开始<a class="link" href="https://golang.org/doc/go1.15#commonname"  target="_blank" rel="noopener"
+    >废弃 CommonName</a>，因此推荐使用 <code>SAN</code> 证书。如果按照之前的步骤通过 OpenSSL 来生成密钥、CSR、证书，会出现这样的错误：</li>
+</ul>
+<!-- more-->
+<blockquote>
+<p>This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >Medium</a>. Thank you very much.</p>
+</blockquote>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">rpc error: <span class="nv">code</span> <span class="o">=</span> Unavailable <span class="nv">desc</span> <span class="o">=</span> connection error: <span class="nv">desc</span> <span class="o">=</span> <span class="s2">&#34;transport: authentication handshake failed: x509: certificate relies on legacy Common Name field, use SANs instead&#34;</span><span class="p">|</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><h2 id="什么是san">什么是<code>SAN</code>
+</h2><p><em><strong>SAN(Subject Alternative Name)</strong></em> 是 <code>SSL</code> 标准 <code>x509</code> 中定义的一个扩展。使用了 <code>SAN</code> 字段的 <code>SSL</code> 证书，可以扩展此证书支持的域名，使得一个证书可以支持多个不同域名的解析。</p>
+<p>通俗点就是，在 SAN 证书中，可以有多个<strong>完整</strong>的 CN（CommonName），这样只需要购买一个证书就可以用在多个 URL。比如 skype.com 的证书，它就有很多 SAN。</p>
+<h2 id="在本地创建san-证书">在本地创建SAN 证书
+</h2><p>下面 我们将用一个例子在本地生成 客户端&amp;服务端双向SAN 证书。<br>
+假设gRPC服务端的主机名为<code>localhost</code>，需要为gRPC服务端和客户端之间的通信配置tls双向认证加密。</p>
+<ol>
+<li>新建 <code>openssl.conf</code> 来放相关信息</li>
+</ol>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl"><span class="o">[</span>req<span class="o">]</span>  
+</span></span><span class="line"><span class="cl"><span class="nv">req_extensions</span> <span class="o">=</span> v3_req  
+</span></span><span class="line"><span class="cl"><span class="nv">distinguished_name</span> <span class="o">=</span> req_distinguished_name  
+</span></span><span class="line"><span class="cl"><span class="nv">prompt</span> <span class="o">=</span> no  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="o">[</span>req_distinguished_name<span class="o">]</span>  
+</span></span><span class="line"><span class="cl"><span class="nv">countryName</span> <span class="o">=</span> CN  
+</span></span><span class="line"><span class="cl"><span class="nv">stateOrProvinceName</span> <span class="o">=</span> state  
+</span></span><span class="line"><span class="cl"><span class="nv">localityName</span> <span class="o">=</span> city  
+</span></span><span class="line"><span class="cl"><span class="nv">organizationName</span> <span class="o">=</span> huizhou92  
+</span></span><span class="line"><span class="cl"><span class="nv">commonName</span> <span class="o">=</span> hello-world  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="o">[</span>v3_req<span class="o">]</span>  
+</span></span><span class="line"><span class="cl"><span class="nv">subjectAltName</span> <span class="o">=</span> @alt_names  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="o">[</span>alt_names<span class="o">]</span>  
+</span></span><span class="line"><span class="cl">DNS.1 <span class="o">=</span> localhost
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>其中内容 跟 以前创建ca的时候差不多。<br>
+2. 生成ca根证书</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">openssl req -x509 -newkey rsa:4096 -keyout ca.key -out ca.crt -subj <span class="s2">&#34;/CN=localhost&#34;</span> -days <span class="m">3650</span>  -nodes
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>-nodes 是忽略密码,方便使用，但是请注意，这可能会降低私钥的安全性，因为任何人都可以读取未加密的私钥。<br>
+3. 生成服务端证书</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl"> openssl req -newkey rsa:2048 -nodes -keyout server.key -out server.csr -subj <span class="s2">&#34;/CN=localhost&#34;</span> -config openssl.cnf 
+</span></span><span class="line"><span class="cl"> openssl x509 -req -in server.csr -out server.crt -CA ca.crt -CAkey ca.key -CAcreateserial -days <span class="m">365</span> -extensions v3_req -extfile openssl.cnf
+</span></span></code></pre></td></tr></table>
+</div>
+</div><ol start="4">
+<li>生成客户端证书</li>
+</ol>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">openssl req -newkey rsa:2048 -nodes -keyout client.key -out client.csr -subj <span class="s2">&#34;/CN=localhost&#34;</span> -config openssl.cnf
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">openssl x509 -req -in client.csr -out client.crt -CA ca.crt -CAkey ca.key -CAcreateserial -days <span class="m">365</span> -extensions v3_req -extfile openssl.cnf
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>最终生成的结果如下</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">➜  keys git:<span class="o">(</span>day1<span class="o">)</span> ✗ ls 
+</span></span><span class="line"><span class="cl">ca.crt      ca.key      ca.srl      client.crt  client.csr  client.key  openssl.cnf server.crt  server.csr  server.key
+</span></span></code></pre></td></tr></table>
+</div>
+</div><h2 id="测试">测试
+</h2><p>我们定义一个最简单的grpc接口</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-proto" data-lang="proto"><span class="line"><span class="cl"><span class="c1">// helloworld.proto  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="n">syntax</span> <span class="o">=</span> <span class="s">&#34;proto3&#34;</span><span class="p">;</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="k">option</span> <span class="n">go_package</span> <span class="o">=</span> <span class="s">&#34;./api;api&#34;</span><span class="p">;</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kn">package</span> <span class="nn">api</span><span class="p">;</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="c1">// The greeting service definition.  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">service</span> <span class="n">Greeter</span> <span class="p">{</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="c1">// Sends a greeting  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>  <span class="k">rpc</span> <span class="n">SayHello</span> <span class="p">(</span><span class="n">HelloRequest</span><span class="p">)</span> <span class="k">returns</span> <span class="p">(</span><span class="n">HelloReply</span><span class="p">)</span> <span class="p">{}</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="c1">// The request message containing the user&#39;s name.  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">message</span> <span class="nc">HelloRequest</span> <span class="p">{</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="kt">string</span> <span class="n">name</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="c1">// The response message containing the greetings  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">message</span> <span class="nc">HelloReply</span> <span class="p">{</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="kt">string</span> <span class="kd">message</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span><span class="err">
+</span></span></span></code></pre></td></tr></table>
+</div>
+</div><h3 id="服务端实现">服务端实现
+</h3><div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span><span class="lnt">25
+</span><span class="lnt">26
+</span><span class="lnt">27
+</span><span class="lnt">28
+</span><span class="lnt">29
+</span><span class="lnt">30
+</span><span class="lnt">31
+</span><span class="lnt">32
+</span><span class="lnt">33
+</span><span class="lnt">34
+</span><span class="lnt">35
+</span><span class="lnt">36
+</span><span class="lnt">37
+</span><span class="lnt">38
+</span><span class="lnt">39
+</span><span class="lnt">40
+</span><span class="lnt">41
+</span><span class="lnt">42
+</span><span class="lnt">43
+</span><span class="lnt">44
+</span><span class="lnt">45
+</span><span class="lnt">46
+</span><span class="lnt">47
+</span><span class="lnt">48
+</span><span class="lnt">49
+</span><span class="lnt">50
+</span><span class="lnt">51
+</span><span class="lnt">52
+</span><span class="lnt">53
+</span><span class="lnt">54
+</span><span class="lnt">55
+</span><span class="lnt">56
+</span><span class="lnt">57
+</span><span class="lnt">58
+</span><span class="lnt">59
+</span><span class="lnt">60
+</span><span class="lnt">61
+</span><span class="lnt">62
+</span><span class="lnt">63
+</span><span class="lnt">64
+</span><span class="lnt">65
+</span><span class="lnt">66
+</span><span class="lnt">67
+</span><span class="lnt">68
+</span><span class="lnt">69
+</span><span class="lnt">70
+</span><span class="lnt">71
+</span><span class="lnt">72
+</span><span class="lnt">73
+</span><span class="lnt">74
+</span><span class="lnt">75
+</span><span class="lnt">76
+</span><span class="lnt">77
+</span><span class="lnt">78
+</span><span class="lnt">79
+</span><span class="lnt">80
+</span><span class="lnt">81
+</span><span class="lnt">82
+</span><span class="lnt">83
+</span><span class="lnt">84
+</span><span class="lnt">85
+</span><span class="lnt">86
+</span><span class="lnt">87
+</span><span class="lnt">88
+</span><span class="lnt">89
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">main</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="p">(</span>  
+</span></span><span class="line"><span class="cl">    <span class="s">&#34;context&#34;</span>  
+</span></span><span class="line"><span class="cl">    <span class="s">&#34;crypto/tls&#34;</span>    
+</span></span><span class="line"><span class="cl">    <span class="s">&#34;crypto/x509&#34;</span>    
+</span></span><span class="line"><span class="cl">    <span class="s">&#34;fmt&#34;</span>    
+</span></span><span class="line"><span class="cl">    <span class="s">&#34;google.golang.org/genproto/googleapis/rpc/errdetails&#34;</span>    
+</span></span><span class="line"><span class="cl">    <span class="s">&#34;google.golang.org/grpc&#34;</span>    
+</span></span><span class="line"><span class="cl">    <span class="s">&#34;google.golang.org/grpc/codes&#34;</span>    
+</span></span><span class="line"><span class="cl">    <span class="s">&#34;google.golang.org/grpc/credentials&#34;</span>    
+</span></span><span class="line"><span class="cl">    <span class="s">&#34;google.golang.org/grpc/status&#34;</span>    
+</span></span><span class="line"><span class="cl">    <span class="s">&#34;hello-world/api&#34;</span>    
+</span></span><span class="line"><span class="cl">    <span class="s">&#34;io&#34;</span>    
+</span></span><span class="line"><span class="cl">    <span class="s">&#34;log&#34;</span>    
+</span></span><span class="line"><span class="cl">    <span class="s">&#34;net&#34;</span>    
+</span></span><span class="line"><span class="cl">    <span class="s">&#34;os&#34;</span>    
+</span></span><span class="line"><span class="cl">    <span class="s">&#34;time&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">server</span> <span class="kd">struct</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">api</span><span class="p">.</span><span class="nx">UnimplementedGreeterServer</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">s</span> <span class="o">*</span><span class="nx">server</span><span class="p">)</span> <span class="nf">SayHello</span><span class="p">(</span><span class="nx">ctx</span> <span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span> <span class="nx">in</span> <span class="o">*</span><span class="nx">api</span><span class="p">.</span><span class="nx">HelloRequest</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">api</span><span class="p">.</span><span class="nx">HelloReply</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Received: %v&#34;</span><span class="p">,</span> <span class="nx">in</span><span class="p">.</span><span class="nf">GetName</span><span class="p">())</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">select</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">case</span> <span class="o">&lt;-</span><span class="nx">ctx</span><span class="p">.</span><span class="nf">Done</span><span class="p">():</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;client timeout return&#34;</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">       <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nf">ErrorWithDetails</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">case</span> <span class="o">&lt;-</span><span class="nx">time</span><span class="p">.</span><span class="nf">After</span><span class="p">(</span><span class="mi">3</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">):</span>  
+</span></span><span class="line"><span class="cl">       <span class="k">return</span> <span class="o">&amp;</span><span class="nx">api</span><span class="p">.</span><span class="nx">HelloReply</span><span class="p">{</span><span class="nx">Message</span><span class="p">:</span> <span class="s">&#34;Hello &#34;</span> <span class="o">+</span> <span class="nx">in</span><span class="p">.</span><span class="nf">GetName</span><span class="p">()},</span> <span class="kc">nil</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>  
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">    <span class="nx">certificate</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">tls</span><span class="p">.</span><span class="nf">LoadX509KeyPair</span><span class="p">(</span><span class="s">&#34;./keys/server.crt&#34;</span><span class="p">,</span> <span class="s">&#34;./keys/server.key&#34;</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to load key pair: %v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// 通过CA创建证书池  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">certPool</span> <span class="o">:=</span> <span class="nx">x509</span><span class="p">.</span><span class="nf">NewCertPool</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">ca</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">os</span><span class="p">.</span><span class="nf">ReadFile</span><span class="p">(</span><span class="s">&#34;./keys/ca.crt&#34;</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to read ca: %v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">    <span class="c1">// 将来自CA的客户端证书附加到证书池  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">if</span> <span class="nx">ok</span> <span class="o">:=</span> <span class="nx">certPool</span><span class="p">.</span><span class="nf">AppendCertsFromPEM</span><span class="p">(</span><span class="nx">ca</span><span class="p">);</span> <span class="p">!</span><span class="nx">ok</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to append ca certificate&#34;</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">    <span class="nx">opts</span> <span class="o">:=</span> <span class="p">[]</span><span class="nx">grpc</span><span class="p">.</span><span class="nx">ServerOption</span><span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">grpc</span><span class="p">.</span><span class="nf">Creds</span><span class="p">(</span> <span class="c1">// 为所有传入的连接启用TLS  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>          <span class="nx">credentials</span><span class="p">.</span><span class="nf">NewTLS</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">tls</span><span class="p">.</span><span class="nx">Config</span><span class="p">{</span>  
+</span></span><span class="line"><span class="cl">             <span class="nx">ClientAuth</span><span class="p">:</span>   <span class="nx">tls</span><span class="p">.</span><span class="nx">RequireAndVerifyClientCert</span><span class="p">,</span>  
+</span></span><span class="line"><span class="cl">             <span class="nx">Certificates</span><span class="p">:</span> <span class="p">[]</span><span class="nx">tls</span><span class="p">.</span><span class="nx">Certificate</span><span class="p">{</span><span class="nx">certificate</span><span class="p">},</span>  
+</span></span><span class="line"><span class="cl">             <span class="nx">ClientCAs</span><span class="p">:</span>    <span class="nx">certPool</span><span class="p">,</span>  
+</span></span><span class="line"><span class="cl">          <span class="p">},</span>  
+</span></span><span class="line"><span class="cl">          <span class="p">)),</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">    <span class="nx">listen</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">net</span><span class="p">.</span><span class="nf">Listen</span><span class="p">(</span><span class="s">&#34;tcp&#34;</span><span class="p">,</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;0.0.0.0:%d&#34;</span><span class="p">,</span> <span class="mi">50051</span><span class="p">))</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;failed to listen %d port&#34;</span><span class="p">,</span> <span class="mi">50051</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// 通过传入的TLS服务器凭证创建新的gRPC服务实例  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">s</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">NewServer</span><span class="p">(</span><span class="nx">opts</span><span class="o">...</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">api</span><span class="p">.</span><span class="nf">RegisterGreeterServer</span><span class="p">(</span><span class="nx">s</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">server</span><span class="p">{})</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;server listening at %v&#34;</span><span class="p">,</span> <span class="nx">listen</span><span class="p">.</span><span class="nf">Addr</span><span class="p">())</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">s</span><span class="p">.</span><span class="nf">Serve</span><span class="p">(</span><span class="nx">listen</span><span class="p">);</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to serve: %v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">ErrorWithDetails</span><span class="p">()</span> <span class="kt">error</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">st</span> <span class="o">:=</span> <span class="nx">status</span><span class="p">.</span><span class="nf">Newf</span><span class="p">(</span><span class="nx">codes</span><span class="p">.</span><span class="nx">Internal</span><span class="p">,</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;something went wrong: %v&#34;</span><span class="p">,</span> <span class="s">&#34;api.Getter&#34;</span><span class="p">))</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">v</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">errdetails</span><span class="p">.</span><span class="nx">PreconditionFailure_Violation</span><span class="p">{</span> <span class="c1">//errDetails  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>       <span class="nx">Type</span><span class="p">:</span>        <span class="s">&#34;test&#34;</span><span class="p">,</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">Subject</span><span class="p">:</span>     <span class="s">&#34;12&#34;</span><span class="p">,</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">Description</span><span class="p">:</span> <span class="s">&#34;32&#34;</span><span class="p">,</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">br</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">errdetails</span><span class="p">.</span><span class="nx">PreconditionFailure</span><span class="p">{}</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">br</span><span class="p">.</span><span class="nx">Violations</span> <span class="p">=</span> <span class="nb">append</span><span class="p">(</span><span class="nx">br</span><span class="p">.</span><span class="nx">Violations</span><span class="p">,</span> <span class="nx">v</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">st</span><span class="p">,</span> <span class="nx">_</span> <span class="p">=</span> <span class="nx">st</span><span class="p">.</span><span class="nf">WithDetails</span><span class="p">(</span><span class="nx">br</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">st</span><span class="p">.</span><span class="nf">Err</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>我们直接运行服务端 <code>go run main.go</code></p>
+<h3 id="客户端">客户端
+</h3><p>首先我们使用一个不带证书的请求</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">Test_server_SayHello_No_Cert</span><span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">conn</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">Dial</span><span class="p">(</span><span class="s">&#34;localhost:50051&#34;</span><span class="p">,</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">WithTransportCredentials</span><span class="p">(</span><span class="nx">insecure</span><span class="p">.</span><span class="nf">NewCredentials</span><span class="p">()))</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Connect to %s failed&#34;</span><span class="p">,</span> <span class="s">&#34;localhost:50051&#34;</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nx">conn</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">    <span class="nx">client</span> <span class="o">:=</span> <span class="nx">api</span><span class="p">.</span><span class="nf">NewGreeterClient</span><span class="p">(</span><span class="nx">conn</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// 创建带有超时时间的上下文, cancel可以取消上下文  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(),</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="o">*</span><span class="mi">5</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nf">cancel</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// 业务代码处理部分 ...    r, err := client.SayHello(ctx, &amp;api.HelloRequest{Name: &#34;Hello&#34;})  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Failed to greet, error: %v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Greeting: %v&#34;</span><span class="p">,</span> <span class="nx">r</span><span class="p">.</span><span class="nf">GetMessage</span><span class="p">())</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// Set up a connection to the server.  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Greeting: %s&#34;</span><span class="p">,</span> <span class="nx">r</span><span class="p">.</span><span class="nf">GetMessage</span><span class="p">())</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>输出</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">2024/05/12 19:18:51 Failed to greet, error: rpc error: <span class="nv">code</span> <span class="o">=</span> Unavailable <span class="nv">desc</span> <span class="o">=</span> connection error: <span class="nv">desc</span> <span class="o">=</span> <span class="s2">&#34;error reading server preface: EOF&#34;</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>服务不可用</p>
+<p>我们再使用一个携带证书的请请求</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span><span class="lnt">25
+</span><span class="lnt">26
+</span><span class="lnt">27
+</span><span class="lnt">28
+</span><span class="lnt">29
+</span><span class="lnt">30
+</span><span class="lnt">31
+</span><span class="lnt">32
+</span><span class="lnt">33
+</span><span class="lnt">34
+</span><span class="lnt">35
+</span><span class="lnt">36
+</span><span class="lnt">37
+</span><span class="lnt">38
+</span><span class="lnt">39
+</span><span class="lnt">40
+</span><span class="lnt">41
+</span><span class="lnt">42
+</span><span class="lnt">43
+</span><span class="lnt">44
+</span><span class="lnt">45
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">Test_server_SayHello</span><span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">certificate</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">tls</span><span class="p">.</span><span class="nf">LoadX509KeyPair</span><span class="p">(</span><span class="s">&#34;./keys/client.crt&#34;</span><span class="p">,</span> <span class="s">&#34;./keys/client.key&#34;</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to load client key pair, %v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">    <span class="nx">certPool</span> <span class="o">:=</span> <span class="nx">x509</span><span class="p">.</span><span class="nf">NewCertPool</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">ca</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">os</span><span class="p">.</span><span class="nf">ReadFile</span><span class="p">(</span><span class="s">&#34;./keys/ca.crt&#34;</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to read %s, error: %v&#34;</span><span class="p">,</span> <span class="s">&#34;./keys/ca.crt&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">ok</span> <span class="o">:=</span> <span class="nx">certPool</span><span class="p">.</span><span class="nf">AppendCertsFromPEM</span><span class="p">(</span><span class="nx">ca</span><span class="p">);</span> <span class="p">!</span><span class="nx">ok</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to append ca certs&#34;</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">    <span class="nx">opts</span> <span class="o">:=</span> <span class="p">[]</span><span class="nx">grpc</span><span class="p">.</span><span class="nx">DialOption</span><span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">grpc</span><span class="p">.</span><span class="nf">WithTransportCredentials</span><span class="p">(</span><span class="nx">credentials</span><span class="p">.</span><span class="nf">NewTLS</span><span class="p">(</span>  
+</span></span><span class="line"><span class="cl">          <span class="o">&amp;</span><span class="nx">tls</span><span class="p">.</span><span class="nx">Config</span><span class="p">{</span>  
+</span></span><span class="line"><span class="cl">             <span class="nx">ServerName</span><span class="p">:</span>   <span class="s">&#34;localhost&#34;</span><span class="p">,</span>  
+</span></span><span class="line"><span class="cl">             <span class="nx">Certificates</span><span class="p">:</span> <span class="p">[]</span><span class="nx">tls</span><span class="p">.</span><span class="nx">Certificate</span><span class="p">{</span><span class="nx">certificate</span><span class="p">},</span>  
+</span></span><span class="line"><span class="cl">             <span class="nx">RootCAs</span><span class="p">:</span>      <span class="nx">certPool</span><span class="p">,</span>  
+</span></span><span class="line"><span class="cl">          <span class="p">})),</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">    <span class="c1">// conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(insecure.NewCredentials()))  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">conn</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">Dial</span><span class="p">(</span><span class="s">&#34;localhost:50051&#34;</span><span class="p">,</span> <span class="nx">opts</span><span class="o">...</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Connect to %s failed&#34;</span><span class="p">,</span> <span class="s">&#34;localhost:50051&#34;</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nx">conn</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">    <span class="nx">client</span> <span class="o">:=</span> <span class="nx">api</span><span class="p">.</span><span class="nf">NewGreeterClient</span><span class="p">(</span><span class="nx">conn</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// 创建带有超时时间的上下文, cancel可以取消上下文  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(),</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="o">*</span><span class="mi">5</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nf">cancel</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// 业务代码处理部分 ...    r, err := client.SayHello(ctx, &amp;api.HelloRequest{Name: &#34;Hello&#34;})  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Failed to greet, error: %v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Greeting: %v&#34;</span><span class="p">,</span> <span class="nx">r</span><span class="p">.</span><span class="nf">GetMessage</span><span class="p">())</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// Set up a connection to the server.  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Greeting: %s&#34;</span><span class="p">,</span> <span class="nx">r</span><span class="p">.</span><span class="nf">GetMessage</span><span class="p">())</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>输出</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl"><span class="o">===</span> RUN   Test_server_SayHello
+</span></span><span class="line"><span class="cl">2024/05/12 19:20:17 Greeting: Hello Hello
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>总结</p>
+<ol>
+<li>我们可以使用tls实现gRPC 的加密通信，</li>
+<li>从go1.15 开始，go不建议使用CA而是使用SAN证书</li>
+</ol>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/zh-cn/tags/golang/">Golang</a>
+        
+            <a href="/zh-cn/tags/tech/">Tech</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>true</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            最后更新于 Jun 29, 2024 21:41 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+<aside class="related-content--wrapper">
+    <h2 class="section-title">相关文章</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/%E5%88%86%E5%B8%83%E5%BC%8F%E5%9F%BA%E7%9F%B3%E7%AE%97%E6%B3%951-%E4%B8%80%E8%87%B4%E6%80%A7hash/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/06/f3b53488c2407a75d85406be58526010.png" loading="lazy" data-key="" data-hash="https://images.yixiao9206.cn/blog-images/2024/06/f3b53488c2407a75d85406be58526010.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">分布式基石算法1:  一致性hash</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/%E8%A7%A3%E5%AF%86go-empty-struct/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/06/c78d096394f1791445b7c10f88dd0378.jpg" loading="lazy" data-key="" data-hash="https://images.yixiao9206.cn/blog-images/2024/06/c78d096394f1791445b7c10f88dd0378.jpg"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">解密go: empty struct</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/%E6%B7%B1%E5%85%A5-go-%E4%B8%AD%E5%90%84%E4%B8%AA%E9%AB%98%E6%80%A7%E8%83%BD-json-%E8%A7%A3%E6%9E%90%E5%BA%93/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">深入 Go 中各个高性能 JSON 解析库</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/go-1.23-new-iter-package/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 1.23: 新包 Iter</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/golang-1.23-%E6%96%B0%E7%9A%84-unique-%E5%8C%85/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/06/0a8a9a271b2db6d5922f8e58e589b187.png" loading="lazy" data-key="" data-hash="https://images.yixiao9206.cn/blog-images/2024/06/0a8a9a271b2db6d5922f8e58e589b187.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Golang 1.23: 新的 unique 包</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+     
+    
+        
+    <script src="//cdn.jsdelivr.net/npm/twikoo@1.6.21/dist/twikoo.all.min.js"></script>
+<div id="tcomment"></div>
+<style>
+    .twikoo {
+        background-color: var(--card-background);
+        border-radius: var(--card-border-radius);
+        box-shadow: var(--shadow-l1);
+        padding: var(--card-padding);
+    }
+    :root[data-scheme="dark"] {
+        --twikoo-body-text-color-main: rgba(255, 255, 255, 0.9);
+        --twikoo-body-text-color: rgba(255, 255, 255, 0.7);
+    }
+    .twikoo .el-input-group__prepend,
+    .twikoo .tk-action-icon,
+    .twikoo .tk-submit-action-icon,
+    .twikoo .tk-time,
+    .twikoo .tk-comments-no,
+    .twikoo .tk-comments-count {
+        color: var(--twikoo-body-text-color);
+    }
+    .twikoo .el-input__inner,
+    .twikoo .el-textarea__inner,
+    .twikoo .tk-preview-container,
+    .twikoo .tk-content,
+    .twikoo .tk-nick,
+    .twikoo .tk-send {
+        color: var(--twikoo-body-text-color-main);
+    }
+    .twikoo .el-button{
+        color: var(--twikoo-body-text-color)!important;
+    }
+    .twikoo .el-input__count {
+        color: var(--twikoo-body-text-color) !important;
+    }
+    .OwO .OwO-body {
+        background-color: var(--body-background) !important;
+        color: var(--body-text-color) !important;
+    }
+</style><script>
+    twikoo.init({
+        envId: 'https:\/\/twikoo.yixiao9206.cn',
+        el: '#tcomment',lang: 'en',})
+</script>
+
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2024 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+    </section>
+    
+     	
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>
