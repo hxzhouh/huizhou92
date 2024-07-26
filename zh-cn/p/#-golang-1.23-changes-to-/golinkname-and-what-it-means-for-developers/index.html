@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="zh-cn" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="上周 go1.23 已经进入冻结期了，应该不会再添加新功能，相应的已经添加了的功能 也不太可能会被移除。 这正好可以让我们提前尝鲜这些即将到来的新特性。 https://groups.google.com/g/golang-dev/c/vXE304_MnKM This article is first published in the medium MPP plan. If you are a medium user, please follow me in medium. Thank you very much. 今天要说的就是1.23中对//go:linkname指令的变更。 相关讨论的issue 在这里： https://github.com/golang/go/issues/67401 TL;DR //go:linkname指令官方并不推荐使用，且不保证任何向前或者向后兼容性，因此明智的做法是尽量别用 牢记这一点之后，我们可以接着往下看了。至于为啥和“我”也就是本文的作者有关，我们先看完新版本带来的新变化再说。 linkname指令是做什么的 简单的说，linkname指令用于向编译器和链接器传递信息。具体的含义根据用法可以分为三类。 第一类叫做“pull”，意思是拉取，使用方式如下： 1 2 3 4 5 6 import _ &#34;unsafe&#34; // 必须有这行才能用linkname import _ &#34;fmt&#34; // 被拉取的包需要显式导入（除了runtime包） //go:linkname my_func fmt.Println func my_func(...any) (n int, err error) 这种用法的指令格式是//go:linkname &lt;指令下方的只有声明的函数或包级别变量名&gt; &lt;本包或者其他包中的有完整定义的函数或变量&gt;。 这个指令的作用就是告诉编译器和连接器，my_func的函数体直接使用fmt.Println的，my_func类似fmt.Println的别名，和它共享同一份代码，就像把指令第二个参数指定的函数和变量拉取下来给第一个参数使用一样。">
+<title>Golang 1.23：`//go:linkname` 的变更及其对开发人员的意义</title>
+
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/%23-golang-1.23-changes-to-/golinkname-and-what-it-means-for-developers/'>
+
+<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="Golang 1.23：`//go:linkname` 的变更及其对开发人员的意义">
+<meta property='og:description' content="上周 go1.23 已经进入冻结期了，应该不会再添加新功能，相应的已经添加了的功能 也不太可能会被移除。 这正好可以让我们提前尝鲜这些即将到来的新特性。 https://groups.google.com/g/golang-dev/c/vXE304_MnKM This article is first published in the medium MPP plan. If you are a medium user, please follow me in medium. Thank you very much. 今天要说的就是1.23中对//go:linkname指令的变更。 相关讨论的issue 在这里： https://github.com/golang/go/issues/67401 TL;DR //go:linkname指令官方并不推荐使用，且不保证任何向前或者向后兼容性，因此明智的做法是尽量别用 牢记这一点之后，我们可以接着往下看了。至于为啥和“我”也就是本文的作者有关，我们先看完新版本带来的新变化再说。 linkname指令是做什么的 简单的说，linkname指令用于向编译器和链接器传递信息。具体的含义根据用法可以分为三类。 第一类叫做“pull”，意思是拉取，使用方式如下： 1 2 3 4 5 6 import _ &#34;unsafe&#34; // 必须有这行才能用linkname import _ &#34;fmt&#34; // 被拉取的包需要显式导入（除了runtime包） //go:linkname my_func fmt.Println func my_func(...any) (n int, err error) 这种用法的指令格式是//go:linkname &lt;指令下方的只有声明的函数或包级别变量名&gt; &lt;本包或者其他包中的有完整定义的函数或变量&gt;。 这个指令的作用就是告诉编译器和连接器，my_func的函数体直接使用fmt.Println的，my_func类似fmt.Println的别名，和它共享同一份代码，就像把指令第二个参数指定的函数和变量拉取下来给第一个参数使用一样。">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/%23-golang-1.23-changes-to-/golinkname-and-what-it-means-for-developers/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:tag' content='go1_23' /><meta property='article:published_time' content='2024-05-27T09:37:25&#43;08:00'/><meta property='article:modified_time' content='2024-05-27T09:37:22&#43;08:00'/>
+<meta name="twitter:site" content="@https://x.com/piaopiaopig">
+    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="Golang 1.23：`//go:linkname` 的变更及其对开发人员的意义">
+<meta name="twitter:description" content="上周 go1.23 已经进入冻结期了，应该不会再添加新功能，相应的已经添加了的功能 也不太可能会被移除。 这正好可以让我们提前尝鲜这些即将到来的新特性。 https://groups.google.com/g/golang-dev/c/vXE304_MnKM This article is first published in the medium MPP plan. If you are a medium user, please follow me in medium. Thank you very much. 今天要说的就是1.23中对//go:linkname指令的变更。 相关讨论的issue 在这里： https://github.com/golang/go/issues/67401 TL;DR //go:linkname指令官方并不推荐使用，且不保证任何向前或者向后兼容性，因此明智的做法是尽量别用 牢记这一点之后，我们可以接着往下看了。至于为啥和“我”也就是本文的作者有关，我们先看完新版本带来的新变化再说。 linkname指令是做什么的 简单的说，linkname指令用于向编译器和链接器传递信息。具体的含义根据用法可以分为三类。 第一类叫做“pull”，意思是拉取，使用方式如下： 1 2 3 4 5 6 import _ &#34;unsafe&#34; // 必须有这行才能用linkname import _ &#34;fmt&#34; // 被拉取的包需要显式导入（除了runtime包） //go:linkname my_func fmt.Println func my_func(...any) (n int, err error) 这种用法的指令格式是//go:linkname &lt;指令下方的只有声明的函数或包级别变量名&gt; &lt;本包或者其他包中的有完整定义的函数或变量&gt;。 这个指令的作用就是告诉编译器和连接器，my_func的函数体直接使用fmt.Println的，my_func类似fmt.Println的别名，和它共享同一份代码，就像把指令第二个参数指定的函数和变量拉取下来给第一个参数使用一样。">
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="切换菜单">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/zh-cn/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+                    <span class="emoji">😄</span>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/zh-cn">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/zh-cn/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>主页</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/%E5%85%B3%E4%BA%8E/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>关于</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/categories/newsletter/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>NewsLetter</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>归档</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>搜索</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" >English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" selected>中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>暗色模式</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">目录</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#linkname指令是做什么的">linkname指令是做什么的</a></li>
+    <li><a href="#linkname带来的隐患">linkname带来的隐患</a></li>
+    <li><a href="#linkname的正面作用">linkname的正面作用</a></li>
+    <li><a href="#golang123对linkname指令的改动">golang1.23对linkname指令的改动</a></li>
+    <li><a href="#linkname指令今后的发展">linkname指令今后的发展</a></li>
+    <li><a href="#总结">总结</a></li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="main-article">
+    <header class="article-header">
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/zh-cn/categories/tech/" style="background-color: #2a9d8f; color: #fff;">
+                tech
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/zh-cn/p/%23-golang-1.23-changes-to-/golinkname-and-what-it-means-for-developers/">Golang 1.23：`//go:linkname` 的变更及其对开发人员的意义</a>
+        </h2>
+    
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">May 27, 2024</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    阅读时长: 2 分钟
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+        <footer class="article-translations">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+            <div>
+                
+                    <a href="https://huizhou92.com/p/%23-golang-1.23-changes-to-/golinkname-and-what-it-means-for-developers/" class="link">English</a>
+                
+            </div>
+        </footer>
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <p>上周 go1.23 已经进入冻结期了，应该不会再添加新功能，相应的已经添加了的功能 也不太可能会被移除。<br>
+这正好可以让我们提前尝鲜这些即将到来的新特性。<br>
+<a class="link" href="https://groups.google.com/g/golang-dev/c/vXE304_MnKM"  target="_blank" rel="noopener"
+    >https://groups.google.com/g/golang-dev/c/vXE304_MnKM</a></p>
+<!-- more-->
+<blockquote>
+<p>This article is first published in the medium MPP plan. If you are a medium user, please follow me in <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >medium</a>. Thank you very much.</p>
+</blockquote>
+<p>今天要说的就是1.23中对<code>//go:linkname</code>指令的变更。<br>
+相关讨论的issue 在这里：<br>
+<a class="link" href="https://github.com/golang/go/issues/67401"  target="_blank" rel="noopener"
+    >https://github.com/golang/go/issues/67401</a></p>
+<p>TL;DR <strong><code>//go:linkname</code>指令官方并不推荐使用，且不保证任何向前或者向后兼容性，因此明智的做法是尽量别用</strong></p>
+<p>牢记这一点之后，我们可以接着往下看了。至于为啥和“我”也就是本文的作者有关，我们先看完新版本带来的新变化再说。</p>
+<h2 id="linkname指令是做什么的">linkname指令是做什么的
+</h2><p>简单的说，linkname指令用于向编译器和链接器传递信息。具体的含义根据用法可以分为三类。</p>
+<p>第一类叫做“pull”，意思是拉取，使用方式如下：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">import</span> <span class="nx">_</span> <span class="s">&#34;unsafe&#34;</span> <span class="c1">// 必须有这行才能用linkname
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>
+</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="nx">_</span> <span class="s">&#34;fmt&#34;</span> <span class="c1">// 被拉取的包需要显式导入（除了runtime包）
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>
+</span></span><span class="line"><span class="cl"><span class="c1">//go:linkname my_func fmt.Println
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">my_func</span><span class="p">(</span><span class="o">...</span><span class="nx">any</span><span class="p">)</span> <span class="p">(</span><span class="nx">n</span> <span class="kt">int</span><span class="p">,</span> <span class="nx">err</span> <span class="kt">error</span><span class="p">)</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>这种用法的指令格式是<code>//go:linkname &lt;指令下方的只有声明的函数或包级别变量名&gt; &lt;本包或者其他包中的有完整定义的函数或变量&gt;</code>。</p>
+<p>这个指令的作用就是告诉编译器和连接器，<code>my_func</code>的函数体直接使用<code>fmt.Println</code>的，<code>my_func</code>类似<code>fmt.Println</code>的别名，和它共享同一份代码，就像把指令第二个参数指定的函数和变量拉取下来给第一个参数使用一样。</p>
+<p>正因如此，指令下方给出的声明必须和被拉取的函数/变量完全一致，否则很容易因为类型不匹配导致panic（是的没错，除非拉取的对象不存在，否则都不会出现编译错误）。</p>
+<p>这个指令最恐怖的地方在于它能无视函数或者变量是否是export的，包私有的东西也能被拉取出来使用。因为这一点这种用法在早期的社区中很常见，比如很多人喜欢这么干：<code>//go:linkname myRand runtime.fastrand</code>，因为runtime提供了一个性能还不错的随机数实现，但没有公开出来，所以有人会用linkname指令把它导出为己所用，当然随着1.21的发布这种用法不再有任何意义了，请永远都不要去模仿。</p>
+<p>第二种用法叫做“push”，即推送。形式上是下面这样：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">import</span> <span class="nx">_</span> <span class="s">&#34;unsafe&#34;</span> <span class="c1">// 必须有这行才能用linkname
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>
+</span></span><span class="line"><span class="cl"><span class="c1">//go:linkname main.fastHandle
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">fastHandle</span><span class="p">(</span><span class="nx">input</span> <span class="nx">io</span><span class="p">.</span><span class="nx">Writer</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl"><span class="o">...</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1">// package main
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">fastHandle</span><span class="p">(</span><span class="nx">input</span> <span class="nx">io</span><span class="p">.</span><span class="nx">Writer</span><span class="p">)</span> <span class="kt">error</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1">// 后面main包中可以直接使用fastHandle
+</span></span></span><span class="line"><span class="cl"><span class="c1">// 这种情况下需要在main包下创建一个空的asm文件（通常以.s作为扩展名），以告诉编译器fastHandle的定义在别处
+</span></span></span></code></pre></td></tr></table>
+</div>
+</div><p>在这种用法中，我们只需要把函数/变量名当作第一个参数传给指令，注意需要给出想用这个函数/变量的包的名字，这里是main。同时指令声明的变量或函数必须要在同包内有完整的定义，通常推荐直接把完整定义写在linkname指令下方。</p>
+<p>这种用法是告诉编译器和链接器这个函数/变量的名字就是<code>xxx.yyy</code>，如果遇到这个函数就使用linkname指定的函数/变量的代码，这个模式下甚至能在本包定义别的包里的函数。</p>
+<p>当然这种用法的语义作用更明显，它意味着这个函数会在任何地方被使用，修改它需要小心，因为改变了函数的行为可能会让其他调用它的代码出bug；修改了函数的签名则很可能导致运行时panic；删除了这个函数则会导致代码无法编译。</p>
+<p>最后一类叫做“handshake”，即握手。他是把第一类和第二类方法结合使用：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">mypkg</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="nx">_</span> <span class="s">&#34;unsafe&#34;</span> <span class="c1">// 必须有这行才能用linkname
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>
+</span></span><span class="line"><span class="cl"><span class="c1">//go:linkname fastHandle
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">fastHandle</span><span class="p">(</span><span class="nx">input</span> <span class="nx">io</span><span class="p">.</span><span class="nx">Writer</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl"><span class="o">...</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">main</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="nx">_</span> <span class="s">&#34;unsafe&#34;</span> <span class="c1">// 必须有这行才能用linkname
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>
+</span></span><span class="line"><span class="cl"><span class="c1">//go:linkname fastHandle mypkg.fastHandle
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">fastHandle</span><span class="p">(</span><span class="nx">input</span> <span class="nx">io</span><span class="p">.</span><span class="nx">Writer</span><span class="p">)</span> <span class="kt">error</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>“pull”的一方没什么区别，但“push”的一方不用再写包名，同时用来告诉编译器函数定义在别的地方的空的asm文件也不需要了。这种就像通讯协议中的“握手”，一方告诉编译器这边允许某个函数/变量被linkname操作，另一边则明确像编译器要求它要使用某个包的某个函数/变量。</p>
+<p>通常“pull”和“push”应该成对出现，也就是你只应该使用“handshake”模式。</p>
+<p>然而不幸的是，当前（1.22）的go语言支持“pull-only”的用法，即可以随便拉取任何包里的任何函数/变量，但不需要被拉取的对象使用“push”标记自己。而被linkname拉取的一方是完全无感知的。</p>
+<p>这就导致了非常大的隐患。</p>
+<h2 id="linkname带来的隐患">linkname带来的隐患
+</h2><p>最大的隐患在于这个指令可以在不通知被拉取的packages的情况下随意使用包中私有的函数/变量。</p>
+<p>举个例子：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// pkg/mymath/mymath.go
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kn">package</span> <span class="nx">mymath</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">uintPow</span><span class="p">(</span><span class="nx">n</span> <span class="kt">uint</span><span class="p">)</span> <span class="kt">uint</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="nx">n</span><span class="o">*</span><span class="nx">n</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1">// main.go
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kn">package</span> <span class="nx">main</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="p">(</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;fmt&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">_</span> <span class="s">&#34;linkname/pkg/mymath&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">_</span> <span class="s">&#34;unsafe&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1">//go:linkname pow linkname/pkg/mymath.uintPow
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">pow</span><span class="p">(</span><span class="nx">n</span> <span class="kt">uint</span><span class="p">)</span> <span class="kt">uint</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nf">pow</span><span class="p">(</span><span class="mi">6</span><span class="p">))</span> <span class="c1">// 36
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>正常来说，<code>uintPow</code>是不可能被外部使用的，然而通过linkname指令我们直接无视了接口的公开和私有，有什么就能用什么了。</p>
+<p>这当然是非常危险的，比如我们把<code>uintPow</code>的参数类型改成string：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">mymath</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">uintPow</span><span class="p">(</span><span class="nx">n</span> <span class="kt">string</span><span class="p">)</span> <span class="kt">string</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl"><span class="k">return</span> <span class="nx">n</span> <span class="o">+</span> <span class="nx">n</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>这时候编译还是能正常编译，但运行的时候就会出现各种bug，在我的机器上表现是卡死和段错误。为什么呢？因为我们把uint强行传递了过去，但参数需要是string，类型对不上，自然会出现稀奇古怪的bug。这种在别的语言里是严重的类型相关的内存错误。</p>
+<p>另外如果我们直接删了<code>uintPow</code>或者给他改个名，链接器会在编译期间报错：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-bash" data-lang="bash"><span class="line"><span class="cl">$ go build
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># linkname</span>
+</span></span><span class="line"><span class="cl">main.main: relocation target linkname/pkg/mymath.uintPow not defined
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>而且我们导出的是私有函数，通常没人会认为自己写的私有级别的帮助函数会被导出到包外并被使用，因此在开发时大家都是保证公开接口的稳定性，私有的函数/变量是随时可以被大规模修改甚至删除的。</p>
+<p>而linkname将这种在别的语言里最基本的规矩给粉碎了。</p>
+<p>而且事实上也是如此，从1.18开始几乎每个版本都有因为编译器或者标准库内部的私有函数被修改/删除从而导致某些第三方库在新版本无法使用的问题，因为这些库在内部悄悄用<code>//go:linkname</code>用了一些未公开的功能。最近一次发生在广泛使用的知名json库上类似的问题可以在<a class="link" href="https://github.com/goccy/go-json/issues/506"  target="_blank" rel="noopener"
+    >这里</a>看到。</p>
+<h2 id="linkname的正面作用">linkname的正面作用
+</h2><p>既然这个指令如此危险，为什么还一直存在呢？答案是有不得不用的理由，其中一个就在启动go程序的时候。</p>
+<p>我们来看下go的runtime里是怎么用linkname的：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// runtime/proc.go
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>
+</span></span><span class="line"><span class="cl"><span class="c1">//go:linkname main_main main.main
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">main_main</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1">// runtime.main
+</span></span></span><span class="line"><span class="cl"><span class="c1">// 所有go程序的入口
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="c1">// 初始化runtime
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="c1">// 调用main.main
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="nx">fn</span> <span class="o">:=</span> <span class="nx">main_main</span> <span class="c1">// make an indirect call, as the linker doesn&#39;t know the address of the main package when laying down the runtime
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="nf">fn</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">	<span class="c1">// main退出后做清理工作
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>因为程序的入口在runtime里（要初始化runtime，比如gc等），所以入口函数必须在runtime包里。而我们又需要调用用户定义在main包里的main函数，但main包不能被import，因此只能靠linkname指令让链接器绕过所有编译器附加的限制来调用main函数。</p>
+<p>这是目前在go自身的源代码里看到的唯一一处不得不使用“pull-only”模式的地方。</p>
+<p>另外“handshake”模式也有存在的必要性，因为像runtime和reflect需要共享很多实现上的细节，因此reflect作为pull的一方，runtime作为push的一方，可以极大减少代码维护的复杂度。</p>
+<p>除了上述这些情况，绝大数linkname的使用都可以算作_abuse_。</p>
+<h2 id="golang123对linkname指令的改动">golang1.23对linkname指令的改动
+</h2><p>鉴于上述情况，golang核心团队决定限制linkname的使用。</p>
+<p>第一个改动是标准库里新添加的包全部禁止使用linkname导出其中的内容，目前是通过黑名单实现的，1.23中新添加的几个包以及它们的internal依赖都在名单上，这样可以防止已有的linkname问题继续扩大。这对已有的代码也是完全无害的。</p>
+<p>第二个变更时添加了新的ldflags: <code>-checklinkname=1</code>。1代表开启对linkname的限制，0代表维持1.22的行为不变。目前默认是0，但官方决定在1.23发布时默认值为1开启限制。个人建议尽量不要关闭这个限制。这个限制眼下只针对标准库，但按官方的说法效果好的话以后所有的代码不管标准库还是第三方都会启用限制。</p>
+<p>最后也是最大的变动，禁止对标准库的 “pull-only” linkname指令，但允许“handshake”模式。</p>
+<p>虽然go从来不保证linkname的向后兼容性，但这样还是会大量较大的破坏，因此官方已经对常见的go第三方库做了扫描，会把一些经常被人用linkname拉取的接口改成符合“handshake”模式的形式，这种改动只用加一行指令即可。而且该限制目前只针对标准库，其他第三方库暂时不受影响。</p>
+<p>因为这个变更，下面的代码在1.23是无法编译通过的：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span><span class="lnt">8
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">main</span>
+</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="nx">_</span> <span class="s">&#34;unsafe&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="c1">//go:linkname corostart runtime.corostart
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">corostart</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl"><span class="nf">corostart</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>因为<code>runtime.corostart</code>并不符合handshake模式，所以对它的linkname被禁止了：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-bash" data-lang="bash"><span class="line"><span class="cl">$ go version
+</span></span><span class="line"><span class="cl">go version devel go1.23-13d36a9b46 Wed May <span class="m">27</span> 21:51:49 <span class="m">2024</span> +0000 windows/amd64
+</span></span><span class="line"><span class="cl">$ go build -ldflags<span class="o">=</span>-checklinkname<span class="o">=</span><span class="m">1</span>
+</span></span><span class="line"><span class="cl"><span class="c1"># linkname</span>
+</span></span><span class="line"><span class="cl">link: main: invalid reference to runtime.corostart
+</span></span></code></pre></td></tr></table>
+</div>
+</div><h2 id="linkname指令今后的发展">linkname指令今后的发展
+</h2><p>大趋势肯定是以后只允许handshake模式。不过作为过渡目前还是允许push模式的，并且官方应该会在进入功能冻结后把之前说的扫描到的常用的内部函数添加上linkname指令。</p>
+<p>这里比较重要的是作为开发者的我们应该怎么办：</p>
+<ol>
+<li>1.23发布之后或者现在就开始利用<code>-checklinkname=1</code>排查代码，及时清除不必要的linkname指令。</li>
+<li>如果linkname指令非用不可，建议马上提issue或者熟悉go开发流程的立刻提pr补上handshake模式需要的指令，不过我不怎么推荐这种做法，因为内部api尤其是runtime以外的库的本来就不该随便被导出使用，没有一个强力的能说服所有人的理由，这些issue和pr多半不会被接受。</li>
+<li>向官方提案，尝试把你要用的私有api变成公开接口，这一步难度也很高，私有api之所以当初不公开一定是有原因的，现在再想公开可能性也不高。</li>
+<li>你的追求比较低，只要代码能跑就行，那可以在构建脚本里加上<code>-ldflags=-checklinkname=0</code>关闭限制，这样也许能岁月静好几个版本，直到某一天程序突然没法编译或者运行了一半被莫名其妙的panic打断。</li>
+</ol>
+<p>4是万不得已时的保底方案，按优先度我推荐1 &gt; 3 &gt; 2的顺序去适配go1.23。2和3不仅仅适用于go标准库，常用的第三方库也可以。通过这些适配工作说不定也有机会让你成为go或者知名第三方库的贡献者。</p>
+<p>从现在开始完全是来得及的，毕竟离1.23的第一个测试版发布还有一个月左右，离正式版发布还有两个月。而且方案2的修改并不算作新功能，不受功能冻结的影响。</p>
+<p>当然，大部分开发者应该不用担心，比较linkname的使用是少数，一些主动使用linkname的库比如quic-go也知道兼容性问题，很小心地做了不同版本的适配，加上官方承诺的兜底这一对linkname指令的改动的影响应该比想象中小，但是是提高代码安全性的一大步。</p>
+<h2 id="总结">总结
+</h2><p>最后总结就一句话：没事别用<code>//go:linkname</code> 可能会留下不可预知的隐患。</p>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/zh-cn/tags/golang/">Golang</a>
+        
+            <a href="/zh-cn/tags/go1_23/">Go1_23</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            最后更新于 May 27, 2024 09:37 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+<aside class="related-content--wrapper">
+    <h2 class="section-title">相关文章</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/grpc-%E4%BD%BF%E7%94%A8%E8%87%AA%E7%AD%BE%E5%90%8D%E8%AF%81%E4%B9%A6san%E5%BB%BA%E7%AB%8Btls-%E8%BF%9E%E6%8E%A5.zh-cn/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/05/4976a194a8daca00ff6991a866c2ee53.png" loading="lazy" data-key="" data-hash="https://images.yixiao9206.cn/blog-images/2024/05/4976a194a8daca00ff6991a866c2ee53.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">gRPC 使用自签名证书SAN建立TLS 连接.zh-cn</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/%E5%88%86%E5%B8%83%E5%BC%8F%E5%9F%BA%E7%9F%B3%E7%AE%97%E6%B3%951-%E4%B8%80%E8%87%B4%E6%80%A7hash/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/06/f3b53488c2407a75d85406be58526010.png" loading="lazy" data-key="" data-hash="https://images.yixiao9206.cn/blog-images/2024/06/f3b53488c2407a75d85406be58526010.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">分布式基石算法1:  一致性hash</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/%E8%A7%A3%E5%AF%86go-empty-struct/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/06/c78d096394f1791445b7c10f88dd0378.jpg" loading="lazy" data-key="" data-hash="https://images.yixiao9206.cn/blog-images/2024/06/c78d096394f1791445b7c10f88dd0378.jpg"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">解密go: empty struct</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/%E6%B7%B1%E5%85%A5-go-%E4%B8%AD%E5%90%84%E4%B8%AA%E9%AB%98%E6%80%A7%E8%83%BD-json-%E8%A7%A3%E6%9E%90%E5%BA%93/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">深入 Go 中各个高性能 JSON 解析库</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/go-1.23-new-iter-package/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 1.23: 新包 Iter</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+     
+    
+        
+    <script src="//cdn.jsdelivr.net/npm/twikoo@1.6.21/dist/twikoo.all.min.js"></script>
+<div id="tcomment"></div>
+<style>
+    .twikoo {
+        background-color: var(--card-background);
+        border-radius: var(--card-border-radius);
+        box-shadow: var(--shadow-l1);
+        padding: var(--card-padding);
+    }
+    :root[data-scheme="dark"] {
+        --twikoo-body-text-color-main: rgba(255, 255, 255, 0.9);
+        --twikoo-body-text-color: rgba(255, 255, 255, 0.7);
+    }
+    .twikoo .el-input-group__prepend,
+    .twikoo .tk-action-icon,
+    .twikoo .tk-submit-action-icon,
+    .twikoo .tk-time,
+    .twikoo .tk-comments-no,
+    .twikoo .tk-comments-count {
+        color: var(--twikoo-body-text-color);
+    }
+    .twikoo .el-input__inner,
+    .twikoo .el-textarea__inner,
+    .twikoo .tk-preview-container,
+    .twikoo .tk-content,
+    .twikoo .tk-nick,
+    .twikoo .tk-send {
+        color: var(--twikoo-body-text-color-main);
+    }
+    .twikoo .el-button{
+        color: var(--twikoo-body-text-color)!important;
+    }
+    .twikoo .el-input__count {
+        color: var(--twikoo-body-text-color) !important;
+    }
+    .OwO .OwO-body {
+        background-color: var(--body-background) !important;
+        color: var(--body-text-color) !important;
+    }
+</style><script>
+    twikoo.init({
+        envId: 'https:\/\/twikoo.yixiao9206.cn',
+        el: '#tcomment',lang: 'en',})
+</script>
+
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2024 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+    </section>
+    
+     	
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>

@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Why is panic worth thinking about? When learning Go, many questions often arise. Sometimes, what seems to be understood is actually not. What exactly is panic? It seems obvious, but it can be difficult to explain. I&rsquo;m going to use two articles to understand the concept of panic thoroughly: Posture: Understanding the origins of panic. It doesn&rsquo;t just come out of nowhere. There are three main postures to consider. Principles: Fully comprehending the internal workings of panic and understanding its deeper principles.">
+<title>Decrypt Go: Three reasons for panic</title>
+
+<link rel='canonical' href='https://huizhou92.com/p/decrypt-go-three-reasons-for-panic/'>
+
+<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="Decrypt Go: Three reasons for panic">
+<meta property='og:description' content="Why is panic worth thinking about? When learning Go, many questions often arise. Sometimes, what seems to be understood is actually not. What exactly is panic? It seems obvious, but it can be difficult to explain. I&rsquo;m going to use two articles to understand the concept of panic thoroughly: Posture: Understanding the origins of panic. It doesn&rsquo;t just come out of nowhere. There are three main postures to consider. Principles: Fully comprehending the internal workings of panic and understanding its deeper principles.">
+<meta property='og:url' content='https://huizhou92.com/p/decrypt-go-three-reasons-for-panic/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:tag' content='panic' /><meta property='article:published_time' content='2024-06-27T15:45:59&#43;08:00'/><meta property='article:modified_time' content='2024-06-27T15:45:57&#43;08:00'/><meta property='og:image' content='https://images.yixiao9206.cn/blog-images/2024/06/06b79c29b3273fa4c8fe8e96e0e0a603.png' />
+<meta name="twitter:site" content="@https://x.com/piaopiaopig">
+    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="Decrypt Go: Three reasons for panic">
+<meta name="twitter:description" content="Why is panic worth thinking about? When learning Go, many questions often arise. Sometimes, what seems to be understood is actually not. What exactly is panic? It seems obvious, but it can be difficult to explain. I&rsquo;m going to use two articles to understand the concept of panic thoroughly: Posture: Understanding the origins of panic. It doesn&rsquo;t just come out of nowhere. There are three main postures to consider. Principles: Fully comprehending the internal workings of panic and understanding its deeper principles."><meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content='https://images.yixiao9206.cn/blog-images/2024/06/06b79c29b3273fa4c8fe8e96e0e0a603.png' />
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="Toggle Menu">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+                    <span class="emoji">😄</span>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>Home</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/about/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>About</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/categories/newsletter/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>NewsLetter</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>Archives</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>Search</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" selected>English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" >中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>Dark Mode</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">Table of contents</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#why-is-panic-worth-thinking-about">Why is panic worth thinking about?</a></li>
+    <li><a href="#the-three-postures-of-panic">The Three Postures of Panic</a>
+      <ol>
+        <li><a href="#hidden-code-by-the-compiler">Hidden Code by the Compiler</a></li>
+        <li><a href="#triggered-by-process-signal">Triggered by Process Signal</a></li>
+        <li><a href="#active-panic-by-developers">Active Panic by Developers</a></li>
+      </ol>
+    </li>
+    <li><a href="#discussing-the-essence-of-panic">Discussing the Essence of Panic</a></li>
+    <li><a href="#summary">Summary</a></li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="has-image main-article">
+    <header class="article-header">
+        <div class="article-image">
+            <a href="/p/decrypt-go-three-reasons-for-panic/">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/06/06b79c29b3273fa4c8fe8e96e0e0a603.png" loading="lazy" alt="Featured image of post Decrypt Go: Three reasons for panic" />
+                
+            </a>
+        </div>
+    
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/categories/tech/" style="background-color: #2a9d8f; color: #ffff;">
+                tech
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/p/decrypt-go-three-reasons-for-panic/">Decrypt Go: Three reasons for panic</a>
+        </h2>
+    
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Jun 27, 2024</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    7 minute read
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <h2 id="why-is-panic-worth-thinking-about">Why is panic worth thinking about?
+</h2><p>When learning Go, many questions often arise. Sometimes, what seems to be understood is actually not. What exactly is panic? It seems obvious, but it can be difficult to explain. I&rsquo;m going to use two articles to understand the concept of panic thoroughly:</p>
+<ul>
+<li>Posture: Understanding the origins of panic. It doesn&rsquo;t just come out of nowhere. There are three main postures to consider.</li>
+<li>Principles: Fully comprehending the internal workings of panic and understanding its deeper principles.</li>
+</ul>
+<!-- more-->
+<blockquote>
+<p>This article is first published in the medium MPP plan. If you are a medium user, please follow me in <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >medium</a>. Thank you very much.</p>
+</blockquote>
+<h2 id="the-three-postures-of-panic">The Three Postures of Panic
+</h2><p>When does panic occur? Let&rsquo;s start with the &ldquo;form.&rdquo; From a developer&rsquo;s perspective, panic can be categorized into active and passive.</p>
+<p><strong>Active posture</strong>:</p>
+<ul>
+<li>Developers actively call the <code>panic()</code> function.</li>
+</ul>
+<p><strong>Passive posture</strong>:</p>
+<ul>
+<li>The compiler triggers hidden code.</li>
+<li>The kernel sends a signal to the process.</li>
+</ul>
+<h3 id="hidden-code-by-the-compiler">Hidden Code by the Compiler
+</h3><p>Go is simple yet powerful, and the compiler plays a crucial role. It handles many tasks on behalf of programmers, such as logic supplementation and memory escape analysis. This includes the throwing of panics!</p>
+<p>Let&rsquo;s take a classic example: dividing by zero in integer arithmetic triggers a panic. How does this happen?</p>
+<p>Consider the following minimal code snippet:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">divzero</span><span class="p">(</span><span class="nx">a</span><span class="p">,</span> <span class="nx">b</span> <span class="kt">int</span><span class="p">)</span> <span class="kt">int</span> <span class="p">{</span> 
+</span></span><span class="line"><span class="cl">	<span class="nx">c</span> <span class="o">:=</span> <span class="nx">a</span> <span class="o">/</span> <span class="nx">b</span> 
+</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="nx">c</span> 
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>This function has a risk of division by zero. When <code>b</code> is equal to 0, the program triggers a panic and exits, as shown below:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">root@ubuntu:~/code/gopher/src/panic# ./test_zero panic: runtime error: integer divide by zero goroutine <span class="m">1</span> <span class="o">[</span>running<span class="o">]</span>: main.zero<span class="o">(</span>0x64, 0x0, 0x0<span class="o">)</span> /root/code/gopher/src/panic/test_zero.go:6 +0x52
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>Now, the question is: How does the program trigger a panic?</p>
+<p><strong>Code reveals all secrets.</strong></p>
+<p>Looking at the code, it seems simple—just one line: <code>c := a / b</code>, right?</p>
+<p>Well, it&rsquo;s actually <strong>assembly code</strong>. The hidden logic added by the compiler is not visible in the source code.</p>
+<p>By using the dlv debugger to set a breakpoint in the <code>divzero</code> function and executing <code>disassemble</code>, we can uncover the secret. Here is a snippet of the assembly code with annotations:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl"> <span class="o">(</span>dlv<span class="o">)</span> disassemble
+</span></span><span class="line"><span class="cl">TEXT main.zero<span class="o">(</span>SB<span class="o">)</span> /root/code/gopher/src/panic/test_zero.go
+</span></span><span class="line"><span class="cl">    // Check <span class="k">if</span> b is equal to <span class="m">0</span>
+</span></span><span class="line"><span class="cl">    test_zero.go:6  0x4aa3c1    4885c9          <span class="nb">test</span> rcx, rcx
+</span></span><span class="line"><span class="cl">    // If it<span class="err">&#39;</span>s not equal to 0, jump to 0x4aa3c8 and execute the instruction<span class="p">;</span> otherwise, <span class="k">continue</span> execution
+</span></span><span class="line"><span class="cl">    test_zero.go:6  0x4aa3c4    <span class="m">7502</span>            jnz 0x4aa3c8
+</span></span><span class="line"><span class="cl">    // If execution reaches this point, it means b is 0, so jump to 0x4aa3ed, which is call <span class="nv">$runtime</span>.panicdivide
+</span></span><span class="line"><span class="cl"><span class="o">=</span>&gt;  test_zero.go:6  0x4aa3c6    eb25            jmp 0x4aa3ed
+</span></span><span class="line"><span class="cl">    test_zero.go:6  0x4aa3c8    4883f9ff        cmp rcx, -0x1
+</span></span><span class="line"><span class="cl">    test_zero.go:6  0x4aa3cc    <span class="m">7407</span>            jz 0x4aa3d5
+</span></span><span class="line"><span class="cl">    test_zero.go:6  0x4aa3ce    <span class="m">4899</span>            cqo
+</span></span><span class="line"><span class="cl">    test_zero.go:6  0x4aa3d0    48f7f9          idiv rcx
+</span></span><span class="line"><span class="cl">    // ...
+</span></span><span class="line"><span class="cl">    test_zero.go:7  0x4aa3ec    c3              ret
+</span></span><span class="line"><span class="cl">    // See the magical <span class="k">function</span>?
+</span></span><span class="line"><span class="cl">    test_zero.go:6  0x4aa3ed    e8ee27f8ff      call <span class="nv">$runtime</span>.panicdivide
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>Do you see the hidden function?</p>
+<p>The compiler secretly adds an <code>if/else</code> logic and even includes the code for <code>runtime.panicdivide</code>.</p>
+<ol>
+<li>If <code>b</code> is equal to 0, it jumps to the function <code>runtime.panicdivide</code>.<br>
+Take a look at the <code>panicdivide</code> function. It&rsquo;s a simplified wrapper:</li>
+</ol>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// runtime/panic.go
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">panicdivide</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nf">panicCheck2</span><span class="p">(</span><span class="s">&#34;integer divide by zero&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="nb">panic</span><span class="p">(</span><span class="nx">divideError</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>As you can see, it calls the <code>panic()</code> function.</p>
+<p>This is how a panic is triggered when dividing by zero. It&rsquo;s not something that magically appears out of nowhere; rather, it&rsquo;s the additional logic added by the compiler to ensure that a panic is triggered when the divisor is 0.</p>
+<h3 id="triggered-by-process-signal">Triggered by Process Signal
+</h3><p>The most typical example is illegal memory access, such as accessing a nil pointer, which triggers a panic. How does this happen?</p>
+<p>Consider this minimal example:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">nilptr</span><span class="p">(</span><span class="nx">b</span> <span class="o">*</span><span class="kt">int</span><span class="p">)</span> <span class="kt">int</span> <span class="p">{</span> 
+</span></span><span class="line"><span class="cl">	<span class="nx">c</span> <span class="o">:=</span> <span class="o">*</span><span class="nx">b</span> 
+</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="nx">c</span> 
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>When calling <code>nilptr(nil)</code>, it will cause the process to exit with an exception:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">root@ubuntu:~/code/gopher/src/panic# ./test_nil panic: runtime error: invalid memory address or nil pointer dereference <span class="o">[</span>signal SIGSEGV: segmentation violation <span class="nv">code</span><span class="o">=</span>0x1 <span class="nv">addr</span><span class="o">=</span>0x0 <span class="nv">pc</span><span class="o">=</span>0x4aa3bc<span class="o">]</span> goroutine <span class="m">1</span> <span class="o">[</span>running<span class="o">]</span>: main.nilptr<span class="o">(</span>0x0, 0x0<span class="o">)</span> /root/code/gopher/src/panic/test_nil.go:6 +0x1c
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>Now, the question is: How does this panic occur?</p>
+<p>When the Go process starts, it registers the default signal handler, <code>sigtramp</code>. When the CPU encounters a 0 address, it triggers a page fault exception, indicating an illegal address. The kernel sends a <code>SIGSEGV</code> signal to the process. When this signal is received, the <code>sigtramp</code> function handles it, ultimately calling the <code>panic()</code> function:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">sigtramp <span class="o">(</span>pure assembly code<span class="o">)</span>
+</span></span><span class="line"><span class="cl">	-&gt; sigtrampgo <span class="o">(</span>signal_unix.go<span class="o">)</span>
+</span></span><span class="line"><span class="cl">		-&gt; sighandler <span class="o">(</span>signal_sighandler.go<span class="o">)</span>
+</span></span><span class="line"><span class="cl">			-&gt; preparePanic <span class="o">(</span>signal_amd64x.go<span class="o">)</span>
+</span></span><span class="line"><span class="cl">				-&gt; sigpanic <span class="o">(</span>signal_unix.go<span class="o">)</span>
+</span></span><span class="line"><span class="cl">					-&gt; panicmem
+</span></span><span class="line"><span class="cl">						-&gt; panic
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>In the <code>sigpanic</code> function, the <code>panicmem</code> function is called, which then calls the <code>panic()</code> function. This leads to Go&rsquo;s panic handling.</p>
+<p>Similar to <code>panicdivide</code>, <code>panicmem</code> is a minimal wrapper for <code>panic()</code>:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">panicmem</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nf">panicCheck2</span><span class="p">(</span><span class="s">&#34;invalid memory address or nil pointer dereference&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nb">panic</span><span class="p">(</span><span class="nx">memoryError</span><span class="p">)</span> 
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>This method triggers the panic function by using a software interrupt via a signal. It allows the Go registered signal handler to be invoked, enabling panic handling at the language level.<br>
+You may wonder when the logic for signal handling is registered.</p>
+<p>During process initialization, when creating M0 (thread), the system call <code>sigaction</code> is used to register the signal handling function as <code>sigtramp</code>. The call stack looks like this:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-gdscript3" data-lang="gdscript3"><span class="line"><span class="cl"><span class="n">mstartm0</span> <span class="p">(</span><span class="n">proc</span><span class="o">.</span><span class="n">go</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="o">-&gt;</span> <span class="n">initsig</span> <span class="p">(</span><span class="n">signal_unix</span><span class="o">.</span><span class="n">go</span><span class="p">:</span><span class="mi">113</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">		<span class="o">-&gt;</span> <span class="n">setsig</span> <span class="p">(</span><span class="n">os_linux</span><span class="o">.</span><span class="n">go</span><span class="p">)</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>As a result, when a software interrupt is triggered, the Go signal handling function is called, allowing panic handling at the language level.</p>
+<h3 id="active-panic-by-developers">Active Panic by Developers
+</h3><p>The third way is when developers actively call <code>panic</code> themselves:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span> 
+</span></span><span class="line"><span class="cl">	<span class="nb">panic</span><span class="p">(</span><span class="s">&#34;panic test&#34;</span><span class="p">)</span> 
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>This is a simple function call—very straightforward.</p>
+<h2 id="discussing-the-essence-of-panic">Discussing the Essence of Panic
+</h2><p>Now that we have explored the postures of panic, all three methods ultimately rely on the <code>panic()</code> function. So, one thing is clear: panic is a language-level handling mechanism.</p>
+<p>By default, after a panic occurs, if Go doesn&rsquo;t handle it in any specific way, the default behavior is to print the reason for the panic, print the stack trace, and exit the program.</p>
+<p>Now, let&rsquo;s go back to the fundamental question: What exactly is panic?</p>
+<p>I won&rsquo;t delve into the concept, but I&rsquo;ll describe a few simple facts:</p>
+<ol>
+<li>The <code>panic()</code> function internally creates a crucial data structure called <code>_panic</code> and associates it with the goroutine.</li>
+<li>The <code>panic()</code> function executes the <code>_defer</code> function chain and handles the state of <code>_panic</code> accordingly.</li>
+</ol>
+<p>What does it mean to handle <code>_panic</code>?</p>
+<p>It means looping through the <code>_defer</code> function chain on the goroutine. If all the <code>_defer</code> functions are executed and the state of <code>_panic</code> hasn&rsquo;t been recovered, there is no other option but to exit the process and print the stack trace.</p>
+<p>If a friend on the <code>_defer</code> chain recovers the state of <code>_panic</code>, marking it as recovered, the process ends there. The normal code execution continues after that, following the <code>deferreturn</code> logic.</p>
+<p>So, what is panic?</p>
+<p>It&rsquo;s just a special function call. That&rsquo;s all it is.</p>
+<p>How special is it? I will explore its deep principles in the next article. In the meantime, consider a few questions:</p>
+<ul>
+<li>What exactly is panic? Is it a structure or a function?</li>
+<li>Why does panic cause a Go process to exit?</li>
+<li>Why does recover need to be placed within a defer to work?</li>
+<li>Why does the process still not recover even when recover is placed within a defer?</li>
+<li>Why is it possible to panic again after a panic? What are the consequences?</li>
+</ul>
+<h2 id="summary">Summary
+</h2><ol>
+<li>Panic can occur in three ways: it can be actively triggered by developers, assisted by the compiler&rsquo;s logic, or triggered by a software interrupt signal.</li>
+<li>Regardless of the posture, all methods ultimately rely on the <code>panic()</code> function. Panic is merely a language-level handling mechanism.</li>
+<li>By default, after a panic occurs, if not handled, the program prints the panic cause, the stack trace, and exits the process.</li>
+</ol>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/tags/golang/">Golang</a>
+        
+            <a href="/tags/panic/">Panic</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            Last updated on Jun 27, 2024 15:45 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+<aside class="related-content--wrapper">
+    <h2 class="section-title">Related content</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="">
+    <a href="/p/performance-profiling-of-golangs-biggest-killers-pprof/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Performance Profiling of Golang&#39;s Biggest Killers: PProf</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/p/how-to-analyze-go-code-in-assembly/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">How to analyze Go code in assembly</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/p/golang-vs-node/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/03/19f465a70b3b13a1bcf9d608bb5d5f3f.jpeg" loading="lazy" data-key="" data-hash="https://images.yixiao9206.cn/blog-images/2024/03/19f465a70b3b13a1bcf9d608bb5d5f3f.jpeg"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Golang vs node</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/p/go-language-recap-in-2023steady-progress-with-innovation-and-adaptation/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/02/d14cc890845866e414d614d6648cb171.png" loading="lazy" data-key="" data-hash="https://images.yixiao9206.cn/blog-images/2024/02/d14cc890845866e414d614d6648cb171.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go Language Recap in 2023:Steady Progress with Innovation and Adaptation</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/p/decryption-gogoroutine-state-switching/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/04/47e76a58f390d2e7740aacfbff0a328b.jpg" loading="lazy" data-key="" data-hash="https://images.yixiao9206.cn/blog-images/2024/04/47e76a58f390d2e7740aacfbff0a328b.jpg"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">decryption go：goroutine state switching</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+     
+    
+        
+    <script src="//cdn.jsdelivr.net/npm/twikoo@1.6.21/dist/twikoo.all.min.js"></script>
+<div id="tcomment"></div>
+<style>
+    .twikoo {
+        background-color: var(--card-background);
+        border-radius: var(--card-border-radius);
+        box-shadow: var(--shadow-l1);
+        padding: var(--card-padding);
+    }
+    :root[data-scheme="dark"] {
+        --twikoo-body-text-color-main: rgba(255, 255, 255, 0.9);
+        --twikoo-body-text-color: rgba(255, 255, 255, 0.7);
+    }
+    .twikoo .el-input-group__prepend,
+    .twikoo .tk-action-icon,
+    .twikoo .tk-submit-action-icon,
+    .twikoo .tk-time,
+    .twikoo .tk-comments-no,
+    .twikoo .tk-comments-count {
+        color: var(--twikoo-body-text-color);
+    }
+    .twikoo .el-input__inner,
+    .twikoo .el-textarea__inner,
+    .twikoo .tk-preview-container,
+    .twikoo .tk-content,
+    .twikoo .tk-nick,
+    .twikoo .tk-send {
+        color: var(--twikoo-body-text-color-main);
+    }
+    .twikoo .el-button{
+        color: var(--twikoo-body-text-color)!important;
+    }
+    .twikoo .el-input__count {
+        color: var(--twikoo-body-text-color) !important;
+    }
+    .OwO .OwO-body {
+        background-color: var(--body-background) !important;
+        color: var(--body-text-color) !important;
+    }
+</style><script>
+    twikoo.init({
+        envId: 'https:\/\/twikoo.yixiao9206.cn',
+        el: '#tcomment',lang: 'en',})
+</script>
+
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2024 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        Built with <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> <br />
+        Theme <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> designed by <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a>
+    </section>
+    
+     	
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>

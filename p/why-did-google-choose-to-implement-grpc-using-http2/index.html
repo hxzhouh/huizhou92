@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Background gRPC is an open-source high-performance RPC framework developed by Google. The design goal of gRPC is to run in any environment, supporting pluggable load balancing, tracing, health checking, and authentication. It not only supports service calls within and across data centers but is also suitable for the last mile of distributed computing, connecting devices, mobile applications, and browsers to backend services. For more on the motivation and principles behind gRPC&rsquo;s design, refer to this article: gRPC Motivation and Design Principles.">
+<title>Why Did Google Choose To Implement gRPC Using HTTP/2?</title>
+
+<link rel='canonical' href='https://huizhou92.com/p/why-did-google-choose-to-implement-grpc-using-http2/'>
+
+<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="Why Did Google Choose To Implement gRPC Using HTTP/2?">
+<meta property='og:description' content="Background gRPC is an open-source high-performance RPC framework developed by Google. The design goal of gRPC is to run in any environment, supporting pluggable load balancing, tracing, health checking, and authentication. It not only supports service calls within and across data centers but is also suitable for the last mile of distributed computing, connecting devices, mobile applications, and browsers to backend services. For more on the motivation and principles behind gRPC&rsquo;s design, refer to this article: gRPC Motivation and Design Principles.">
+<meta property='og:url' content='https://huizhou92.com/p/why-did-google-choose-to-implement-grpc-using-http2/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:tag' content='grpc' /><meta property='article:published_time' content='2024-05-23T10:18:54&#43;08:00'/><meta property='article:modified_time' content='2024-05-23T10:18:48&#43;08:00'/><meta property='og:image' content='https://huizhou92.com/cb553b8f542344f88169374915cb1819.png' />
+<meta name="twitter:site" content="@https://x.com/piaopiaopig">
+    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="Why Did Google Choose To Implement gRPC Using HTTP/2?">
+<meta name="twitter:description" content="Background gRPC is an open-source high-performance RPC framework developed by Google. The design goal of gRPC is to run in any environment, supporting pluggable load balancing, tracing, health checking, and authentication. It not only supports service calls within and across data centers but is also suitable for the last mile of distributed computing, connecting devices, mobile applications, and browsers to backend services. For more on the motivation and principles behind gRPC&rsquo;s design, refer to this article: gRPC Motivation and Design Principles."><meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content='https://huizhou92.com/cb553b8f542344f88169374915cb1819.png' />
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="Toggle Menu">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+                    <span class="emoji">😄</span>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>Home</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/about/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>About</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/categories/newsletter/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>NewsLetter</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>Archives</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>Search</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" selected>English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" >中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>Dark Mode</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">Table of contents</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#background">Background</a></li>
+    <li><a href="#what-is-http2">What is HTTP/2</a></li>
+    <li><a href="#grpc-over-http2">gRPC Over HTTP/2</a></li>
+    <li><a href="#advantages-of-http2-protocol">Advantages of HTTP/2 Protocol</a>
+      <ol>
+        <li><a href="#http2-is-an-open-standard">HTTP/2 is an Open Standard</a></li>
+        <li><a href="#http2-is-a-proven-standard">HTTP/2 is a Proven Standard</a></li>
+        <li><a href="#http2-naturally-supports-iot-mobile-and-browsers">HTTP/2 Naturally Supports IoT, Mobile, and Browsers</a></li>
+        <li><a href="#multi-language-implementation-of-http2-is-easy">Multi-language Implementation of HTTP/2 is Easy</a></li>
+        <li><a href="#http2-supports-stream-and-flow-control">HTTP/2 Supports Stream and Flow Control</a></li>
+        <li><a href="#easy-support-for-http2-in-gatewayproxy">Easy Support for HTTP/2 in Gateway/Proxy</a></li>
+        <li><a href="#http2-ensures-security">HTTP/2 Ensures Security</a></li>
+        <li><a href="#mature-authentication-in-http2">Mature Authentication in HTTP/2</a></li>
+      </ol>
+    </li>
+    <li><a href="#disadvantages-of-http2-protocol">Disadvantages of HTTP/2 Protocol</a>
+      <ol>
+        <li><a href="#inefficient-transmission-of-rpc-metadata">Inefficient Transmission of RPC Metadata</a></li>
+        <li><a href="#grpc-calls-in-http2-require-two-decodings">gRPC Calls in HTTP/2 Require Two Decodings</a></li>
+      </ol>
+    </li>
+    <li><a href="#googles-standard-setting-ability">Google&rsquo;s Standard-Setting Ability</a></li>
+    <li><a href="#why-grpc-emerged">Why gRPC Emerged</a></li>
+    <li><a href="#summary">Summary</a></li>
+    <li><a href="#references">References</a></li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="has-image main-article">
+    <header class="article-header">
+        <div class="article-image">
+            <a href="/p/why-did-google-choose-to-implement-grpc-using-http2/">
+                
+                    <img src="/cb553b8f542344f88169374915cb1819.png" loading="lazy" alt="Featured image of post Why Did Google Choose To Implement gRPC Using HTTP/2?" />
+                
+            </a>
+        </div>
+    
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/categories/whys-the-desigin/" style="background-color: #2a9d8f; color: #ffff;">
+                Why‘s The Desigin
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/p/why-did-google-choose-to-implement-grpc-using-http2/">Why Did Google Choose To Implement gRPC Using HTTP/2?</a>
+        </h2>
+    
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">May 23, 2024</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    5 minute read
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+        <footer class="article-translations">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+            <div>
+                
+                    <a href="https://huizhou92.com/zh-cn/p/why-did-google-choose-to-implement-grpc-using-http2/" class="link">中文</a>
+                
+            </div>
+        </footer>
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <h2 id="background">Background
+</h2><p><a class="link" href="https://grpc.io/"  target="_blank" rel="noopener"
+    >gRPC</a> is an open-source high-performance RPC framework developed by Google. The design goal of gRPC is to run in any environment, supporting pluggable load balancing, tracing, health checking, and authentication. It not only supports service calls within and across data centers but is also suitable for the last mile of distributed computing, connecting devices, mobile applications, and browsers to backend services. For more on the motivation and principles behind gRPC&rsquo;s design, refer to this article: <a class="link" href="https://grpc.io/blog/principles"  target="_blank" rel="noopener"
+    >gRPC Motivation and Design Principles</a>.</p>
+<!-- more-->
+<blockquote>
+<p>This article is first published in the medium MPP plan. If you are a medium user, please follow me in <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >medium</a>. Thank you very much.</p>
+</blockquote>
+<p>Key points from the official article:</p>
+<ul>
+<li>Internally, there is a framework called Stubby, but it is not based on any standard.</li>
+<li>Supports use in any environment, including IoT, mobile, and browsers.</li>
+<li>Supports streaming and flow control.</li>
+</ul>
+<p>In reality, performance is not the primary goal of gRPC design. So why choose HTTP/2?</p>
+<h2 id="what-is-http2">What is HTTP/2
+</h2><p>Before discussing why gRPC chose HTTP/2, let&rsquo;s briefly understand HTTP/2.<br>
+HTTP/2 can be simply introduced with an image:<br>
+<img src="https://images.yixiao9206.cn/blog-images/2024/05/ae09920e853bee0b21be83f8e770ba01.svg"
+	
+	
+	
+	loading="lazy"
+	
+		alt="https://hpbn.co/"
+	
+	
+></p>
+<p>From: <a class="link" href="https://hpbn.co/"  target="_blank" rel="noopener"
+    >https://hpbn.co/</a></p>
+<ul>
+<li>The header in HTTP/1 corresponds to the HEADERS frame in HTTP/2.</li>
+<li>The payload in HTTP/1 corresponds to the DATA frame in HTTP/2.<br>
+In the Chrome browser, open <code>chrome://net-internals/#http2</code> to see information about HTTP/2 connections.<br>
+<img src="https://images.yixiao9206.cn/blog-images/2024/05/01dd6bce8fde7de2b3a8f9ee06158978.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="chrome-http2"
+	
+	
+></li>
+</ul>
+<p>Many websites are already running on HTTP/2.</p>
+<h2 id="grpc-over-http2">gRPC Over HTTP/2
+</h2><p>Strictly speaking, gRPC is designed in layers, with the underlying layer supporting different protocols. Currently, gRPC supports:</p>
+<ul>
+<li><a class="link" href="https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md"  target="_blank" rel="noopener"
+    >gRPC over HTTP2</a></li>
+<li><a class="link" href="https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-WEB.md"  target="_blank" rel="noopener"
+    >gRPC Web</a></li>
+</ul>
+<p>However, most discussions are based on gRPC over HTTP2. Let&rsquo;s look at a real gRPC <code>SayHello</code> request and see how it is implemented over HTTP/2 using Wireshark:</p>
+<p><img src="https://images.yixiao9206.cn/blog-images/2024/05/40be952445bf4ec323071035fcf9da88.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="wireshark-grpc"
+	
+	
+></p>
+<p>You can see the following headers:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">Header: :authority: localhost:50051
+</span></span><span class="line"><span class="cl">Header: :path: /helloworld.Greeter/SayHello
+</span></span><span class="line"><span class="cl">Header: :method: POST
+</span></span><span class="line"><span class="cl">Header: :scheme: http
+</span></span><span class="line"><span class="cl">Header: content-type: application/grpc
+</span></span><span class="line"><span class="cl">Header: user-agent: grpc-java-netty/1.11.0  
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>Then the request parameters are in the DATA frame:<br>
+<code>GRPC Message: /helloworld.Greeter/SayHello, Request</code><br>
+In short, gRPC puts metadata in HTTP/2 Headers and serialized request parameters in the DATA frame.</p>
+<h2 id="advantages-of-http2-protocol">Advantages of HTTP/2 Protocol
+</h2><h3 id="http2-is-an-open-standard">HTTP/2 is an Open Standard
+</h3><p>Google thought this through and chose not to open-source its internal Stubby but to create something new. As technology becomes more open, the space for proprietary protocols is shrinking.</p>
+<h3 id="http2-is-a-proven-standard">HTTP/2 is a Proven Standard
+</h3><p>HTTP/2 was developed based on practical experience, which is crucial. Many unsuccessful standards were created by a group of vendors before implementation, leading to chaos and unusability, such as CORBA. HTTP/2&rsquo;s predecessor was Google&rsquo;s <a class="link" href="https://en.wikipedia.org/wiki/SPDY"  target="_blank" rel="noopener"
+    >SPDY</a>. Without Google&rsquo;s practice and promotion, HTTP/2 might not exist.</p>
+<h3 id="http2-naturally-supports-iot-mobile-and-browsers">HTTP/2 Naturally Supports IoT, Mobile, and Browsers
+</h3><p>In fact, mobile phones and mobile browsers were the first to adopt HTTP/2. The mobile internet has driven the development and adoption of HTTP/2.</p>
+<h3 id="multi-language-implementation-of-http2-is-easy">Multi-language Implementation of HTTP/2 is Easy
+</h3><p>Discussing only the implementation of the protocol itself, without considering serialization:</p>
+<ul>
+<li>Every popular programming language has a mature HTTP/2 Client.</li>
+<li>HTTP/2 Clients are well-tested and reliable.</li>
+<li>Sending HTTP/2 requests with a Client is much easier than sending/receiving packets with sockets.</li>
+</ul>
+<h3 id="http2-supports-stream-and-flow-control">HTTP/2 Supports Stream and Flow Control
+</h3><p>There are many streaming solutions in the industry, such as those based on WebSocket or <a class="link" href="https://github.com/rsocket/rsocket"  target="_blank" rel="noopener"
+    >rsocket</a>. However, these solutions are not universal.<br>
+Streams in HTTP/2 can also be prioritized, which might be used in complex scenarios, although less frequently in RPC.</p>
+<h3 id="easy-support-for-http2-in-gatewayproxy">Easy Support for HTTP/2 in Gateway/Proxy
+</h3><ul>
+<li>Nginx support for gRPC: <a class="link" href="https://www.nginx.com/blog/nginx-1-13-10-grpc/"  target="_blank" rel="noopener"
+    >https://www.nginx.com/blog/nginx-1-13-10-grpc/</a></li>
+<li>Envoy support for gRPC: <a class="link" href="https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/grpc#"  target="_blank" rel="noopener"
+    >https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/grpc#</a></li>
+</ul>
+<h3 id="http2-ensures-security">HTTP/2 Ensures Security
+</h3><ul>
+<li>HTTP/2 naturally supports SSL, although gRPC can run on a clear text protocol (i.e., unencrypted).</li>
+<li>Many proprietary RPC protocols might wrap a layer of TLS support, making it very complex to use. Do developers have enough security knowledge? Are users configuring it correctly? Can operators understand it correctly?</li>
+<li>HTTP/2 ensures secure transmission over public networks. For example, the <a class="link" href="https://en.wikipedia.org/wiki/CRIME"  target="_blank" rel="noopener"
+    >CRIME attack</a> is hard to prevent in proprietary protocols.</li>
+</ul>
+<h3 id="mature-authentication-in-http2">Mature Authentication in HTTP/2
+</h3><ul>
+<li>Authentication systems developed from HTTP/1 are mature and can be seamlessly used in HTTP/2.</li>
+<li>End-to-end authentication from front-end to back-end without any conversion or adaptation.<br>
+For example, traditional RPC like Dubbo requires writing a Dubbo filter and considering how to pass authentication-related information through thread local. The RPC protocol itself also needs to support it. In short, it&rsquo;s very complex. In fact, most RPCs in companies do not have authentication and can be called freely.</li>
+</ul>
+<h2 id="disadvantages-of-http2-protocol">Disadvantages of HTTP/2 Protocol
+</h2><h3 id="inefficient-transmission-of-rpc-metadata">Inefficient Transmission of RPC Metadata
+</h3><p>Although HPAC can compress HTTP Headers, for RPC, determining a function call can be simplified to an int. Once negotiated between both ends, it can be directly looked up in a table, without the need for HPAC encoding and decoding.<br>
+Consider optimizing an HTTP/2 parser specifically for gRPC to reduce some general processing and improve performance.</p>
+<h3 id="grpc-calls-in-http2-require-two-decodings">gRPC Calls in HTTP/2 Require Two Decodings
+</h3><p>One for the HEADERS frame and one for the DATA frame.</p>
+<p>The HTTP/2 standard itself only allows one TCP connection, but in practice, gRPC may have multiple TCP connections, which needs attention during use.<br>
+Choosing HTTP/2 for gRPC means its performance won&rsquo;t be top-notch. <strong>But for RPC, moderate QPS is acceptable</strong>, and generality and compatibility are the most important. Refer to the official benchmark: <a class="link" href="https://grpc.io/docs/guides/benchmarking.html"  target="_blank" rel="noopener"
+    >https://grpc.io/docs/guides/benchmarking.html</a></p>
+<ul>
+<li><a class="link" href="https://github.com/hank-whu/rpc-benchmark"  target="_blank" rel="noopener"
+    >https://github.com/hank-whu/rpc-benchmark</a><br>
+If your scenario is to&hellip;</li>
+</ul>
+<h2 id="googles-standard-setting-ability">Google&rsquo;s Standard-Setting Ability
+</h2><p>In the past decade, Google&rsquo;s ability to set standards has grown stronger. Here are some standards:</p>
+<ul>
+<li>HTTP/2</li>
+<li>WebP image format</li>
+<li>WebRTC for real-time communication</li>
+<li>VP9/AV1 video encoding standards</li>
+<li>Service Worker/PWA</li>
+<li>QUIC/HTTP/3<br>
+Of course, Google doesn&rsquo;t always succeed. Many initiatives it tried to push failed, such as Chrome&rsquo;s Native Client.</li>
+</ul>
+<p><strong>gRPC is currently the de facto standard in the Kubernetes ecosystem. Will gRPC become the RPC standard in more areas and larger fields?</strong></p>
+<h2 id="why-grpc-emerged">Why gRPC Emerged
+</h2><p>Why did an HTTP/2-based RPC emerge?</p>
+<p>I believe an important reason is that in the trend of Cloud Native, the need for open interoperability inevitably leads to HTTP/2-based RPC. Even without gRPC, there would be other HTTP/2-based RPCs.</p>
+<p>gRPC was first used internally at Google on Google Cloud Platform and public APIs: <a class="link" href="https://opensource.google.com/projects/grpc"  target="_blank" rel="noopener"
+    >https://opensource.google.com/projects/grpc</a></p>
+<h2 id="summary">Summary
+</h2><p>Although gRPC may not replace internal RPC implementations, in an era of open interoperability, not just on Kubernetes, gRPC will have more and more stages to showcase its capabilities.</p>
+<h2 id="references">References
+</h2><ul>
+<li><a class="link" href="https://grpc.io/"  target="_blank" rel="noopener"
+    >https://grpc.io/</a></li>
+<li><a class="link" href="https://hpbn.co/"  target="_blank" rel="noopener"
+    >https://hpbn.co/</a></li>
+<li><a class="link" href="https://grpc.io/blog/loadbalancing"  target="_blank" rel="noopener"
+    >https://grpc.io/blog/loadbalancing</a></li>
+<li><a class="link" href="https://http2.github.io/faq"  target="_blank" rel="noopener"
+    >https://http2.github.io/faq</a></li>
+<li><a class="link" href="https://github.com/grpc/grpc"  target="_blank" rel="noopener"
+    >https://github.com/grpc/grpc</a></li>
+</ul>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/tags/golang/">Golang</a>
+        
+            <a href="/tags/grpc/">Grpc</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            Last updated on May 23, 2024 10:18 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+<aside class="related-content--wrapper">
+    <h2 class="section-title">Related content</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="">
+    <a href="/p/why-tcp-requires-three-handshakes-to-establish-a-connection/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Why TCP requires three handshakes to establish a connection</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/p/exploring-grpc-details-with-wireshark/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Exploring gRPC details with WireShark</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/p/secure-communication-with-grpc-from-ssl/tls-certification-to-san-certification/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/05/4976a194a8daca00ff6991a866c2ee53.png" loading="lazy" data-key="" data-hash="https://images.yixiao9206.cn/blog-images/2024/05/4976a194a8daca00ff6991a866c2ee53.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Secure Communication with gRPC: From SSL/TLS Certification to SAN Certification</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/p/why-the-design-why-is-the-cpu-slow-to-access-the-hard-disk/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Why The Design :Why is the CPU slow to access the hard disk?</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/p/why-does-it-take-four-waves-for-tcp-to-disconnect/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Why Does It Take Four Waves For TCP To Disconnect?</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+     
+    
+        
+    <script src="//cdn.jsdelivr.net/npm/twikoo@1.6.21/dist/twikoo.all.min.js"></script>
+<div id="tcomment"></div>
+<style>
+    .twikoo {
+        background-color: var(--card-background);
+        border-radius: var(--card-border-radius);
+        box-shadow: var(--shadow-l1);
+        padding: var(--card-padding);
+    }
+    :root[data-scheme="dark"] {
+        --twikoo-body-text-color-main: rgba(255, 255, 255, 0.9);
+        --twikoo-body-text-color: rgba(255, 255, 255, 0.7);
+    }
+    .twikoo .el-input-group__prepend,
+    .twikoo .tk-action-icon,
+    .twikoo .tk-submit-action-icon,
+    .twikoo .tk-time,
+    .twikoo .tk-comments-no,
+    .twikoo .tk-comments-count {
+        color: var(--twikoo-body-text-color);
+    }
+    .twikoo .el-input__inner,
+    .twikoo .el-textarea__inner,
+    .twikoo .tk-preview-container,
+    .twikoo .tk-content,
+    .twikoo .tk-nick,
+    .twikoo .tk-send {
+        color: var(--twikoo-body-text-color-main);
+    }
+    .twikoo .el-button{
+        color: var(--twikoo-body-text-color)!important;
+    }
+    .twikoo .el-input__count {
+        color: var(--twikoo-body-text-color) !important;
+    }
+    .OwO .OwO-body {
+        background-color: var(--body-background) !important;
+        color: var(--body-text-color) !important;
+    }
+</style><script>
+    twikoo.init({
+        envId: 'https:\/\/twikoo.yixiao9206.cn',
+        el: '#tcomment',lang: 'en',})
+</script>
+
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2024 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        Built with <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> <br />
+        Theme <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> designed by <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a>
+    </section>
+    
+     	
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>
