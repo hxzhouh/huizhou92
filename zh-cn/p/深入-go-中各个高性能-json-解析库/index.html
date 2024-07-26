@@ -1,0 +1,1767 @@
+<!DOCTYPE html>
+<html lang="zh-cn" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Compare the performance, advantages and disadvantages of fastjson, gjson, and jsonparser. 对比 fastjson，gjson，jsonparser 的性能以及优缺点。 这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。 This article is first published in the medium MPP plan. If you are a medium user, please follow me on the medium. Thank you very much. 其实本来我是没打算去看 JSON 库的性能问题的，但是最近我对我的项目做了一次 pprof，从下面的火焰图中可以发现在业务逻辑处理中，有一半多的性能消耗都是在 JSON 解析过程中，所以就有了这篇文章。 这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。 主要介绍分析以下几个库（2024-06-13）： 库名 Star 标准库 JSON Unmarshal valyala/fastjson 2.2 k tidwall/gjson 13.">
+<title>深入 Go 中各个高性能 JSON 解析库</title>
+
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/%E6%B7%B1%E5%85%A5-go-%E4%B8%AD%E5%90%84%E4%B8%AA%E9%AB%98%E6%80%A7%E8%83%BD-json-%E8%A7%A3%E6%9E%90%E5%BA%93/'>
+
+<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="深入 Go 中各个高性能 JSON 解析库">
+<meta property='og:description' content="Compare the performance, advantages and disadvantages of fastjson, gjson, and jsonparser. 对比 fastjson，gjson，jsonparser 的性能以及优缺点。 这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。 This article is first published in the medium MPP plan. If you are a medium user, please follow me on the medium. Thank you very much. 其实本来我是没打算去看 JSON 库的性能问题的，但是最近我对我的项目做了一次 pprof，从下面的火焰图中可以发现在业务逻辑处理中，有一半多的性能消耗都是在 JSON 解析过程中，所以就有了这篇文章。 这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。 主要介绍分析以下几个库（2024-06-13）： 库名 Star 标准库 JSON Unmarshal valyala/fastjson 2.2 k tidwall/gjson 13.">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/%E6%B7%B1%E5%85%A5-go-%E4%B8%AD%E5%90%84%E4%B8%AA%E9%AB%98%E6%80%A7%E8%83%BD-json-%E8%A7%A3%E6%9E%90%E5%BA%93/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:published_time' content='2024-06-13T17:10:25&#43;08:00'/><meta property='article:modified_time' content='2024-06-13T17:10:22&#43;08:00'/>
+<meta name="twitter:site" content="@https://x.com/piaopiaopig">
+    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="深入 Go 中各个高性能 JSON 解析库">
+<meta name="twitter:description" content="Compare the performance, advantages and disadvantages of fastjson, gjson, and jsonparser. 对比 fastjson，gjson，jsonparser 的性能以及优缺点。 这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。 This article is first published in the medium MPP plan. If you are a medium user, please follow me on the medium. Thank you very much. 其实本来我是没打算去看 JSON 库的性能问题的，但是最近我对我的项目做了一次 pprof，从下面的火焰图中可以发现在业务逻辑处理中，有一半多的性能消耗都是在 JSON 解析过程中，所以就有了这篇文章。 这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。 主要介绍分析以下几个库（2024-06-13）： 库名 Star 标准库 JSON Unmarshal valyala/fastjson 2.2 k tidwall/gjson 13.">
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="切换菜单">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/zh-cn/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+                    <span class="emoji">😄</span>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/zh-cn">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/zh-cn/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>主页</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/%E5%85%B3%E4%BA%8E/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>关于</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/categories/newsletter/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>NewsLetter</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>归档</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>搜索</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" >English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" selected>中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>暗色模式</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">目录</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#标准库-json-unmarshal">标准库 JSON Unmarshal</a>
+      <ol>
+        <li><a href="#小结">小结</a></li>
+      </ol>
+    </li>
+    <li><a href="#fastjsonhttpsgithubcomvalyalafastjson"><a href="https://github.com/valyala/fastjson">fastjson</a></a>
+      <ol>
+        <li><a href="#分析">分析</a></li>
+        <li><a href="#代码">代码</a></li>
+        <li><a href="#小结-1">小结</a></li>
+      </ol>
+    </li>
+    <li><a href="#gjsonhttpsgithubcomtidwallgjson"><a href="https://github.com/tidwall/gjson">GJSON</a></a>
+      <ol>
+        <li><a href="#分析-1">分析</a></li>
+        <li><a href="#代码-1">代码</a></li>
+        <li><a href="#小结-2">小结</a></li>
+      </ol>
+    </li>
+    <li><a href="#jsonparserhttpsgithubcombugerjsonparser"><a href="https://github.com/buger/jsonparser">jsonparser</a></a>
+      <ol>
+        <li><a href="#分析-2">分析</a></li>
+        <li><a href="#小结-3">小结</a></li>
+      </ol>
+    </li>
+    <li><a href="#性能对比">性能对比</a></li>
+    <li><a href="#总结">总结</a></li>
+    <li><a href="#reference">Reference</a></li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="main-article">
+    <header class="article-header">
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/zh-cn/categories/tech/" style="background-color: #2a9d8f; color: #fff;">
+                tech
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/zh-cn/p/%E6%B7%B1%E5%85%A5-go-%E4%B8%AD%E5%90%84%E4%B8%AA%E9%AB%98%E6%80%A7%E8%83%BD-json-%E8%A7%A3%E6%9E%90%E5%BA%93/">深入 Go 中各个高性能 JSON 解析库</a>
+        </h2>
+    
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Jun 13, 2024</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    阅读时长: 8 分钟
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+        <footer class="article-translations">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+            <div>
+                
+                    <a href="https://huizhou92.com/p/analyze-various-high-performance-json-parsing-libraries-in-go./" class="link">English</a>
+                
+            </div>
+        </footer>
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <p>Compare the performance, advantages and disadvantages of <code>fastjson</code>, <code>gjson</code>, and <code>jsonparser</code>.</p>
+<p>对比 <code>fastjson</code>，<code>gjson</code>，<code>jsonparser</code> 的性能以及优缺点。</p>
+<p>这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。</p>
+<!-- more-->
+<blockquote>
+<p>This article is first published in the medium MPP plan. If you are a medium user, please follow me on the <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >medium</a>. Thank you very much.</p>
+</blockquote>
+<p>其实本来我是没打算去看 JSON 库的性能问题的，但是最近我对我的项目做了一次 pprof，从下面的火焰图中可以发现在业务逻辑处理中，有一半多的性能消耗都是在 JSON 解析过程中，所以就有了这篇文章。</p>
+<p><img src="https://images.yixiao9206.cn/blog-images/2024/06/350348b7bfe6aaec853676d44ca04beb.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="image-20210519160937326"
+	
+	
+></p>
+<p>这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。</p>
+<p>主要介绍分析以下几个库（2024-06-13）：</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>库名</th>
+<th>Star</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>标准库 JSON Unmarshal</td>
+<td></td>
+</tr>
+<tr>
+<td>valyala/fastjson</td>
+<td>2.2 k</td>
+</tr>
+<tr>
+<td>tidwall/gjson</td>
+<td>13.8 k</td>
+</tr>
+<tr>
+<td>buger/jsonparser</td>
+<td>5.4 k</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="标准库-json-unmarshal">标准库 JSON Unmarshal
+</h2><div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">Unmarshal</span><span class="p">(</span><span class="nx">data</span> <span class="p">[]</span><span class="kt">byte</span><span class="p">,</span> <span class="nx">v</span> <span class="kd">interface</span><span class="p">{})</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>官方的 JSON 解析库需要传两个参数，一个是需要被序列化的对象，另一个是表示这个对象的类型。</p>
+<p>在真正执行 JSON 解析之前会调用 <code>reflect.ValueOf</code>来获取参数 v 的反射对象。然后会获取到传入的 data 对象的开头非空字符来界定该用哪种方式来进行解析。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">d</span> <span class="o">*</span><span class="nx">decodeState</span><span class="p">)</span> <span class="nf">value</span><span class="p">(</span><span class="nx">v</span> <span class="nx">reflect</span><span class="p">.</span><span class="nx">Value</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="k">switch</span> <span class="nx">d</span><span class="p">.</span><span class="nx">opcode</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="k">default</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="nb">panic</span><span class="p">(</span><span class="nx">phasePanicMsg</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="c1">// 数组 
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">case</span> <span class="nx">scanBeginArray</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="o">...</span>
+</span></span><span class="line"><span class="cl">    <span class="c1">// 结构体或map
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">case</span> <span class="nx">scanBeginObject</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="o">...</span>
+</span></span><span class="line"><span class="cl">    <span class="c1">// 字面量，包括 int、string、float 等
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">case</span> <span class="nx">scanBeginLiteral</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="o">...</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="kc">nil</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>如果被解析的对象是以<code>[</code>开头，那么表示这是个数组对象会进入到 scanBeginArray 分支；如果是以<code>{</code>开头，表明被解析的对象是一个结构体或 map，那么进入到 scanBeginObject 分支 等等。</p>
+<h3 id="小结">小结
+</h3><p>通过看 Unmarshal 源码中可以看到其中使用了大量的反射来获取字段值，如果是多层嵌套的 JSON 的话，那么还需要递归进行反射获取值，可想而知性能是非常差的了。</p>
+<p>但是如果对性能不是那么看重的话，直接使用它其实是一个非常好的选择，功能完善的同时并且官方也一直在迭代优化，说不定在以后的版本中性能也会得到质的飞跃。并且他应该是唯一一个可以直接把JSON对象转成 go struct 的。</p>
+<h2 id="fastjsonhttpsgithubcomvalyalafastjson"><a class="link" href="https://github.com/valyala/fastjson"  target="_blank" rel="noopener"
+    >fastjson</a>
+</h2><p>这个库的特点和它的名字一样就是快，它的介绍页是这么说的：</p>
+<blockquote>
+<p>Fast. As usual, up to 15x faster than the standard encoding/json.</p>
+</blockquote>
+<p>它的使用也是非常的简单,如下：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">p</span> <span class="nx">fastjson</span><span class="p">.</span><span class="nx">Parser</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">v</span><span class="p">,</span> <span class="nx">_</span> <span class="o">:=</span> <span class="nx">p</span><span class="p">.</span><span class="nf">Parse</span><span class="p">(</span><span class="s">`{
+</span></span></span><span class="line"><span class="cl"><span class="s">                &#34;str&#34;: &#34;bar&#34;,
+</span></span></span><span class="line"><span class="cl"><span class="s">                &#34;int&#34;: 123,
+</span></span></span><span class="line"><span class="cl"><span class="s">                &#34;float&#34;: 1.23,
+</span></span></span><span class="line"><span class="cl"><span class="s">                &#34;bool&#34;: true,
+</span></span></span><span class="line"><span class="cl"><span class="s">                &#34;arr&#34;: [1, &#34;foo&#34;, {}]
+</span></span></span><span class="line"><span class="cl"><span class="s">        }`</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;foo=%s\n&#34;</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nf">GetStringBytes</span><span class="p">(</span><span class="s">&#34;str&#34;</span><span class="p">))</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;int=%d\n&#34;</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nf">GetInt</span><span class="p">(</span><span class="s">&#34;int&#34;</span><span class="p">))</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;float=%f\n&#34;</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nf">GetFloat64</span><span class="p">(</span><span class="s">&#34;float&#34;</span><span class="p">))</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;bool=%v\n&#34;</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nf">GetBool</span><span class="p">(</span><span class="s">&#34;bool&#34;</span><span class="p">))</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;arr.1=%s\n&#34;</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nf">GetStringBytes</span><span class="p">(</span><span class="s">&#34;arr&#34;</span><span class="p">,</span> <span class="s">&#34;1&#34;</span><span class="p">))</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="c1">// Output:
+</span></span></span><span class="line"><span class="cl"><span class="c1">// foo=bar
+</span></span></span><span class="line"><span class="cl"><span class="c1">// int=123
+</span></span></span><span class="line"><span class="cl"><span class="c1">// float=1.230000
+</span></span></span><span class="line"><span class="cl"><span class="c1">// bool=true
+</span></span></span><span class="line"><span class="cl"><span class="c1">// arr.1=foo
+</span></span></span></code></pre></td></tr></table>
+</div>
+</div><p>使用 fastjson 首先要将被解析的 JSON 串交给 Parser 解析器进行解析，然后通过 Parse 方法返回的对象来获取。如果是嵌套对象可以直接在 Get 方法传参的时候传入相应的父子 key 即可。</p>
+<h3 id="分析">分析
+</h3><p><code>fastjson</code> 在设计上和标准库 <code>Unmarshal</code> 不同的是，它将 JSON 解析划分为两部分：Parse、Get。</p>
+<p>Parse 负责将 JSON 串解析成为一个结构体并返回，然后通过返回的结构体来获取数据。在 Parse 解析的过程是无锁的，所以如果想要在并发地调用 Parse 进行解析需要使用 ParserPool</p>
+<p>fastjson 是从上往下依次遍历 JSON ，然后解析好的数据存放在 Value 结构体中：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Value</span> <span class="kd">struct</span> <span class="p">{</span> <span class="nx">o</span> <span class="nx">Object</span> <span class="nx">a</span> <span class="p">[]</span><span class="o">*</span><span class="nx">Value</span> <span class="nx">s</span> <span class="kt">string</span> <span class="nx">t</span> <span class="nx">Type</span> <span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>这个结构体非常简成：</p>
+<ul>
+<li><code>o Object</code>：表示被解析的结构是一个对象；</li>
+<li><code>a []*Value</code>：表示表示被解析的结构是个数组；</li>
+<li><code>s string</code>：如果被解析的结构不是对象也不是数组，那么其他类型的值会以字符串的形式存放在这个字段中；</li>
+<li><code>t Type</code>：表示这个结构的类型，有 TypeObject、TypeArray、TypeString、TypeNumber等。</li>
+</ul>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Object</span> <span class="kd">struct</span> <span class="p">{</span> <span class="nx">kvs</span> <span class="p">[]</span><span class="nx">kv</span> <span class="nx">keysUnescaped</span> <span class="kt">bool</span> <span class="p">}</span> <span class="kd">type</span> <span class="nx">kv</span> <span class="kd">struct</span> <span class="p">{</span> <span class="nx">k</span> <span class="kt">string</span> <span class="nx">v</span> <span class="o">*</span><span class="nx">Value</span> <span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>这个结构存放对象的递归结构。如果把上面例子中的 JSON 串解析完毕之后就是这样一个结构：</p>
+<p><img src="https://images.yixiao9206.cn/blog-images/2024/06/f14ac18535d8ad2d963fb0c08bcb879f.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="fastjson"
+	
+	
+></p>
+<h3 id="代码">代码
+</h3><p>在代码实现上，由于没有了反射部分的代码，所以整个解析过程变得非常的清爽。我们直接看看主干部分的解析：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span><span class="lnt">25
+</span><span class="lnt">26
+</span><span class="lnt">27
+</span><span class="lnt">28
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">parseValue</span><span class="p">(</span><span class="nx">s</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">c</span> <span class="o">*</span><span class="nx">cache</span><span class="p">,</span> <span class="nx">depth</span> <span class="kt">int</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">Value</span><span class="p">,</span> <span class="kt">string</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="nx">s</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">s</span><span class="p">,</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&#34;cannot parse empty string&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">depth</span><span class="o">++</span>
+</span></span><span class="line"><span class="cl">    <span class="c1">// 最大深度的json串不能超过MaxDepth
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">if</span> <span class="nx">depth</span> <span class="p">&gt;</span> <span class="nx">MaxDepth</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">s</span><span class="p">,</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&#34;too big depth for the nested JSON; it exceeds %d&#34;</span><span class="p">,</span> <span class="nx">MaxDepth</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="c1">// 解析对象
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">if</span> <span class="nx">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;{&#39;</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">v</span><span class="p">,</span> <span class="nx">tail</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nf">parseObject</span><span class="p">(</span><span class="nx">s</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="nx">c</span><span class="p">,</span> <span class="nx">depth</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">            <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">tail</span><span class="p">,</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&#34;cannot parse object: %s&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="nx">v</span><span class="p">,</span> <span class="nx">tail</span><span class="p">,</span> <span class="kc">nil</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="c1">// 解析数组
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">if</span> <span class="nx">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;[&#39;</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="o">...</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="c1">// 解析字符串
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">if</span> <span class="nx">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;&#34;&#39;</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="o">...</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span> 
+</span></span><span class="line"><span class="cl">    <span class="o">...</span>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">v</span><span class="p">,</span> <span class="nx">tail</span><span class="p">,</span> <span class="kc">nil</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>parseValue 会根据字符串的第一个非空字符来判断要解析的类型。这里用一个对象类型来做解析：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span><span class="lnt">25
+</span><span class="lnt">26
+</span><span class="lnt">27
+</span><span class="lnt">28
+</span><span class="lnt">29
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">parseObject</span><span class="p">(</span><span class="nx">s</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">c</span> <span class="o">*</span><span class="nx">cache</span><span class="p">,</span> <span class="nx">depth</span> <span class="kt">int</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">Value</span><span class="p">,</span> <span class="kt">string</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="o">...</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">o</span> <span class="o">:=</span> <span class="nx">c</span><span class="p">.</span><span class="nf">getValue</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">o</span><span class="p">.</span><span class="nx">t</span> <span class="p">=</span> <span class="nx">TypeObject</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">o</span><span class="p">.</span><span class="nx">o</span><span class="p">.</span><span class="nf">reset</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="kd">var</span> <span class="nx">err</span> <span class="kt">error</span>
+</span></span><span class="line"><span class="cl">        <span class="c1">// 获取Ojbect结构体中的 kv 对象
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>        <span class="nx">kv</span> <span class="o">:=</span> <span class="nx">o</span><span class="p">.</span><span class="nx">o</span><span class="p">.</span><span class="nf">getKV</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">        <span class="o">...</span> 
+</span></span><span class="line"><span class="cl">        <span class="c1">// 解析 key 值
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>
+</span></span><span class="line"><span class="cl">        <span class="nx">kv</span><span class="p">.</span><span class="nx">k</span><span class="p">,</span> <span class="nx">s</span><span class="p">,</span> <span class="nx">err</span> <span class="p">=</span> <span class="nf">parseRawKey</span><span class="p">(</span><span class="nx">s</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+</span></span><span class="line"><span class="cl">        <span class="o">...</span> 
+</span></span><span class="line"><span class="cl">        <span class="c1">// 递归解析 value 值
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>        <span class="nx">kv</span><span class="p">.</span><span class="nx">v</span><span class="p">,</span> <span class="nx">s</span><span class="p">,</span> <span class="nx">err</span> <span class="p">=</span> <span class="nf">parseValue</span><span class="p">(</span><span class="nx">s</span><span class="p">,</span> <span class="nx">c</span><span class="p">,</span> <span class="nx">depth</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="o">...</span>
+</span></span><span class="line"><span class="cl">        <span class="c1">// 遇到 ，号继续往下解析
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>        <span class="k">if</span> <span class="nx">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;,&#39;</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">            <span class="nx">s</span> <span class="p">=</span> <span class="nx">s</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+</span></span><span class="line"><span class="cl">            <span class="k">continue</span>
+</span></span><span class="line"><span class="cl">        <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="c1">// 解析完毕
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>        <span class="k">if</span> <span class="nx">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;}&#39;</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">            <span class="k">return</span> <span class="nx">o</span><span class="p">,</span> <span class="nx">s</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="kc">nil</span>
+</span></span><span class="line"><span class="cl">        <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">s</span><span class="p">,</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&#34;missing &#39;,&#39; after object value&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>parseObject 函数也非常简单，在循环体中会获取 key 值，然后调用 parseValue 递归解析 value 值，从上往下依次解析 JSON 对象，直到最后遇到 <code>}</code>退出。</p>
+<h3 id="小结-1">小结
+</h3><p>通过上面的分析可以知道 <code>fastjson</code> 在实现上比标准库简单不少，性能也高上不少。使用 Parse 解析好 JSON 树之后可以多次反复使用，避免了需要反复解析进而提升性能。</p>
+<p>但是它的功能是非常的简陋的，没有常用的如 JSON 转 Struct 或 JSON 转 map 的操作。如果只是想简单的获取 JSON 中的值，那么使用这个库是非常方便的，但是如果想要把 JSON 值转化成一个结构体就需要自己动手一个个设值了。</p>
+<h2 id="gjsonhttpsgithubcomtidwallgjson"><a class="link" href="https://github.com/tidwall/gjson"  target="_blank" rel="noopener"
+    >GJSON</a>
+</h2><p>GJSON 在我的测试中，虽然性能是没有 fastjson 这么极致，但是功能是非常完善，性能也是相当 OK 的，下面先简单介绍一下 GJSON 的功能。</p>
+<p>GJSON 的使用是和 fastjson 差不多的，也是非常的简单，只要在参数中传入 json 串以及需要获取的值即可：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">json</span> <span class="o">:=</span> <span class="s">`{&#34;name&#34;:{&#34;first&#34;:&#34;li&#34;,&#34;last&#34;:&#34;dj&#34;},&#34;age&#34;:18}`</span>
+</span></span><span class="line"><span class="cl"><span class="nx">lastName</span> <span class="o">:=</span> <span class="nx">gjson</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">json</span><span class="p">,</span> <span class="s">&#34;name.last&#34;</span><span class="p">)</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>除了这个功能以外还可以进行简单的模糊匹配，支持在键中包含通配符<code>*</code>和<code>?</code>，<code>*</code>匹配任意多个字符，<code>?</code>匹配单个字符，如下：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">json</span> <span class="o">:=</span> <span class="s">`{
+</span></span></span><span class="line"><span class="cl"><span class="s">    &#34;name&#34;:{&#34;first&#34;:&#34;Tom&#34;, &#34;last&#34;: &#34;Anderson&#34;},
+</span></span></span><span class="line"><span class="cl"><span class="s">    &#34;age&#34;: 37,
+</span></span></span><span class="line"><span class="cl"><span class="s">    &#34;children&#34;: [&#34;Sara&#34;, &#34;Alex&#34;, &#34;Jack&#34;]
+</span></span></span><span class="line"><span class="cl"><span class="s">}`</span>
+</span></span><span class="line"><span class="cl"><span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;third child*:&#34;</span><span class="p">,</span> <span class="nx">gjson</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">json</span><span class="p">,</span> <span class="s">&#34;child*.2&#34;</span><span class="p">))</span>
+</span></span><span class="line"><span class="cl"><span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;first c?ild:&#34;</span><span class="p">,</span> <span class="nx">gjson</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">json</span><span class="p">,</span> <span class="s">&#34;c?ildren.0&#34;</span><span class="p">))</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><ul>
+<li><code>child*.2</code>：首先<code>child*</code>匹配<code>children</code>，<code>.2</code>读取第 3 个元素；</li>
+<li><code>c?ildren.0</code>：<code>c?ildren</code>匹配到<code>children</code>，<code>.0</code>读取第一个元素；</li>
+</ul>
+<p>除了模糊匹配以外还支持修饰符操作：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">json</span> <span class="o">:=</span> <span class="s">`{
+</span></span></span><span class="line"><span class="cl"><span class="s">    &#34;name&#34;:{&#34;first&#34;:&#34;Tom&#34;, &#34;last&#34;: &#34;Anderson&#34;},
+</span></span></span><span class="line"><span class="cl"><span class="s">    &#34;age&#34;: 37,
+</span></span></span><span class="line"><span class="cl"><span class="s">    &#34;children&#34;: [&#34;Sara&#34;, &#34;Alex&#34;, &#34;Jack&#34;]
+</span></span></span><span class="line"><span class="cl"><span class="s">}`</span>
+</span></span><span class="line"><span class="cl"><span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;third child*:&#34;</span><span class="p">,</span> <span class="nx">gjson</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">json</span><span class="p">,</span> <span class="s">&#34;children|@reverse&#34;</span><span class="p">))</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p><code>children|@reverse</code> 先读取数组<code>children</code>，然后使用修饰符<code>@reverse</code>翻转之后返回，输出。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">nestedJSON</span> <span class="o">:=</span> <span class="s">`{&#34;nested&#34;: [&#34;one&#34;, &#34;two&#34;, [&#34;three&#34;, &#34;four&#34;]]}`</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nx">gjson</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">nestedJSON</span><span class="p">,</span> <span class="s">&#34;nested|@flatten&#34;</span><span class="p">))</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p><code>@flatten</code>将数组<code>nested</code>的内层数组平坦到外层后返回：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl"><span class="o">[</span><span class="s2">&#34;one&#34;</span>,<span class="s2">&#34;two&#34;</span>,<span class="s2">&#34;three&#34;</span>, <span class="s2">&#34;four&#34;</span><span class="o">]</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>等等还有一些其他有意思的功能，大家可以去查阅一下官方文档。</p>
+<h3 id="分析-1">分析
+</h3><p>GJSON 的 Get 方法参数是由两部分组成，一个是 JSON 串，另一个叫做 Path 表示需要获取的 JSON 值的匹配路径。<br>
+在 GJSON 中因为要满足很多的定义的解析场景，所以解析是分为两部分的，需要先解析好 Path 之后才去遍历解析 JSON 串。</p>
+<p>在解析过程中如果遇到可以匹配上的值，那么会直接返回，不需要继续往下遍历，如果是匹配多个值，那么会一直遍历完整个 JSON 串。如果遇到某个 Path 在 JSON 串中匹配不到，那么也是需要遍历完整个 JSON 串。</p>
+<p>在解析的过程中也不会像 fastjson 一样将解析的内容保存在一个结构体中，可以反复的利用。所以当调用 GetMany 想要返回多个值的时候，其实也是需要遍历 JSON 串多次，因此效率会比较低。</p>
+<p><img src="https://images.yixiao9206.cn/blog-images/2024/06/cbf3e20a3fc56830e27a147df315e2d1.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Pasted image 20240613165903"
+	
+	
+></p>
+<p>除此之外，在解析 JSON 的时候并不会对它进行校验，即使这个放入的字符串不是个 JSON 也会照样解析，所以需要用户自己去确保放入的是 JSON 。</p>
+<h3 id="代码-1">代码
+</h3><div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span><span class="lnt">25
+</span><span class="lnt">26
+</span><span class="lnt">27
+</span><span class="lnt">28
+</span><span class="lnt">29
+</span><span class="lnt">30
+</span><span class="lnt">31
+</span><span class="lnt">32
+</span><span class="lnt">33
+</span><span class="lnt">34
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">Get</span><span class="p">(</span><span class="nx">json</span><span class="p">,</span> <span class="nx">path</span> <span class="kt">string</span><span class="p">)</span> <span class="nx">Result</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="c1">// 解析 path 
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="nx">path</span><span class="p">)</span> <span class="p">&gt;</span> <span class="mi">1</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="o">...</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">i</span> <span class="kt">int</span>
+</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">c</span> <span class="p">=</span> <span class="o">&amp;</span><span class="nx">parseContext</span><span class="p">{</span><span class="nx">json</span><span class="p">:</span> <span class="nx">json</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="nx">path</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">2</span> <span class="o">&amp;&amp;</span> <span class="nx">path</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;.&#39;</span> <span class="o">&amp;&amp;</span> <span class="nx">path</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;.&#39;</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">c</span><span class="p">.</span><span class="nx">lines</span> <span class="p">=</span> <span class="kc">true</span>
+</span></span><span class="line"><span class="cl">        <span class="nf">parseArray</span><span class="p">(</span><span class="nx">c</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="nx">path</span><span class="p">[</span><span class="mi">2</span><span class="p">:])</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="c1">// 根据不同的对象进行解析,这里会一直循环，直到找到 &#39;{&#39; 或 &#39;[&#39;
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>        <span class="k">for</span> <span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">);</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;{&#39;</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                <span class="nx">i</span><span class="o">++</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">                <span class="nf">parseObject</span><span class="p">(</span><span class="nx">c</span><span class="p">,</span> <span class="nx">i</span><span class="p">,</span> <span class="nx">path</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">                <span class="k">break</span>
+</span></span><span class="line"><span class="cl">            <span class="p">}</span>
+</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;[&#39;</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                <span class="nx">i</span><span class="o">++</span>
+</span></span><span class="line"><span class="cl">                <span class="nf">parseArray</span><span class="p">(</span><span class="nx">c</span><span class="p">,</span> <span class="nx">i</span><span class="p">,</span> <span class="nx">path</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">                <span class="k">break</span>
+</span></span><span class="line"><span class="cl">            <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">c</span><span class="p">.</span><span class="nx">piped</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">res</span> <span class="o">:=</span> <span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">pipe</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">res</span><span class="p">.</span><span class="nx">Index</span> <span class="p">=</span> <span class="mi">0</span>
+</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="nx">res</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="nf">fillIndex</span><span class="p">(</span><span class="nx">json</span><span class="p">,</span> <span class="nx">c</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">c</span><span class="p">.</span><span class="nx">value</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>Get 方法里面可以看到有很长一串的代码是用来解析各种 Path，然后一个 for 循环一直遍历 JSON 直到找到 ‘{‘ 或 ‘[‘，然后才进行相应的逻辑进行处理。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span><span class="lnt">25
+</span><span class="lnt">26
+</span><span class="lnt">27
+</span><span class="lnt">28
+</span><span class="lnt">29
+</span><span class="lnt">30
+</span><span class="lnt">31
+</span><span class="lnt">32
+</span><span class="lnt">33
+</span><span class="lnt">34
+</span><span class="lnt">35
+</span><span class="lnt">36
+</span><span class="lnt">37
+</span><span class="lnt">38
+</span><span class="lnt">39
+</span><span class="lnt">40
+</span><span class="lnt">41
+</span><span class="lnt">42
+</span><span class="lnt">43
+</span><span class="lnt">44
+</span><span class="lnt">45
+</span><span class="lnt">46
+</span><span class="lnt">47
+</span><span class="lnt">48
+</span><span class="lnt">49
+</span><span class="lnt">50
+</span><span class="lnt">51
+</span><span class="lnt">52
+</span><span class="lnt">53
+</span><span class="lnt">54
+</span><span class="lnt">55
+</span><span class="lnt">56
+</span><span class="lnt">57
+</span><span class="lnt">58
+</span><span class="lnt">59
+</span><span class="lnt">60
+</span><span class="lnt">61
+</span><span class="lnt">62
+</span><span class="lnt">63
+</span><span class="lnt">64
+</span><span class="lnt">65
+</span><span class="lnt">66
+</span><span class="lnt">67
+</span><span class="lnt">68
+</span><span class="lnt">69
+</span><span class="lnt">70
+</span><span class="lnt">71
+</span><span class="lnt">72
+</span><span class="lnt">73
+</span><span class="lnt">74
+</span><span class="lnt">75
+</span><span class="lnt">76
+</span><span class="lnt">77
+</span><span class="lnt">78
+</span><span class="lnt">79
+</span><span class="lnt">80
+</span><span class="lnt">81
+</span><span class="lnt">82
+</span><span class="lnt">83
+</span><span class="lnt">84
+</span><span class="lnt">85
+</span><span class="lnt">86
+</span><span class="lnt">87
+</span><span class="lnt">88
+</span><span class="lnt">89
+</span><span class="lnt">90
+</span><span class="lnt">91
+</span><span class="lnt">92
+</span><span class="lnt">93
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">parseObject</span><span class="p">(</span><span class="nx">c</span> <span class="o">*</span><span class="nx">parseContext</span><span class="p">,</span> <span class="nx">i</span> <span class="kt">int</span><span class="p">,</span> <span class="nx">path</span> <span class="kt">string</span><span class="p">)</span> <span class="p">(</span><span class="kt">int</span><span class="p">,</span> <span class="kt">bool</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">pmatch</span><span class="p">,</span> <span class="nx">kesc</span><span class="p">,</span> <span class="nx">vesc</span><span class="p">,</span> <span class="nx">ok</span><span class="p">,</span> <span class="nx">hit</span> <span class="kt">bool</span>
+</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">key</span><span class="p">,</span> <span class="nx">val</span> <span class="kt">string</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">rp</span> <span class="o">:=</span> <span class="nf">parseObjectPath</span><span class="p">(</span><span class="nx">path</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="p">!</span><span class="nx">rp</span><span class="p">.</span><span class="nx">more</span> <span class="o">&amp;&amp;</span> <span class="nx">rp</span><span class="p">.</span><span class="nx">piped</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">c</span><span class="p">.</span><span class="nx">pipe</span> <span class="p">=</span> <span class="nx">rp</span><span class="p">.</span><span class="nx">pipe</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">c</span><span class="p">.</span><span class="nx">piped</span> <span class="p">=</span> <span class="kc">true</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="c1">// 嵌套两个 for 循环 寻找 key 值
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">for</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="k">for</span> <span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">);</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;&#34;&#39;</span> <span class="p">{</span> 
+</span></span><span class="line"><span class="cl">                <span class="nx">i</span><span class="o">++</span>
+</span></span><span class="line"><span class="cl">                <span class="kd">var</span> <span class="nx">s</span> <span class="p">=</span> <span class="nx">i</span>
+</span></span><span class="line"><span class="cl">                <span class="k">for</span> <span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">);</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                    <span class="k">if</span> <span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">&gt;</span> <span class="sc">&#39;\\&#39;</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                        <span class="k">continue</span>
+</span></span><span class="line"><span class="cl">                    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">                    <span class="c1">// 找到 key 值跳转到 parse_key_string_done
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>                    <span class="k">if</span> <span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;&#34;&#39;</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                        <span class="nx">i</span><span class="p">,</span> <span class="nx">key</span><span class="p">,</span> <span class="nx">kesc</span><span class="p">,</span> <span class="nx">ok</span> <span class="p">=</span> <span class="nx">i</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">s</span><span class="p">:</span><span class="nx">i</span><span class="p">],</span> <span class="kc">false</span><span class="p">,</span> <span class="kc">true</span>
+</span></span><span class="line"><span class="cl">                        <span class="k">goto</span> <span class="nx">parse_key_string_done</span>
+</span></span><span class="line"><span class="cl">                    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">                    <span class="o">...</span>
+</span></span><span class="line"><span class="cl">                <span class="p">}</span>
+</span></span><span class="line"><span class="cl">                <span class="nx">key</span><span class="p">,</span> <span class="nx">kesc</span><span class="p">,</span> <span class="nx">ok</span> <span class="p">=</span> <span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">s</span><span class="p">:],</span> <span class="kc">false</span><span class="p">,</span> <span class="kc">false</span>
+</span></span><span class="line"><span class="cl">            <span class="c1">// 直接break
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>            <span class="nx">parse_key_string_done</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                <span class="k">break</span>
+</span></span><span class="line"><span class="cl">            <span class="p">}</span>
+</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;}&#39;</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                <span class="k">return</span> <span class="nx">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="kc">false</span>
+</span></span><span class="line"><span class="cl">            <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="p">!</span><span class="nx">ok</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">            <span class="k">return</span> <span class="nx">i</span><span class="p">,</span> <span class="kc">false</span>
+</span></span><span class="line"><span class="cl">        <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="c1">// 校验是否是模糊匹配
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>        <span class="k">if</span> <span class="nx">rp</span><span class="p">.</span><span class="nx">wild</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="nx">kesc</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                <span class="nx">pmatch</span> <span class="p">=</span> <span class="nx">match</span><span class="p">.</span><span class="nf">Match</span><span class="p">(</span><span class="nf">unescape</span><span class="p">(</span><span class="nx">key</span><span class="p">),</span> <span class="nx">rp</span><span class="p">.</span><span class="nx">part</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">            <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                <span class="nx">pmatch</span> <span class="p">=</span> <span class="nx">match</span><span class="p">.</span><span class="nf">Match</span><span class="p">(</span><span class="nx">key</span><span class="p">,</span> <span class="nx">rp</span><span class="p">.</span><span class="nx">part</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">            <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="nx">kesc</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                <span class="nx">pmatch</span> <span class="p">=</span> <span class="nx">rp</span><span class="p">.</span><span class="nx">part</span> <span class="o">==</span> <span class="nf">unescape</span><span class="p">(</span><span class="nx">key</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">            <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                <span class="nx">pmatch</span> <span class="p">=</span> <span class="nx">rp</span><span class="p">.</span><span class="nx">part</span> <span class="o">==</span> <span class="nx">key</span>
+</span></span><span class="line"><span class="cl">            <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="c1">// 解析 value
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>        <span class="nx">hit</span> <span class="p">=</span> <span class="nx">pmatch</span> <span class="o">&amp;&amp;</span> <span class="p">!</span><span class="nx">rp</span><span class="p">.</span><span class="nx">more</span>
+</span></span><span class="line"><span class="cl">        <span class="k">for</span> <span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">);</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">            <span class="k">switch</span> <span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">            <span class="k">default</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                <span class="k">continue</span>
+</span></span><span class="line"><span class="cl">            <span class="k">case</span> <span class="sc">&#39;&#34;&#39;</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                <span class="nx">i</span><span class="o">++</span>
+</span></span><span class="line"><span class="cl">                <span class="nx">i</span><span class="p">,</span> <span class="nx">val</span><span class="p">,</span> <span class="nx">vesc</span><span class="p">,</span> <span class="nx">ok</span> <span class="p">=</span> <span class="nf">parseString</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">,</span> <span class="nx">i</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">                <span class="k">if</span> <span class="p">!</span><span class="nx">ok</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                    <span class="k">return</span> <span class="nx">i</span><span class="p">,</span> <span class="kc">false</span>
+</span></span><span class="line"><span class="cl">                <span class="p">}</span>
+</span></span><span class="line"><span class="cl">                <span class="k">if</span> <span class="nx">hit</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                    <span class="k">if</span> <span class="nx">vesc</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                        <span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="p">.</span><span class="nx">Str</span> <span class="p">=</span> <span class="nf">unescape</span><span class="p">(</span><span class="nx">val</span><span class="p">[</span><span class="mi">1</span> <span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="nx">val</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+</span></span><span class="line"><span class="cl">                    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                        <span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="p">.</span><span class="nx">Str</span> <span class="p">=</span> <span class="nx">val</span><span class="p">[</span><span class="mi">1</span> <span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="nx">val</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">                    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">                    <span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="p">.</span><span class="nx">Raw</span> <span class="p">=</span> <span class="nx">val</span>
+</span></span><span class="line"><span class="cl">                    <span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="p">.</span><span class="nx">Type</span> <span class="p">=</span> <span class="nx">String</span>
+</span></span><span class="line"><span class="cl">                    <span class="k">return</span> <span class="nx">i</span><span class="p">,</span> <span class="kc">true</span>
+</span></span><span class="line"><span class="cl">                <span class="p">}</span>
+</span></span><span class="line"><span class="cl">            <span class="k">case</span> <span class="sc">&#39;{&#39;</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                <span class="k">if</span> <span class="nx">pmatch</span> <span class="o">&amp;&amp;</span> <span class="p">!</span><span class="nx">hit</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                    <span class="nx">i</span><span class="p">,</span> <span class="nx">hit</span> <span class="p">=</span> <span class="nf">parseObject</span><span class="p">(</span><span class="nx">c</span><span class="p">,</span> <span class="nx">i</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="nx">rp</span><span class="p">.</span><span class="nx">path</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">                    <span class="k">if</span> <span class="nx">hit</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                        <span class="k">return</span> <span class="nx">i</span><span class="p">,</span> <span class="kc">true</span>
+</span></span><span class="line"><span class="cl">                    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">                <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                    <span class="nx">i</span><span class="p">,</span> <span class="nx">val</span> <span class="p">=</span> <span class="nf">parseSquash</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">,</span> <span class="nx">i</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">                    <span class="k">if</span> <span class="nx">hit</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                        <span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="p">.</span><span class="nx">Raw</span> <span class="p">=</span> <span class="nx">val</span>
+</span></span><span class="line"><span class="cl">                        <span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="p">.</span><span class="nx">Type</span> <span class="p">=</span> <span class="nx">JSON</span>
+</span></span><span class="line"><span class="cl">                        <span class="k">return</span> <span class="nx">i</span><span class="p">,</span> <span class="kc">true</span>
+</span></span><span class="line"><span class="cl">                    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">                <span class="p">}</span>
+</span></span><span class="line"><span class="cl">            <span class="o">...</span>
+</span></span><span class="line"><span class="cl">            <span class="k">break</span>
+</span></span><span class="line"><span class="cl">        <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">i</span><span class="p">,</span> <span class="kc">false</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>在上面看 parseObject 这段代码的时候其实不是想让大家学习如何解析 JSON，以及遍历字符串，而是想要让大家看看一个 bad case 是怎样的。for 循环一层套一层，if 一个接以一个看得我 San 值狂掉，这片代码大家是不是看起来很眼熟？是不是有点像工作中遇到的某个同事写的代码？</p>
+<h3 id="小结-2">小结
+</h3><p>优点：</p>
+<ol>
+<li>性能相对标准库来说还算不错；</li>
+<li>可玩性高，可以各种检索、自定义返回值，这点非常方便；<br>
+缺点：</li>
+<li>不会校验 JSON 的正确性；</li>
+<li>代码的 Code smell 很重。</li>
+</ol>
+<p>需要注意的是，如果需要解析返回 JSON 的值的话，GetMany 函数会根据指定的 key 值来一次次遍历 JSON 字符串，解析为 map 可以减少遍历次数。</p>
+<h2 id="jsonparserhttpsgithubcombugerjsonparser"><a class="link" href="https://github.com/buger/jsonparser"  target="_blank" rel="noopener"
+    >jsonparser</a>
+</h2><p>这也是一个比较热门，并且号称高性能，能比标准库快十倍的解析速度。</p>
+<h3 id="分析-2">分析
+</h3><p>jsonparser 也是传入一个 JSON 的 byte 切片，以及可以通过传入多个 key 值来快速定位到相应的值，并返回。</p>
+<p>和 GJSON 一样，在解析过程中是不会像 fastjson 一样有个数据结构缓存已解析过的 JSON字符串，但是遇到需要解析多个值的情况可以使用 EachKey 函数来解析多个值，只需要遍历一次 JSON字符串即可实现获取多个值的操作。</p>
+<p>如果遇到可以匹配上的值，那么会直接返回，不需要继续往下遍历，如果是匹配多个值，那么会一直遍历完整个 JSON 串。如果遇到某个 Path 在 JSON 串中匹配不到，那么也是需要遍历完整个 JSON 串。</p>
+<p>并且在遍历 JSON 串的时候通过循环的方式来减少递归的使用，减少了调用栈的深度，一定程度上也是可以提升性能。</p>
+<p>在功能性上 ArrayEach、ObjectEach、EachKey 等三个函数都可以传入一个自定义的函数，通过函数来实现个性化的需求，使得实用性大大增强。</p>
+<p>对于 jsonparser 来说，代码没什么可分析的，非常的清晰，感兴趣的可以自己去看看。</p>
+<h3 id="小结-3">小结
+</h3><p>对于 jsonparser 来说相对标准库比较而言性能如此高的原因可以总结为：</p>
+<ol>
+<li>使用 for 循环来减少递归的使用；</li>
+<li>相比标准库而言没有使用反射；</li>
+<li>在查找相应的 key 值找到了便直接退出，可以不用继续往下递归；</li>
+<li>所操作的 JSON 串都是已被传入的，不会去重新再去申请新的空间，减少了内存分配；</li>
+</ol>
+<p>除此之外在 api 的设计上也是非常的实用，ArrayEach、ObjectEach、EachKey 等三个函数都可以传入一个自定义的函数在实际的业务开发中解决了不少问题。</p>
+<p>缺点也是非常的明显，不能对 JSON 进行校验，即使这个 传入的不是 JSON。</p>
+<h2 id="性能对比">性能对比
+</h2><p><strong>解析小 JSON 字符串</strong></p>
+<p>解析一个结构简单，大小约 190 bytes 的字符串</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>库名</th>
+<th>操作</th>
+<th>每次迭代耗时</th>
+<th>占用内存数</th>
+<th>分配内存次数</th>
+<th>性能</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>标准库</td>
+<td>解析为map</td>
+<td>724 ns/op</td>
+<td>976 B/op</td>
+<td>51 allocs/op</td>
+<td>慢</td>
+</tr>
+<tr>
+<td></td>
+<td>解析为struct</td>
+<td>297 ns/op</td>
+<td>256 B/op</td>
+<td>5 allocs/op</td>
+<td>一般</td>
+</tr>
+<tr>
+<td>fastjson</td>
+<td>get</td>
+<td>68.2 ns/op</td>
+<td>0 B/op</td>
+<td>0 allocs/op</td>
+<td>最快</td>
+</tr>
+<tr>
+<td></td>
+<td>parse</td>
+<td>35.1 ns/op</td>
+<td>0 B/op</td>
+<td>0 allocs/op</td>
+<td>最快</td>
+</tr>
+<tr>
+<td>GJSON</td>
+<td>转map</td>
+<td>255 ns/op</td>
+<td>1009 B/op</td>
+<td>11 allocs/op</td>
+<td>一般</td>
+</tr>
+<tr>
+<td></td>
+<td>get</td>
+<td>232 ns/op</td>
+<td>448 B/op</td>
+<td>1 allocs/op</td>
+<td>一般</td>
+</tr>
+<tr>
+<td>jsonparser</td>
+<td>get</td>
+<td>106 ns/op</td>
+<td>232 B/op</td>
+<td>3 allocs/op</td>
+<td>快</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>解析中等大小 JSON 字符串</strong></p>
+<p>解析一个具有一定复杂度，大小约 2.3KB 的字符串</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>库名</th>
+<th>操作</th>
+<th>每次迭代耗时</th>
+<th>占用内存数</th>
+<th>分配内存次数</th>
+<th>性能</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>标准库</td>
+<td>解析为map</td>
+<td>4263 ns/op</td>
+<td>10212 B/op</td>
+<td>208 allocs/op</td>
+<td>慢</td>
+</tr>
+<tr>
+<td></td>
+<td>解析为struct</td>
+<td>4789 ns/op</td>
+<td>9206 B/op</td>
+<td>259 allocs/op</td>
+<td>慢</td>
+</tr>
+<tr>
+<td>fastjson</td>
+<td>get</td>
+<td>285 ns/op</td>
+<td>0 B/op</td>
+<td>0 allocs/op</td>
+<td>最快</td>
+</tr>
+<tr>
+<td></td>
+<td>parse</td>
+<td>302 ns/op</td>
+<td>0 B/op</td>
+<td>0 allocs/op</td>
+<td>最快</td>
+</tr>
+<tr>
+<td>GJSON</td>
+<td>转map</td>
+<td>2571 ns/op</td>
+<td>8539 B/op</td>
+<td>83 allocs/op</td>
+<td>一般</td>
+</tr>
+<tr>
+<td></td>
+<td>get</td>
+<td>1489 ns/op</td>
+<td>448 B/op</td>
+<td>1 allocs/op</td>
+<td>一般</td>
+</tr>
+<tr>
+<td>jsonparser</td>
+<td>get</td>
+<td>878 ns/op</td>
+<td>2728 B/op</td>
+<td>5 allocs/op</td>
+<td>快</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>解析大 JSON 字符串</strong></p>
+<p>解析复杂度比较高，大小约 2.2MB 的字符串</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>库名</th>
+<th>操作</th>
+<th>每次迭代耗时</th>
+<th>占用内存数</th>
+<th>分配内存次数</th>
+<th>性能</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>标准库</td>
+<td>解析为map</td>
+<td>2292959 ns/op</td>
+<td>5214009 B/op</td>
+<td>95402 allocs/op</td>
+<td>慢</td>
+</tr>
+<tr>
+<td></td>
+<td>解析为struct</td>
+<td>1165490 ns/op</td>
+<td>2023 B/op</td>
+<td>76 allocs/op</td>
+<td>一般</td>
+</tr>
+<tr>
+<td>fastjson</td>
+<td>get</td>
+<td>368056 ns/op</td>
+<td>0 B/op</td>
+<td>0 allocs/op</td>
+<td>快</td>
+</tr>
+<tr>
+<td></td>
+<td>parse</td>
+<td>371397 ns/op</td>
+<td>0 B/op</td>
+<td>0 allocs/op</td>
+<td>快</td>
+</tr>
+<tr>
+<td>GJSON</td>
+<td>转map</td>
+<td>1901727 ns/op</td>
+<td>4788894 B/op</td>
+<td>54372 allocs/op</td>
+<td>一般</td>
+</tr>
+<tr>
+<td></td>
+<td>get</td>
+<td>1322167 ns/op</td>
+<td>448 B/op</td>
+<td>1 allocs/op</td>
+<td>一般</td>
+</tr>
+<tr>
+<td>jsonparser</td>
+<td>get</td>
+<td>233090 ns/op</td>
+<td>1788865 B/op</td>
+<td>376 allocs/op</td>
+<td>最快</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="总结">总结
+</h2><p>在这次的分享过程中，我找了很多 JSON 的解析库分别进行对比分析，可以发现这些高性能的解析库基本上都有一些共同的特点：</p>
+<ul>
+<li>不使用反射；</li>
+<li>通过遍历 JSON 字符串的字节来挨个解析；</li>
+<li>尽量使用传入的 JSON 字符串来进行解析遍历，减少内存分配；</li>
+<li>牺牲了一定的兼容性；</li>
+</ul>
+<p>尽管如此，但是功能上，每个都有一定的特色 fastjson 的 api 操作最简单；GJSON 提供了模糊查找的功能，自定义程度最高；jsonparser 在实现高性能的解析过程中，还可以插入回调函数执行，提供了一定程度上的便利。</p>
+<p>综上，回到文章的开头中，对于我自己的业务来说，业务也只是简单的解析 http 请求返回的 JSON 串的部分字段，并且字段都是确定的，无需搜索功能，但是有时候需要做一些自定义的操作，所以对我来说 jsonparser 是最合适的。</p>
+<p>所以如果各位对性能有一定要求，不妨结合自己的业务情况来挑选一款 JSON 解析器。</p>
+<h2 id="reference">Reference
+</h2><p><a class="link" href="https://github.com/buger/jsonparser"  target="_blank" rel="noopener"
+    >https://github.com/buger/jsonparser</a><br>
+<a class="link" href="https://github.com/tidwall/gjson"  target="_blank" rel="noopener"
+    >https://github.com/tidwall/gjson</a><br>
+<a class="link" href="https://github.com/valyala/fastjson"  target="_blank" rel="noopener"
+    >https://github.com/valyala/fastjson</a><br>
+<a class="link" href="https://github.com/json-iterator/go"  target="_blank" rel="noopener"
+    >https://github.com/json-iterator/go</a><br>
+<a class="link" href="https://github.com/mailru/easyjson"  target="_blank" rel="noopener"
+    >https://github.com/mailru/easyjson</a><br>
+<a class="link" href="https://github.com/Jeffail/gabs"  target="_blank" rel="noopener"
+    >https://github.com/Jeffail/gabs</a><br>
+<a class="link" href="https://github.com/bitly/go-simplejson"  target="_blank" rel="noopener"
+    >https://github.com/bitly/go-simplejson</a></p>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/zh-cn/tags/golang/">Golang</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            最后更新于 Jun 13, 2024 17:10 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+<aside class="related-content--wrapper">
+    <h2 class="section-title">相关文章</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/%E4%BD%BF%E7%94%A8%E8%87%AA%E7%AD%BE%E5%90%8D%E8%AF%81%E4%B9%A6san%E4%B8%BAgrpc%E5%BB%BA%E7%AB%8Btls-%E8%BF%9E%E6%8E%A5/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/05/4976a194a8daca00ff6991a866c2ee53.png" loading="lazy" data-key="" data-hash="https://images.yixiao9206.cn/blog-images/2024/05/4976a194a8daca00ff6991a866c2ee53.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title"> 使用自签名证书SAN为gRPC建立TLS 连接</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/%E5%88%86%E5%B8%83%E5%BC%8F%E5%9F%BA%E7%9F%B3%E7%AE%97%E6%B3%951-%E4%B8%80%E8%87%B4%E6%80%A7hash/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/06/f3b53488c2407a75d85406be58526010.png" loading="lazy" data-key="" data-hash="https://images.yixiao9206.cn/blog-images/2024/06/f3b53488c2407a75d85406be58526010.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">分布式基石算法1:  一致性hash</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/%E8%A7%A3%E5%AF%86go-empty-struct/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/06/c78d096394f1791445b7c10f88dd0378.jpg" loading="lazy" data-key="" data-hash="https://images.yixiao9206.cn/blog-images/2024/06/c78d096394f1791445b7c10f88dd0378.jpg"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">解密go: empty struct</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/go-1.23-new-iter-package/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 1.23: 新包 Iter</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/golang-1.23-%E6%96%B0%E7%9A%84-unique-%E5%8C%85/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/06/0a8a9a271b2db6d5922f8e58e589b187.png" loading="lazy" data-key="" data-hash="https://images.yixiao9206.cn/blog-images/2024/06/0a8a9a271b2db6d5922f8e58e589b187.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Golang 1.23: 新的 unique 包</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+     
+    
+        
+    <script src="//cdn.jsdelivr.net/npm/twikoo@1.6.21/dist/twikoo.all.min.js"></script>
+<div id="tcomment"></div>
+<style>
+    .twikoo {
+        background-color: var(--card-background);
+        border-radius: var(--card-border-radius);
+        box-shadow: var(--shadow-l1);
+        padding: var(--card-padding);
+    }
+    :root[data-scheme="dark"] {
+        --twikoo-body-text-color-main: rgba(255, 255, 255, 0.9);
+        --twikoo-body-text-color: rgba(255, 255, 255, 0.7);
+    }
+    .twikoo .el-input-group__prepend,
+    .twikoo .tk-action-icon,
+    .twikoo .tk-submit-action-icon,
+    .twikoo .tk-time,
+    .twikoo .tk-comments-no,
+    .twikoo .tk-comments-count {
+        color: var(--twikoo-body-text-color);
+    }
+    .twikoo .el-input__inner,
+    .twikoo .el-textarea__inner,
+    .twikoo .tk-preview-container,
+    .twikoo .tk-content,
+    .twikoo .tk-nick,
+    .twikoo .tk-send {
+        color: var(--twikoo-body-text-color-main);
+    }
+    .twikoo .el-button{
+        color: var(--twikoo-body-text-color)!important;
+    }
+    .twikoo .el-input__count {
+        color: var(--twikoo-body-text-color) !important;
+    }
+    .OwO .OwO-body {
+        background-color: var(--body-background) !important;
+        color: var(--body-text-color) !important;
+    }
+</style><script>
+    twikoo.init({
+        envId: 'https:\/\/twikoo.yixiao9206.cn',
+        el: '#tcomment',lang: 'en',})
+</script>
+
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2024 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+    </section>
+    
+     	
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>
