@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="zh-cn" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="在上一篇文章中，我用net/rpc 包实现了一个简单的 RPC接口，并且尝试了net/rpc自带的Gob编码以及JSON编码，学习了Golang RPC 的一些基本知识。本篇文章，我会将net/rpc 跟protobuf结合起来，同时会创建一个自己的protobuf 插件来帮助我们生成代码，开始吧。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much. 我们在工作过程中一定使用过gRPC + protobuf ,但是它们两个并不是绑定关系，gRPC可以使用JSON编码，protobuf 也可以在其他语言中实现。 Protocol Buffers 是谷歌推出的编码标准，它在传输效率和编解码性能上都要优于 JSON。但其代价则是需要依赖中间描述语言（IDL）来定义数据和服务的结构（\u00a0*.proto\u00a0文件），并且需要一整套的工具链（protoc 及其插件）来生成对应的序列化和反序列化代码。除了谷歌官方提供的工具和插件（比如生成 go 代码的 protoc-gen-go）外，我们还可以开发或定制自己的插件，根据业务需要按照 proto 文件的定义生成代码或者文档。由 IDL 生成代码或者文档是元编程的一种形式，可以极大的解放程序员的生产力。 一个使用protobuf 的例子 首先我们写一个proto 文件 hello-service.proto ，定义一个message “String” 1 2 3 4 5 6 7 syntax = &#34;proto3&#34;; package api; option go_package=&#34;api&#34;; message String { string value = 1; } 然后使用protoc 工具生成message String 的 Go代码">
+<title>RPC Action 2: protobuf in rpc</title>
+
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/rpc-action-2-protobuf-in-rpc/'>
+
+<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="RPC Action 2: protobuf in rpc">
+<meta property='og:description' content="在上一篇文章中，我用net/rpc 包实现了一个简单的 RPC接口，并且尝试了net/rpc自带的Gob编码以及JSON编码，学习了Golang RPC 的一些基本知识。本篇文章，我会将net/rpc 跟protobuf结合起来，同时会创建一个自己的protobuf 插件来帮助我们生成代码，开始吧。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much. 我们在工作过程中一定使用过gRPC + protobuf ,但是它们两个并不是绑定关系，gRPC可以使用JSON编码，protobuf 也可以在其他语言中实现。 Protocol Buffers 是谷歌推出的编码标准，它在传输效率和编解码性能上都要优于 JSON。但其代价则是需要依赖中间描述语言（IDL）来定义数据和服务的结构（\u00a0*.proto\u00a0文件），并且需要一整套的工具链（protoc 及其插件）来生成对应的序列化和反序列化代码。除了谷歌官方提供的工具和插件（比如生成 go 代码的 protoc-gen-go）外，我们还可以开发或定制自己的插件，根据业务需要按照 proto 文件的定义生成代码或者文档。由 IDL 生成代码或者文档是元编程的一种形式，可以极大的解放程序员的生产力。 一个使用protobuf 的例子 首先我们写一个proto 文件 hello-service.proto ，定义一个message “String” 1 2 3 4 5 6 7 syntax = &#34;proto3&#34;; package api; option go_package=&#34;api&#34;; message String { string value = 1; } 然后使用protoc 工具生成message String 的 Go代码">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/rpc-action-2-protobuf-in-rpc/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:published_time' content='2024-08-13T16:10:53&#43;08:00'/><meta property='article:modified_time' content='2024-08-13T15:59:57&#43;08:00'/>
+<meta name="twitter:site" content="@https://x.com/piaopiaopig">
+    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="RPC Action 2: protobuf in rpc">
+<meta name="twitter:description" content="在上一篇文章中，我用net/rpc 包实现了一个简单的 RPC接口，并且尝试了net/rpc自带的Gob编码以及JSON编码，学习了Golang RPC 的一些基本知识。本篇文章，我会将net/rpc 跟protobuf结合起来，同时会创建一个自己的protobuf 插件来帮助我们生成代码，开始吧。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much. 我们在工作过程中一定使用过gRPC + protobuf ,但是它们两个并不是绑定关系，gRPC可以使用JSON编码，protobuf 也可以在其他语言中实现。 Protocol Buffers 是谷歌推出的编码标准，它在传输效率和编解码性能上都要优于 JSON。但其代价则是需要依赖中间描述语言（IDL）来定义数据和服务的结构（\u00a0*.proto\u00a0文件），并且需要一整套的工具链（protoc 及其插件）来生成对应的序列化和反序列化代码。除了谷歌官方提供的工具和插件（比如生成 go 代码的 protoc-gen-go）外，我们还可以开发或定制自己的插件，根据业务需要按照 proto 文件的定义生成代码或者文档。由 IDL 生成代码或者文档是元编程的一种形式，可以极大的解放程序员的生产力。 一个使用protobuf 的例子 首先我们写一个proto 文件 hello-service.proto ，定义一个message “String” 1 2 3 4 5 6 7 syntax = &#34;proto3&#34;; package api; option go_package=&#34;api&#34;; message String { string value = 1; } 然后使用protoc 工具生成message String 的 Go代码">
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="切换菜单">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/zh-cn/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+                    <span class="emoji">😄</span>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/zh-cn">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/zh-cn/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>主页</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/%E5%85%B3%E4%BA%8E/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>关于</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/categories/newsletter/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>NewsLetter</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>归档</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>搜索</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" >English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" selected>中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>暗色模式</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">目录</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#一个使用protobuf-的例子">一个使用protobuf 的例子</a></li>
+    <li><a href="#protoc--的插件系统">protoc  的插件系统</a></li>
+    <li><a href="#自定义一个-protoc-插件">自定义一个 protoc 插件</a>
+      <ol>
+        <li><a href="#目标">目标</a></li>
+        <li><a href="#如何开发-一个插件">如何开发 一个插件？</a></li>
+        <li><a href="#调试插件">调试插件</a></li>
+      </ol>
+    </li>
+    <li><a href="#总结">总结</a></li>
+    <li><a href="#参考文档">参考文档</a></li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="main-article">
+    <header class="article-header">
+
+    <div class="article-details">
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/zh-cn/p/rpc-action-2-protobuf-in-rpc/">RPC Action 2: protobuf in rpc</a>
+        </h2>
+    
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Aug 13, 2024</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    阅读时长: 5 分钟
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <p>在<a class="link" href="obsidian://open?vault=hxzhouh&amp;file=007-blog%2Fpost%2Fgolang%2Fgrpc%2FRPC%E5%AE%9E%E8%B7%B5%2F01%20%E8%AE%A4%E8%AF%86RPC%2F%E8%AE%A4%E8%AF%86RPC.zh-cn" >上一篇</a>文章中，我用<code>net/rpc</code> 包实现了一个简单的 RPC接口，并且尝试了<code>net/rpc</code>自带的<code>Gob</code>编码以及<code>JSON</code>编码，学习了Golang RPC 的一些基本知识。本篇文章，我会将<code>net/rpc</code> 跟protobuf结合起来，同时会创建一个自己的<code>protobuf </code>插件来帮助我们生成代码，开始吧。</p>
+<!-- more -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+crossorigin="anonymous"></script>
+    <ins class="adsbygoogle"
+    style="display:block; text-align:center;"
+    data-ad-layout="in-article"
+    data-ad-format="fluid"
+    data-ad-client="ca-pub-9000447749076746"
+    data-ad-slot="5063552270"></ins>
+<script>
+(adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+<blockquote>
+<p>This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >Medium</a>. Thank you very much.</p>
+</blockquote>
+<p>我们在工作过程中一定使用过<code>gRPC</code> + <code>protobuf</code> ,但是它们两个并不是绑定关系，<code>gRPC</code>可以使用JSON编码，<a class="link" href="https://en.wikipedia.org/wiki/Protocol_Buffers"  target="_blank" rel="noopener"
+    >protobuf</a> 也可以在其他语言中实现。</p>
+<blockquote>
+<p><a class="link" href="https://en.wikipedia.org/wiki/Protocol_Buffers"  target="_blank" rel="noopener"
+    >Protocol Buffers</a> 是谷歌推出的编码标准，它在传输效率和编解码性能上都要优于 JSON。但其代价则是需要依赖中间描述语言（IDL）来定义数据和服务的结构（ <code>*.proto</code> 文件），并且需要一整套的工具链（protoc 及其插件）来生成对应的序列化和反序列化代码。除了谷歌官方提供的工具和插件（比如生成 go 代码的 protoc-gen-go）外，我们还可以开发或定制自己的插件，根据业务需要按照 proto 文件的定义生成代码或者文档。由 IDL 生成代码或者文档是元编程的一种形式，可以极大的解放程序员的生产力。</p>
+</blockquote>
+<h2 id="一个使用protobuf-的例子">一个使用protobuf 的例子
+</h2><p>首先我们写一个<code>proto</code> 文件 hello-service.proto ，定义一个message “String”</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-proto" data-lang="proto"><span class="line"><span class="cl"><span class="n">syntax</span> <span class="o">=</span> <span class="s">&#34;proto3&#34;</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kn">package</span> <span class="nn">api</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="k">option</span>  <span class="n">go_package</span><span class="o">=</span><span class="s">&#34;api&#34;</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kd">message</span> <span class="nc">String</span> <span class="p">{</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="kt">string</span> <span class="n">value</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span><span class="err">
+</span></span></span></code></pre></td></tr></table>
+</div>
+</div><p>然后使用protoc 工具生成message String 的 Go代码</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">protoc --go_out<span class="o">=</span>. hello-service.proto
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>然后我们修改一下Hello 函数的参数，使用proto 生成 的String。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">HelloServiceInterface</span> <span class="p">=</span> <span class="kd">interface</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nf">Hello</span><span class="p">(</span><span class="nx">request</span> <span class="nx">api</span><span class="p">.</span><span class="nx">String</span><span class="p">,</span> <span class="nx">reply</span> <span class="o">*</span><span class="nx">api</span><span class="p">.</span><span class="nx">String</span><span class="p">)</span> <span class="kt">error</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>  
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>其实使用起来跟以前没什么区别，甚至，还不如直接使用string方便。那么我们为什么要使用Protobuf? 正如前面所说的，<strong>用Protobuf定义与语言无关的RPC服务接口以及message，然后使用<code>protoc</code>工具生成不同语言的代码，才是它真正的价值所在</strong>。比如使用官方提供的插件<code>protoc-gen-go</code>来生成<code>gRPC</code>代码。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">protoc --go_out<span class="o">=</span><span class="nv">plugins</span><span class="o">=</span>grpc. hello-service.proto
+</span></span></code></pre></td></tr></table>
+</div>
+</div><h2 id="protoc--的插件系统">protoc  的插件系统
+</h2><p>如果要根据 proto 文件生成代码，必须安装protoc工具，但是protoc 工具并不能知道我们的目标语言是什么，所以我们需要插件来帮助我们生成代码。protoc 的插件系统是如何工作的？以上面的grpc 为例子:<br>
+这里有一个 <code>--go_out</code> 参数。因为我们调用的插件是<code>protoc-gen-go</code>，所以参数名字叫 go_out；如果名字叫 XXX，那参数名字就叫 XXX_out。<br>
+protoc 在运行的时候首先会解析 proto 文件的所有内容，生成一组 Protocol Buffers 编码的描述数据，首先会判断protoc 内部是否包含<code>go</code>插件, 然后会尝试在<code>$PATH</code> 里面寻找<code>protoc-gen-go</code>，找不到会报错，然后运行<code>protoc-gen-go</code> 命令，并且通过 stdin 将描述数据发送给插件命令。插件生成好文件内容后再向 stdout 输入 Protocol Buffers 编码的数据来告诉 protoc 生成具体的文件。<br>
+<code>plugins=grpc</code> 是 为了调用<code>protoc-gen-go</code> 自带的一个插件，如果不使用它，那么只会生成 Go 语言 的message信息，使用这个插件才会生成grpc 相关的代码。</p>
+<h2 id="自定义一个-protoc-插件">自定义一个 protoc 插件
+</h2><p>如果在protobuf 中添加<code>Hello</code> 接口的定时，我们是不是可以自定义一个 <code>protoc</code> 插件，直接生成代码？</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span><span class="lnt">8
+</span><span class="lnt">9
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-proto" data-lang="proto"><span class="line"><span class="cl"><span class="n">syntax</span> <span class="o">=</span> <span class="s">&#34;proto3&#34;</span><span class="p">;</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kn">package</span> <span class="nn">api</span><span class="p">;</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="k">option</span>  <span class="n">go_package</span><span class="o">=</span><span class="s">&#34;./api&#34;</span><span class="p">;</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kd">service</span> <span class="n">HelloService</span> <span class="p">{</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="k">rpc</span> <span class="n">Hello</span> <span class="p">(</span><span class="n">String</span><span class="p">)</span> <span class="k">returns</span> <span class="p">(</span><span class="n">String</span><span class="p">)</span> <span class="p">{}</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kd">message</span> <span class="nc">String</span> <span class="p">{</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="kt">string</span> <span class="n">value</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span><span class="err">
+</span></span></span></code></pre></td></tr></table>
+</div>
+</div><h3 id="目标">目标
+</h3><p>这篇文章，我的目标是创建一个插件，然后用来生成RPC 的服务端与客户端代码，生成的代码大致是这样的。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span><span class="lnt">25
+</span><span class="lnt">26
+</span><span class="lnt">27
+</span><span class="lnt">28
+</span><span class="lnt">29
+</span><span class="lnt">30
+</span><span class="lnt">31
+</span><span class="lnt">32
+</span><span class="lnt">33
+</span><span class="lnt">34
+</span><span class="lnt">35
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// HelloService_rpc.pb.go
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">type</span> <span class="nx">HelloServiceInterface</span> <span class="kd">interface</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nf">Hello</span><span class="p">(</span><span class="nx">String</span><span class="p">,</span> <span class="o">*</span><span class="nx">String</span><span class="p">)</span> <span class="kt">error</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">RegisterHelloService</span><span class="p">(</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">srv</span> <span class="o">*</span><span class="nx">rpc</span><span class="p">.</span><span class="nx">Server</span><span class="p">,</span> <span class="nx">x</span> <span class="nx">HelloServiceInterface</span><span class="p">,</span>  
+</span></span><span class="line"><span class="cl"><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">srv</span><span class="p">.</span><span class="nf">RegisterName</span><span class="p">(</span><span class="s">&#34;HelloService&#34;</span><span class="p">,</span> <span class="nx">x</span><span class="p">);</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="k">return</span> <span class="nx">err</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="kc">nil</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">HelloServiceClient</span> <span class="kd">struct</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="o">*</span><span class="nx">rpc</span><span class="p">.</span><span class="nx">Client</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="kd">var</span> <span class="nx">_</span> <span class="nx">HelloServiceInterface</span> <span class="p">=</span> <span class="p">(</span><span class="o">*</span><span class="nx">HelloServiceClient</span><span class="p">)(</span><span class="kc">nil</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">DialHelloService</span><span class="p">(</span><span class="nx">network</span><span class="p">,</span> <span class="nx">address</span> <span class="kt">string</span><span class="p">)</span> <span class="p">(</span>  
+</span></span><span class="line"><span class="cl">    <span class="o">*</span><span class="nx">HelloServiceClient</span><span class="p">,</span> <span class="kt">error</span><span class="p">,</span>  
+</span></span><span class="line"><span class="cl"><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">c</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">rpc</span><span class="p">.</span><span class="nf">Dial</span><span class="p">(</span><span class="nx">network</span><span class="p">,</span> <span class="nx">address</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="o">&amp;</span><span class="nx">HelloServiceClient</span><span class="p">{</span><span class="nx">Client</span><span class="p">:</span> <span class="nx">c</span><span class="p">},</span> <span class="kc">nil</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">p</span> <span class="o">*</span><span class="nx">HelloServiceClient</span><span class="p">)</span> <span class="nf">Hello</span><span class="p">(</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">in</span> <span class="nx">String</span><span class="p">,</span> <span class="nx">out</span> <span class="o">*</span><span class="nx">String</span><span class="p">,</span>  
+</span></span><span class="line"><span class="cl"><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">p</span><span class="p">.</span><span class="nx">Client</span><span class="p">.</span><span class="nf">Call</span><span class="p">(</span><span class="s">&#34;HelloService.Hello&#34;</span><span class="p">,</span> <span class="nx">in</span><span class="p">,</span> <span class="nx">out</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>这样我们的业务代码就能改成下面这个样子。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span><span class="lnt">25
+</span><span class="lnt">26
+</span><span class="lnt">27
+</span><span class="lnt">28
+</span><span class="lnt">29
+</span><span class="lnt">30
+</span><span class="lnt">31
+</span><span class="lnt">32
+</span><span class="lnt">33
+</span><span class="lnt">34
+</span><span class="lnt">35
+</span><span class="lnt">36
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// service
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">listener</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">net</span><span class="p">.</span><span class="nf">Listen</span><span class="p">(</span><span class="s">&#34;tcp&#34;</span><span class="p">,</span> <span class="s">&#34;:1234&#34;</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="s">&#34;ListenTCP error:&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">_</span> <span class="p">=</span> <span class="nx">api</span><span class="p">.</span><span class="nf">RegisterHelloService</span><span class="p">(</span><span class="nx">rpc</span><span class="p">.</span><span class="nx">DefaultServer</span><span class="p">,</span> <span class="nb">new</span><span class="p">(</span><span class="nx">HelloService</span><span class="p">))</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">conn</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">listener</span><span class="p">.</span><span class="nf">Accept</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">       <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="s">&#34;Accept error:&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">       <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">       <span class="k">go</span> <span class="nx">rpc</span><span class="p">.</span><span class="nf">ServeConn</span><span class="p">(</span><span class="nx">conn</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">HelloService</span> <span class="kd">struct</span><span class="p">{}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">p</span> <span class="o">*</span><span class="nx">HelloService</span><span class="p">)</span> <span class="nf">Hello</span><span class="p">(</span><span class="nx">request</span> <span class="nx">api</span><span class="p">.</span><span class="nx">String</span><span class="p">,</span> <span class="nx">reply</span> <span class="o">*</span><span class="nx">api</span><span class="p">.</span><span class="nx">String</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">log</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;HelloService.proto Hello&#34;</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="o">*</span><span class="nx">reply</span> <span class="p">=</span> <span class="nx">api</span><span class="p">.</span><span class="nx">String</span><span class="p">{</span><span class="nx">Value</span><span class="p">:</span> <span class="s">&#34;Hello:&#34;</span> <span class="o">+</span> <span class="nx">request</span><span class="p">.</span><span class="nx">Value</span><span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="kc">nil</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="c1">// client.go
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">client</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">api</span><span class="p">.</span><span class="nf">DialHelloService</span><span class="p">(</span><span class="s">&#34;tcp&#34;</span><span class="p">,</span> <span class="s">&#34;localhost:1234&#34;</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="s">&#34;net.Dial:&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">reply</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">api</span><span class="p">.</span><span class="nx">String</span><span class="p">{}</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">err</span> <span class="p">=</span> <span class="nx">client</span><span class="p">.</span><span class="nf">Hello</span><span class="p">(</span><span class="nx">api</span><span class="p">.</span><span class="nx">String</span><span class="p">{</span><span class="nx">Value</span><span class="p">:</span> <span class="s">&#34;Hello&#34;</span><span class="p">},</span> <span class="nx">reply</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">log</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nx">reply</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>基于生成的代码，我们的工作量已经小了很多，并且出错的几率已经很小了。一个不错的开始。<br>
+根据上面的api代码，我们可以抽出来一个模板文件：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">const</span> <span class="nx">tmplService</span> <span class="p">=</span> <span class="s">`  
+</span></span></span><span class="line"><span class="cl"><span class="s">package </span><span class="cp">{{</span><span class="na">.PackageName</span><span class="cp">}}</span><span class="s">  
+</span></span></span><span class="line"><span class="cl"><span class="s">import (  
+</span></span></span><span class="line"><span class="cl"><span class="s">    &#34;net/rpc&#34;)  
+</span></span></span><span class="line"><span class="cl"><span class="s"></span><span class="cp">{{</span><span class="nx">$root</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="na">.</span><span class="cp">}}</span><span class="s">  
+</span></span></span><span class="line"><span class="cl"><span class="s">type </span><span class="cp">{{</span><span class="na">.ServiceName</span><span class="cp">}}</span><span class="s">Interface interface {  
+</span></span></span><span class="line"><span class="cl"><span class="s">    </span><span class="cp">{{-</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="nx">$_</span><span class="o">,</span><span class="w"> </span><span class="nx">$m</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="na">.MethodList</span><span class="cp">}}</span><span class="s">    </span><span class="cp">{{</span><span class="nx">$m</span><span class="na">.MethodName</span><span class="cp">}}</span><span class="s">(</span><span class="cp">{{</span><span class="nx">$m</span><span class="na">.InputTypeName</span><span class="cp">}}</span><span class="s">, *</span><span class="cp">{{</span><span class="nx">$m</span><span class="na">.OutputTypeName</span><span class="cp">}}</span><span class="s">) error    </span><span class="cp">{{-</span><span class="w"> </span><span class="k">end</span><span class="cp">}}</span><span class="s">}  
+</span></span></span><span class="line"><span class="cl"><span class="s">func Register</span><span class="cp">{{</span><span class="na">.ServiceName</span><span class="cp">}}</span><span class="s">(  
+</span></span></span><span class="line"><span class="cl"><span class="s">    srv *rpc.Server, x </span><span class="cp">{{</span><span class="na">.ServiceName</span><span class="cp">}}</span><span class="s">Interface,) error {  
+</span></span></span><span class="line"><span class="cl"><span class="s">    if err := srv.RegisterName(&#34;</span><span class="cp">{{</span><span class="na">.ServiceName</span><span class="cp">}}</span><span class="s">&#34;, x); err != nil {        return err    }    return nil}  
+</span></span></span><span class="line"><span class="cl"><span class="s">type </span><span class="cp">{{</span><span class="na">.ServiceName</span><span class="cp">}}</span><span class="s">Client struct {  
+</span></span></span><span class="line"><span class="cl"><span class="s">    *rpc.Client}  
+</span></span></span><span class="line"><span class="cl"><span class="s">var _ </span><span class="cp">{{</span><span class="na">.ServiceName</span><span class="cp">}}</span><span class="s">Interface = (*</span><span class="cp">{{</span><span class="na">.ServiceName</span><span class="cp">}}</span><span class="s">Client)(nil)  
+</span></span></span><span class="line"><span class="cl"><span class="s">func Dial</span><span class="cp">{{</span><span class="na">.ServiceName</span><span class="cp">}}</span><span class="s">(network, address string) (  
+</span></span></span><span class="line"><span class="cl"><span class="s">    *</span><span class="cp">{{</span><span class="na">.ServiceName</span><span class="cp">}}</span><span class="s">Client, error,) {  
+</span></span></span><span class="line"><span class="cl"><span class="s">    c, err := rpc.Dial(network, address)    if err != nil {        return nil, err    }    return &amp;</span><span class="cp">{{</span><span class="na">.ServiceName</span><span class="cp">}}</span><span class="s">Client{Client: c}, nil}  
+</span></span></span><span class="line"><span class="cl"><span class="s"></span><span class="cp">{{</span><span class="k">range</span><span class="w"> </span><span class="nx">$_</span><span class="o">,</span><span class="w"> </span><span class="nx">$m</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="na">.MethodList</span><span class="cp">}}</span><span class="s">  
+</span></span></span><span class="line"><span class="cl"><span class="s">func (p *</span><span class="cp">{{</span><span class="nx">$root</span><span class="na">.ServiceName</span><span class="cp">}}</span><span class="s">Client) </span><span class="cp">{{</span><span class="nx">$m</span><span class="na">.MethodName</span><span class="cp">}}</span><span class="s">(  
+</span></span></span><span class="line"><span class="cl"><span class="s">    in </span><span class="cp">{{</span><span class="nx">$m</span><span class="na">.InputTypeName</span><span class="cp">}}</span><span class="s">, out *</span><span class="cp">{{</span><span class="nx">$m</span><span class="na">.OutputTypeName</span><span class="cp">}}</span><span class="s">,) error {  
+</span></span></span><span class="line"><span class="cl"><span class="s">    return p.Client.Call(&#34;</span><span class="cp">{{</span><span class="nx">$root</span><span class="na">.ServiceName</span><span class="cp">}}</span><span class="s">.</span><span class="cp">{{</span><span class="nx">$m</span><span class="na">.MethodName</span><span class="cp">}}</span><span class="s">&#34;, in, out)}  
+</span></span></span><span class="line"><span class="cl"><span class="s"></span><span class="cp">{{</span><span class="k">end</span><span class="cp">}}</span><span class="s">  
+</span></span></span><span class="line"><span class="cl"><span class="s">`</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>整个模板很清晰，里面有一些占位符，比如 MethodName，ServiceName 等，我们后面会介绍。</p>
+<h3 id="如何开发-一个插件">如何开发 一个插件？
+</h3><p>谷歌发布了 Go 语言 API<a class="link" href="https://go.dev/blog/protobuf-apiv2"  target="_blank" rel="noopener"
+    >1</a>，其中引入了一个新包 <code>google.golang.org/protobuf/compiler/protogen</code> ，极大的降低了plugins 开发难度：</p>
+<ol>
+<li>首先我们创建一个go 语言工程，比如<code>protoc-gen-go-spprpc</code></li>
+<li>然后我们需要定义一个<code>protogen.Options</code>，然后调用它的<code>Run</code>方法，并传入一个 <code>func(*protogen.Plugin) error</code>回调。主流程代码到此就结束了。</li>
+<li>我们还可以设置<code>protogen.Options</code>的<code>ParamFunc</code>参数，这样 protogen 会自动为我们解析命令行传入的参数。诸如从标准输入读取并解码 protobuf 信息，将输入信息编码成 protobuf 写入 stdout 等操作全部由 protogen 包办了。我们要做的就是与 <code>protogen.Plugin</code> 交互实现代码生成逻辑。</li>
+</ol>
+<p>每个服务最重要的是服务的名字，然后每个服务有一组方法。而对于服务定义的方法，最重要的是方法的名字，还有输入参数和输出参数类型的名字。我们首先定义一个<code>ServiceData</code>，用于描述服务的元信息：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// ServiceData 结构体定义  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">type</span> <span class="nx">ServiceData</span> <span class="kd">struct</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">PackageName</span> <span class="kt">string</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">ServiceName</span> <span class="kt">string</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">MethodList</span>  <span class="p">[]</span><span class="nx">Method</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="c1">// Method 结构体定义  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">type</span> <span class="nx">Method</span> <span class="kd">struct</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">MethodName</span>     <span class="kt">string</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">InputTypeName</span>  <span class="kt">string</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">OutputTypeName</span> <span class="kt">string</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>然后就是主逻辑，以及代码生成逻辑，最后调用<code>tmpl</code>生成代码。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span><span class="lnt">25
+</span><span class="lnt">26
+</span><span class="lnt">27
+</span><span class="lnt">28
+</span><span class="lnt">29
+</span><span class="lnt">30
+</span><span class="lnt">31
+</span><span class="lnt">32
+</span><span class="lnt">33
+</span><span class="lnt">34
+</span><span class="lnt">35
+</span><span class="lnt">36
+</span><span class="lnt">37
+</span><span class="lnt">38
+</span><span class="lnt">39
+</span><span class="lnt">40
+</span><span class="lnt">41
+</span><span class="lnt">42
+</span><span class="lnt">43
+</span><span class="lnt">44
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">protogen</span><span class="p">.</span><span class="nx">Options</span><span class="p">{}.</span><span class="nf">Run</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="nx">gen</span> <span class="o">*</span><span class="nx">protogen</span><span class="p">.</span><span class="nx">Plugin</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="k">for</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">file</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">gen</span><span class="p">.</span><span class="nx">Files</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">          <span class="k">if</span> <span class="p">!</span><span class="nx">file</span><span class="p">.</span><span class="nx">Generate</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">             <span class="k">continue</span>  
+</span></span><span class="line"><span class="cl">          <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">          <span class="nf">generateFile</span><span class="p">(</span><span class="nx">gen</span><span class="p">,</span> <span class="nx">file</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">       <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">       <span class="k">return</span> <span class="kc">nil</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">})</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="c1">// generateFile 函数定义  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">generateFile</span><span class="p">(</span><span class="nx">gen</span> <span class="o">*</span><span class="nx">protogen</span><span class="p">.</span><span class="nx">Plugin</span><span class="p">,</span> <span class="nx">file</span> <span class="o">*</span><span class="nx">protogen</span><span class="p">.</span><span class="nx">File</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">filename</span> <span class="o">:=</span> <span class="nx">file</span><span class="p">.</span><span class="nx">GeneratedFilenamePrefix</span> <span class="o">+</span> <span class="s">&#34;_rpc.pb.go&#34;</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">g</span> <span class="o">:=</span> <span class="nx">gen</span><span class="p">.</span><span class="nf">NewGeneratedFile</span><span class="p">(</span><span class="nx">filename</span><span class="p">,</span> <span class="nx">file</span><span class="p">.</span><span class="nx">GoImportPath</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">tmpl</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">template</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="s">&#34;service&#34;</span><span class="p">).</span><span class="nf">Parse</span><span class="p">(</span><span class="nx">tmplService</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Error parsing template: %v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">packageName</span> <span class="o">:=</span> <span class="nb">string</span><span class="p">(</span><span class="nx">file</span><span class="p">.</span><span class="nx">GoPackageName</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// 遍历每个服务生成代码  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">for</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">service</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">file</span><span class="p">.</span><span class="nx">Services</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">serviceData</span> <span class="o">:=</span> <span class="nx">ServiceData</span><span class="p">{</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">ServiceName</span><span class="p">:</span> <span class="nx">service</span><span class="p">.</span><span class="nx">GoName</span><span class="p">,</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">PackageName</span><span class="p">:</span> <span class="nx">packageName</span><span class="p">,</span>  
+</span></span><span class="line"><span class="cl">       <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">       <span class="k">for</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">method</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">service</span><span class="p">.</span><span class="nx">Methods</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">inputType</span> <span class="o">:=</span> <span class="nx">method</span><span class="p">.</span><span class="nx">Input</span><span class="p">.</span><span class="nx">GoIdent</span><span class="p">.</span><span class="nx">GoName</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">outputType</span> <span class="o">:=</span> <span class="nx">method</span><span class="p">.</span><span class="nx">Output</span><span class="p">.</span><span class="nx">GoIdent</span><span class="p">.</span><span class="nx">GoName</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">          <span class="nx">serviceData</span><span class="p">.</span><span class="nx">MethodList</span> <span class="p">=</span> <span class="nb">append</span><span class="p">(</span><span class="nx">serviceData</span><span class="p">.</span><span class="nx">MethodList</span><span class="p">,</span> <span class="nx">Method</span><span class="p">{</span>  
+</span></span><span class="line"><span class="cl">             <span class="nx">MethodName</span><span class="p">:</span>     <span class="nx">method</span><span class="p">.</span><span class="nx">GoName</span><span class="p">,</span>  
+</span></span><span class="line"><span class="cl">             <span class="nx">InputTypeName</span><span class="p">:</span>  <span class="nx">inputType</span><span class="p">,</span>  
+</span></span><span class="line"><span class="cl">             <span class="nx">OutputTypeName</span><span class="p">:</span> <span class="nx">outputType</span><span class="p">,</span>  
+</span></span><span class="line"><span class="cl">          <span class="p">})</span>  
+</span></span><span class="line"><span class="cl">       <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">       <span class="c1">// 执行模板渲染  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>       <span class="nx">err</span> <span class="p">=</span> <span class="nx">tmpl</span><span class="p">.</span><span class="nf">Execute</span><span class="p">(</span><span class="nx">g</span><span class="p">,</span> <span class="nx">serviceData</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">       <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Error executing template: %v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">       <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><h3 id="调试插件">调试插件
+</h3><p>最后我们将编译后的 二进制执行文件<code>protoc-gen-go-spprpc</code>，放在$PATH 里面， 然后运行<code>protoc</code> 就能生成我们想要的代码了。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">protoc --go_out<span class="o">=</span>.. --go-spprpc_out<span class="o">=</span>.. HelloService.proto
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>因为<code>protoc-gen-go-spprpc</code> 必须依赖 <code>protoc</code> 才能运行，所以调试起来比较麻烦。我们可以使用<br>
+<code>fmt.Fprintf(os.Stderr, &quot;Fprintln: %v\n&quot;, err)</code> 打印错误日志的方式调试。</p>
+<h2 id="总结">总结
+</h2><p>以上就是本文的全部内容了。我们首先使用protobuf 实现了一个rpc call，然后创建了一个protobuf 插件来帮助我们生成代码。为我们打开了一扇学习protobuf + RPC 的大门，也是我们通往彻底理解gRPC的路。希望大家都能掌握这个技术。</p>
+<h2 id="参考文档">参考文档
+</h2><ol>
+<li><a class="link" href="https://taoshu.in/go/create-protoc-plugin.html"  target="_blank" rel="noopener"
+    >https://taoshu.in/go/create-protoc-plugin.html</a></li>
+<li><a class="link" href="https://chai2010.cn/advanced-go-programming-book/ch4-rpc/ch4-02-pb-intro.html"  target="_blank" rel="noopener"
+    >https://chai2010.cn/advanced-go-programming-book/ch4-rpc/ch4-02-pb-intro.html</a></li>
+</ol>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            最后更新于 Aug 13, 2024 15:59 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+
+    
+        
+    <script src="//cdn.jsdelivr.net/npm/twikoo@1.6.21/dist/twikoo.all.min.js"></script>
+<div id="tcomment"></div>
+<style>
+    .twikoo {
+        background-color: var(--card-background);
+        border-radius: var(--card-border-radius);
+        box-shadow: var(--shadow-l1);
+        padding: var(--card-padding);
+    }
+    :root[data-scheme="dark"] {
+        --twikoo-body-text-color-main: rgba(255, 255, 255, 0.9);
+        --twikoo-body-text-color: rgba(255, 255, 255, 0.7);
+    }
+    .twikoo .el-input-group__prepend,
+    .twikoo .tk-action-icon,
+    .twikoo .tk-submit-action-icon,
+    .twikoo .tk-time,
+    .twikoo .tk-comments-no,
+    .twikoo .tk-comments-count {
+        color: var(--twikoo-body-text-color);
+    }
+    .twikoo .el-input__inner,
+    .twikoo .el-textarea__inner,
+    .twikoo .tk-preview-container,
+    .twikoo .tk-content,
+    .twikoo .tk-nick,
+    .twikoo .tk-send {
+        color: var(--twikoo-body-text-color-main);
+    }
+    .twikoo .el-button{
+        color: var(--twikoo-body-text-color)!important;
+    }
+    .twikoo .el-input__count {
+        color: var(--twikoo-body-text-color) !important;
+    }
+    .OwO .OwO-body {
+        background-color: var(--body-background) !important;
+        color: var(--body-text-color) !important;
+    }
+</style><script>
+    twikoo.init({
+        envId: 'https:\/\/twikoo.yixiao9206.cn',
+        el: '#tcomment',lang: 'en',})
+</script>
+
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2024 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+    </section>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>
