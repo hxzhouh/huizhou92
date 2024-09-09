@@ -8,12 +8,13 @@
         <language>en</language>
         <copyright>Copyright © 2023 huizhou92</copyright>
         <lastBuildDate>Sun, 18 Aug 2024 15:11:02 +0800</lastBuildDate><atom:link href="https://huizhou92.com/tags/go/index.xml" rel="self" type="application/rss+xml" /><item>
-        <title>RPC Action 2 : Using Protobuf and Creating a Custom Plugin</title>
-        <link>https://huizhou92.com/p/rpc-action-2-using-protobuf-and-creating-a-custom-plugin/</link>
+        <title>RPC Action EP2: Using Protobuf and Creating a Custom Plugin</title>
+        <link>https://huizhou92.com/p/rpc-action-ep2-using-protobuf-and-creating-a-custom-plugin/</link>
         <pubDate>Sun, 18 Aug 2024 15:11:02 +0800</pubDate>
         
-        <guid>https://huizhou92.com/p/rpc-action-2-using-protobuf-and-creating-a-custom-plugin/</guid>
-        <description>&lt;p&gt;In the [previous](obsidian://open?vault=hxzhouh&amp;amp;file=007-blog%2Fpost%2Fgolang%2Fgrpc%2FRPC%E5%AE%9E%E8%B7%B5%2F01%20%E8%AE%A4%E8%AF%86RPC%2F%2F E8%AE%A4%E8%AF%86RPC.zh-cn) article, I implemented a simple RPC interface using the &lt;code&gt;net/rpc&lt;/code&gt; package and tried out the &lt;code&gt;Gob&lt;/code&gt; encoding that comes with &lt;code&gt;net/rpc&lt;/code&gt; as well as &lt;code&gt;JSON&lt;/code&gt; encoding to learn some basics of Golang RPC. In this post, I&amp;rsquo;ll combine &lt;code&gt;net/rpc&lt;/code&gt; with protobuf and create my own &lt;code&gt;protobuf&lt;/code&gt; plugin to help us generate code, so let&amp;rsquo;s get started.&lt;/p&gt;
+        <guid>https://huizhou92.com/p/rpc-action-ep2-using-protobuf-and-creating-a-custom-plugin/</guid>
+        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2024/09/f12cd0683ca01b5929359e404d7a0ebe.png" alt="Featured image of post RPC Action EP2: Using Protobuf and Creating a Custom Plugin" /&gt;&lt;p&gt;In the &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/p/rpc-learning-ep1-implement-a-simple-rpc-interface-in-go/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;previous&lt;/a&gt; article, I implemented a simple RPC interface using the &lt;code&gt;net/rpc&lt;/code&gt; package and tried out the &lt;code&gt;Gob&lt;/code&gt; encoding that comes with &lt;code&gt;net/rpc&lt;/code&gt; and &lt;code&gt;JSON&lt;/code&gt; encoding to learn some basics of Golang RPC. In this post, I&amp;rsquo;ll combine &lt;code&gt;net/rpc&lt;/code&gt; with protobuf and create my &lt;code&gt;protobuf&lt;/code&gt; plugin to help us generate code, so let&amp;rsquo;s get started.&lt;/p&gt;
 &lt;!-- more--&gt;
 &lt;blockquote&gt;
 &lt;p&gt;This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on &lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
@@ -31,8 +32,7 @@ crossorigin=&#34;anonymous&#34;&gt;&lt;/script&gt;
 (adsbygoogle = window.adsbygoogle || []).push({});
 &lt;/script&gt;
 
-&lt;p&gt;We must have used &lt;code&gt;gRPC&lt;/code&gt; + &lt;code&gt;protobuf&lt;/code&gt; during our work, but they are not bound, &lt;code&gt;gRPC&lt;/code&gt; can be encoded using JSON, and &lt;a class=&#34;link&#34; href=&#34;https://en.wikipedia.org/wiki/Protocol_Buffers&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;protobuf&lt;/a&gt; can be implemented in other languages. It can also be implemented in other languages.&lt;/p&gt;
+&lt;p&gt;We must have used &lt;code&gt;gRPC&lt;/code&gt; and protobuf during our work, but they are not bound. gRPC can be encoded using JSON, and protobuf can be implemented in other languages.&lt;/p&gt;
 &lt;blockquote&gt;
 &lt;p&gt;&lt;strong&gt;Protocol Buffers&lt;/strong&gt; (&lt;strong&gt;Protobuf&lt;/strong&gt;) is a &lt;a class=&#34;link&#34; href=&#34;https://en.wikipedia.org/wiki/Free_and_open-source_software&#34;  title=&#34;Free and open-source software&#34;
      target=&#34;_blank&#34; rel=&#34;noopener&#34;
@@ -101,7 +101,19 @@ crossorigin=&#34;anonymous&#34;&gt;&lt;/script&gt;
 &lt;/h2&gt;&lt;p&gt;To generate code from &lt;code&gt;protobuf&lt;/code&gt; files, we must install the &lt;code&gt;protoc&lt;/code&gt; , but the &lt;code&gt;protoc&lt;/code&gt;  doesn&amp;rsquo;t know what our target language is, so we need plugins to help us generate code. how does protoc&amp;rsquo;s plugin system work? Take the above &lt;code&gt;grpc&lt;/code&gt; as an example.&lt;br&gt;
 There is a &lt;code&gt;--go_out&lt;/code&gt; parameter here. Since the plugin we&amp;rsquo;re calling is &lt;code&gt;protoc-gen-go&lt;/code&gt;, the parameter is called go_out; if the name was XXX, the parameter would be called XXX_out.&lt;br&gt;
 When &lt;code&gt;protoc&lt;/code&gt; is running, it will first parse the &lt;code&gt;protobuf&lt;/code&gt; file and generate a set of Protocol Buffers-encoded descriptive data. It will first determine whether or not the &lt;code&gt;go&lt;/code&gt; plugin is included in protoc, and then it will try to look for &lt;code&gt;protoc-gen-go&lt;/code&gt; in &lt;code&gt;$PATH&lt;/code&gt;, and if it can&amp;rsquo;t find it, it will report an error, and then it will run &lt;code&gt;protoc-gen-go&lt;/code&gt;. &lt;code&gt;protoc-gen-go&lt;/code&gt; command and sends the description data to the plugin command via stdin. After the plugin generates the file contents, it then inputs Protocol Buffers encoded data to stdout to tell &lt;code&gt;protoc&lt;/code&gt; to generate the specific file.&lt;br&gt;
-&lt;code&gt;plugins=grpc&lt;/code&gt; is a plugin that comes with &lt;code&gt;protoc-gen-go&lt;/code&gt; in order to invoke it. If you don&amp;rsquo;t use it, it will only generate a message in Go, but you can use this plugin to generate grpc-related code.&lt;/p&gt;
+&lt;code&gt;plugins=grpc&lt;/code&gt; is a plugin that comes with &lt;code&gt;protoc-gen-go&lt;/code&gt; in order to invoke it. If you don&amp;rsquo;t use it, it will only generate a message in Go, but you can use this plugin to generate grpc-related code.&lt;br&gt;
+&lt;script async src=&#34;https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746&#34;
+crossorigin=&#34;anonymous&#34;&gt;&lt;/script&gt;
+    &lt;ins class=&#34;adsbygoogle&#34;
+    style=&#34;display:block; text-align:center;&#34;
+    data-ad-layout=&#34;in-article&#34;
+    data-ad-format=&#34;fluid&#34;
+    data-ad-client=&#34;ca-pub-9000447749076746&#34;
+    data-ad-slot=&#34;5063552270&#34;&gt;&lt;/ins&gt;
+&lt;script&gt;
+(adsbygoogle = window.adsbygoogle || []).push({});
+&lt;/script&gt;
+&lt;/p&gt;
 &lt;h2 id=&#34;customize-a-protoc-plugin&#34;&gt;Customize a protoc plugin
 &lt;/h2&gt;&lt;p&gt;If we add &lt;code&gt;Hello&lt;/code&gt; interface timing to protobuf, can we customize a &lt;code&gt;protoc&lt;/code&gt; plugin to generate code directly?&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
@@ -337,7 +349,19 @@ Based on the api code above, we can pull out a template file:&lt;/p&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;s&#34;&gt;`&lt;/span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
 &lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;The whole template is clear, and there are some placeholders in it, such as MethodName, ServiceName, etc., which we&amp;rsquo;ll cover later.&lt;/p&gt;
+&lt;/div&gt;&lt;p&gt;The whole template is clear, and there are some placeholders in it, such as MethodName, ServiceName, etc., which we&amp;rsquo;ll cover later.&lt;br&gt;
+&lt;script async src=&#34;https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746&#34;
+crossorigin=&#34;anonymous&#34;&gt;&lt;/script&gt;
+    &lt;ins class=&#34;adsbygoogle&#34;
+    style=&#34;display:block; text-align:center;&#34;
+    data-ad-layout=&#34;in-article&#34;
+    data-ad-format=&#34;fluid&#34;
+    data-ad-client=&#34;ca-pub-9000447749076746&#34;
+    data-ad-slot=&#34;5063552270&#34;&gt;&lt;/ins&gt;
+&lt;script&gt;
+(adsbygoogle = window.adsbygoogle || []).push({});
+&lt;/script&gt;
+&lt;/p&gt;
 &lt;h3 id=&#34;how-to-develop-a-plug-in&#34;&gt;How to develop a plug-in?
 &lt;/h3&gt;&lt;p&gt;Google released the Go language API &lt;a class=&#34;link&#34; href=&#34;https://go.dev/blog/protobuf-apiv2&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;1&lt;/a&gt;, which introduces a new package &lt;code&gt;google.golang.org/protobuf/compile R/protogen&lt;/code&gt;, which greatly reduces the difficulty of plugins development:&lt;/p&gt;
@@ -493,7 +517,7 @@ Based on the api code above, we can pull out a template file:&lt;/p&gt;
 &lt;/div&gt;
 &lt;/div&gt;&lt;p&gt;To print the error log to debug.&lt;/p&gt;
 &lt;h2 id=&#34;summary&#34;&gt;Summary
-&lt;/h2&gt;&lt;p&gt;That&amp;rsquo;s all there is to this article. We first implemented an &lt;code&gt;RPC&lt;/code&gt; call using protobuf, and then created a &lt;code&gt;protobuf&lt;/code&gt; plugin to help us generate the code. This opens the door for us to learn &lt;code&gt;protobuf&lt;/code&gt; + &lt;code&gt;RPC&lt;/code&gt;, and is our path to a thorough understanding of gRPC. I hope everyone can master this technology.&lt;/p&gt;
+&lt;/h2&gt;&lt;p&gt;That&amp;rsquo;s all there is to this article. We first implemented an &lt;code&gt;RPC&lt;/code&gt; call using protobuf and then created a &lt;code&gt;protobuf&lt;/code&gt; plugin to help us generate the code. This opens the door for us to learn &lt;code&gt;protobuf&lt;/code&gt; + &lt;code&gt;RPC&lt;/code&gt;, and is our path to a thorough understanding of gRPC. I hope everyone can master this technology.&lt;/p&gt;
 &lt;h2 id=&#34;reference&#34;&gt;Reference
 &lt;/h2&gt;&lt;ol&gt;
 &lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://taoshu.in/go/create-protoc-plugin.html&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
@@ -853,12 +877,12 @@ crossorigin=&#34;anonymous&#34;&gt;&lt;/script&gt;
 </description>
         </item>
         <item>
-        <title>RPC Learning EP1: Implement a simple RPC interface in Go</title>
-        <link>https://huizhou92.com/p/rpc-learning-ep1-implement-a-simple-rpc-interface-in-go/</link>
+        <title>RPC Action EP1: Implement a simple RPC interface in Go</title>
+        <link>https://huizhou92.com/p/rpc-action-ep1-implement-a-simple-rpc-interface-in-go/</link>
         <pubDate>Mon, 12 Aug 2024 18:09:15 +0800</pubDate>
         
-        <guid>https://huizhou92.com/p/rpc-learning-ep1-implement-a-simple-rpc-interface-in-go/</guid>
-        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2024/08/d4dddb722300af56ecbb03cefdf1aec1.png" alt="Featured image of post RPC Learning EP1: Implement a simple RPC interface in Go" /&gt;&lt;p&gt;RPC(Remote Procedure Call)is a widely used communication method between different nodes in distributed systems and a foundational technology of the Internet era. Go&amp;rsquo;s standard library provides a simple implementation of RPC under the &lt;code&gt;net/rpc&lt;/code&gt; package. This article aims to help you understand RPC by walking you through implementing a simple RPC interface using the &lt;code&gt;net/rpc&lt;/code&gt; package.&lt;/p&gt;
+        <guid>https://huizhou92.com/p/rpc-action-ep1-implement-a-simple-rpc-interface-in-go/</guid>
+        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2024/08/d4dddb722300af56ecbb03cefdf1aec1.png" alt="Featured image of post RPC Action EP1: Implement a simple RPC interface in Go" /&gt;&lt;p&gt;RPC(Remote Procedure Call)is a widely used communication method between different nodes in distributed systems and a foundational technology of the Internet era. Go&amp;rsquo;s standard library provides a simple implementation of RPC under the &lt;code&gt;net/rpc&lt;/code&gt; package. This article aims to help you understand RPC by walking you through implementing a simple RPC interface using the &lt;code&gt;net/rpc&lt;/code&gt; package.&lt;/p&gt;
 &lt;!-- more --&gt;
 &lt;script async src=&#34;https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746&#34;
 crossorigin=&#34;anonymous&#34;&gt;&lt;/script&gt;

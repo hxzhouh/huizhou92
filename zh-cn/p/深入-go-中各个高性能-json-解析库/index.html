@@ -2,19 +2,19 @@
 <html lang="zh-cn" dir="ltr">
     <head><meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
-<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Compare the performance, advantages and disadvantages of fastjson, gjson, and jsonparser. 对比 fastjson，gjson，jsonparser 的性能以及优缺点。 这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。 This article is first published in the medium MPP plan. If you are a medium user, please follow me on the medium. Thank you very much. 其实本来我是没打算去看 JSON 库的性能问题的，但是最近我对我的项目做了一次 pprof，从下面的火焰图中可以发现在业务逻辑处理中，有一半多的性能消耗都是在 JSON 解析过程中，所以就有了这篇文章。 这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。 主要介绍分析以下几个库（2024-06-13）： 库名 Star 标准库 JSON Unmarshal valyala/fastjson 2.2 k tidwall/gjson 13.">
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="对比 fastjson，gjson，jsonparser 的性能以及优缺点。 这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。 This article is first published in the medium MPP plan. If you are a medium user, please follow me on the medium. Thank you very much. 其实本来我是没打算去看 JSON 库的性能问题的，但是最近我对我的项目做了一次 pprof，从下面的火焰图中可以发现在业务逻辑处理中，有一半多的性能消耗都是在 JSON 解析过程中，所以就有了这篇文章。 这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。 主要介绍分析以下几个库（2024-06-13）： 库名 Star 标准库 JSON Unmarshal valyala/fastjson 2.2 k tidwall/gjson 13.8 k buger/jsonparser 5.4 k 标准库 JSON Unmarshal 1 func Unmarshal(data []byte, v interface{}) 官方的 JSON 解析库需要传两个参数，一个是需要被序列化的对象，另一个是表示这个对象的类型。">
 <title>深入 Go 中各个高性能 JSON 解析库</title>
 
 <link rel='canonical' href='https://huizhou92.com/zh-cn/p/%E6%B7%B1%E5%85%A5-go-%E4%B8%AD%E5%90%84%E4%B8%AA%E9%AB%98%E6%80%A7%E8%83%BD-json-%E8%A7%A3%E6%9E%90%E5%BA%93/'>
 
 <link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="深入 Go 中各个高性能 JSON 解析库">
-<meta property='og:description' content="Compare the performance, advantages and disadvantages of fastjson, gjson, and jsonparser. 对比 fastjson，gjson，jsonparser 的性能以及优缺点。 这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。 This article is first published in the medium MPP plan. If you are a medium user, please follow me on the medium. Thank you very much. 其实本来我是没打算去看 JSON 库的性能问题的，但是最近我对我的项目做了一次 pprof，从下面的火焰图中可以发现在业务逻辑处理中，有一半多的性能消耗都是在 JSON 解析过程中，所以就有了这篇文章。 这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。 主要介绍分析以下几个库（2024-06-13）： 库名 Star 标准库 JSON Unmarshal valyala/fastjson 2.2 k tidwall/gjson 13.">
+<meta property='og:description' content="对比 fastjson，gjson，jsonparser 的性能以及优缺点。 这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。 This article is first published in the medium MPP plan. If you are a medium user, please follow me on the medium. Thank you very much. 其实本来我是没打算去看 JSON 库的性能问题的，但是最近我对我的项目做了一次 pprof，从下面的火焰图中可以发现在业务逻辑处理中，有一半多的性能消耗都是在 JSON 解析过程中，所以就有了这篇文章。 这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。 主要介绍分析以下几个库（2024-06-13）： 库名 Star 标准库 JSON Unmarshal valyala/fastjson 2.2 k tidwall/gjson 13.8 k buger/jsonparser 5.4 k 标准库 JSON Unmarshal 1 func Unmarshal(data []byte, v interface{}) 官方的 JSON 解析库需要传两个参数，一个是需要被序列化的对象，另一个是表示这个对象的类型。">
 <meta property='og:url' content='https://huizhou92.com/zh-cn/p/%E6%B7%B1%E5%85%A5-go-%E4%B8%AD%E5%90%84%E4%B8%AA%E9%AB%98%E6%80%A7%E8%83%BD-json-%E8%A7%A3%E6%9E%90%E5%BA%93/'>
 <meta property='og:site_name' content='huizhou92&#39;s Blog'>
 <meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:published_time' content='2024-06-13T17:10:25&#43;08:00'/><meta property='article:modified_time' content='2024-06-13T17:10:22&#43;08:00'/>
 <meta name="twitter:site" content="@https://x.com/piaopiaopig">
     <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="深入 Go 中各个高性能 JSON 解析库">
-<meta name="twitter:description" content="Compare the performance, advantages and disadvantages of fastjson, gjson, and jsonparser. 对比 fastjson，gjson，jsonparser 的性能以及优缺点。 这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。 This article is first published in the medium MPP plan. If you are a medium user, please follow me on the medium. Thank you very much. 其实本来我是没打算去看 JSON 库的性能问题的，但是最近我对我的项目做了一次 pprof，从下面的火焰图中可以发现在业务逻辑处理中，有一半多的性能消耗都是在 JSON 解析过程中，所以就有了这篇文章。 这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。 主要介绍分析以下几个库（2024-06-13）： 库名 Star 标准库 JSON Unmarshal valyala/fastjson 2.2 k tidwall/gjson 13.">
+<meta name="twitter:description" content="对比 fastjson，gjson，jsonparser 的性能以及优缺点。 这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。 This article is first published in the medium MPP plan. If you are a medium user, please follow me on the medium. Thank you very much. 其实本来我是没打算去看 JSON 库的性能问题的，但是最近我对我的项目做了一次 pprof，从下面的火焰图中可以发现在业务逻辑处理中，有一半多的性能消耗都是在 JSON 解析过程中，所以就有了这篇文章。 这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。 主要介绍分析以下几个库（2024-06-13）： 库名 Star 标准库 JSON Unmarshal valyala/fastjson 2.2 k tidwall/gjson 13.8 k buger/jsonparser 5.4 k 标准库 JSON Unmarshal 1 func Unmarshal(data []byte, v interface{}) 官方的 JSON 解析库需要传两个参数，一个是需要被序列化的对象，另一个是表示这个对象的类型。">
     <link rel="shortcut icon" href="/favicon.ico" />
 
   
@@ -182,26 +182,6 @@
 
                 
                 <span>关于</span>
-            </a>
-        </li>
-        
-        
-        <li >
-            <a href='/zh-cn/categories/newsletter/' >
-                
-                
-                
-                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-  <path stroke="none" d="M0 0h24v24H0z"/>
-  <rect x="3" y="4" width="18" height="4" rx="2" />
-  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
-  <line x1="10" y1="12" x2="14" y2="12" />
-</svg>
-
-
-
-                
-                <span>NewsLetter</span>
             </a>
         </li>
         
@@ -483,8 +463,7 @@
     <section class="article-content">
     
     
-    <p>Compare the performance, advantages and disadvantages of <code>fastjson</code>, <code>gjson</code>, and <code>jsonparser</code>.</p>
-<p>对比 <code>fastjson</code>，<code>gjson</code>，<code>jsonparser</code> 的性能以及优缺点。</p>
+    <p>对比 <code>fastjson</code>，<code>gjson</code>，<code>jsonparser</code> 的性能以及优缺点。</p>
 <p>这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。</p>
 <!-- more -->
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
