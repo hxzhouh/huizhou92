@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Recently, I discovered that the Go standard library includes a built-in implementation of varint, found in encoding/binary/varint.go. This implementation is similar to the varint used in protobuf. Using the Golang standard library&rsquo;s varint source code, we will systematically learn and review the concept of varint. If you&rsquo;re familiar with protobuf, you probably already know that all integer types (except fixed types like fixed32 and fixed64) are encoded using varint. varint mainly solves two issues:">
+<title>Decrypt Go: varint</title>
+
+<link rel='canonical' href='https://huizhou92.com/p/decrypt-go-varint/'>
+
+<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="Decrypt Go:\u00a0varint">
+<meta property='og:description' content="Recently, I discovered that the Go standard library includes a built-in implementation of varint, found in encoding/binary/varint.go. This implementation is similar to the varint used in protobuf. Using the Golang standard library&rsquo;s varint source code, we will systematically learn and review the concept of varint. If you&rsquo;re familiar with protobuf, you probably already know that all integer types (except fixed types like fixed32 and fixed64) are encoded using varint. varint mainly solves two issues:">
+<meta property='og:url' content='https://huizhou92.com/p/decrypt-go-varint/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='go' /><meta property='article:published_time' content='2024-09-06T17:52:42&#43;08:00'/><meta property='article:modified_time' content='2024-09-06T17:52:41&#43;08:00'/><meta property='og:image' content='https://images.hxzhouh.com/blog-images/2024/09/8f70bb43e8ae963c5655a667adf6b88d.png' />
+<meta name="twitter:site" content="@https://x.com/piaopiaopig">
+    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="Decrypt Go:\u00a0varint">
+<meta name="twitter:description" content="Recently, I discovered that the Go standard library includes a built-in implementation of varint, found in encoding/binary/varint.go. This implementation is similar to the varint used in protobuf. Using the Golang standard library&rsquo;s varint source code, we will systematically learn and review the concept of varint. If you&rsquo;re familiar with protobuf, you probably already know that all integer types (except fixed types like fixed32 and fixed64) are encoded using varint. varint mainly solves two issues:"><meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content='https://images.hxzhouh.com/blog-images/2024/09/8f70bb43e8ae963c5655a667adf6b88d.png' />
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="Toggle Menu">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+                    <span class="emoji">😄</span>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>Home</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/about/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>About</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>Archives</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>Search</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" selected>English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" >中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>Dark Mode</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">Table of contents</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#the-design-principles-of-varint">The Design Principles of varint</a></li>
+    <li><a href="#varint-for-unsigned-integers"><code>varint</code> for Unsigned Integers</a></li>
+    <li><a href="#encoding-negative-numbers-zigzag-encoding">Encoding Negative Numbers: Zigzag Encoding</a></li>
+    <li><a href="#when-varint-is-not-suitable">When <code>varint</code> Is Not Suitable</a></li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="has-image main-article">
+    <header class="article-header">
+        <div class="article-image">
+            <a href="/p/decrypt-go-varint/">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/09/8f70bb43e8ae963c5655a667adf6b88d.png" loading="lazy" alt="Featured image of post Decrypt Go: varint" />
+                
+            </a>
+        </div>
+    
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/categories/tech/" style="background-color: #2a9d8f; color: #ffff;">
+                tech
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/p/decrypt-go-varint/">Decrypt Go: varint</a>
+        </h2>
+    
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Sep 06, 2024</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    5 minute read
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+        <footer class="article-translations">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+            <div>
+                
+                    <a href="https://huizhou92.com/zh-cn/p/%E8%A7%A3%E6%9E%90go-varint-%E7%9A%84%E4%BD%BF%E7%94%A8%E4%B8%8E%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/" class="link">中文</a>
+                
+            </div>
+        </footer>
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <p>Recently, I discovered that the Go standard library includes a built-in implementation of <code>varint</code>, found in <a class="link" href="https://github.com/golang/go/blob/9e9b1f57c26a6d13fdaebef67136718b8042cdba/src/encoding/binary/varint.go"  target="_blank" rel="noopener"
+    >encoding/binary/varint.go</a>. This implementation is similar to the <code>varint</code> used in <code>protobuf</code>. Using the Golang standard library&rsquo;s <code>varint</code> source code, we will systematically learn and review the concept of <code>varint</code>.<br>
+If you&rsquo;re familiar with <code>protobuf</code>, you probably already know that all integer types (except fixed types like <code>fixed32</code> and <code>fixed64</code>) are encoded using <code>varint</code>.</p>
+<p><code>varint</code> mainly solves two issues:</p>
+<ol>
+<li>
+<p><strong>Space Efficiency</strong>: Take <code>uint64</code> as an example, representing values as large as 18,446,744,073,709,551,615. In most real-world scenarios, however, our integer values are much smaller. If your system needs to process values as low as 1, you&rsquo;d still use <code>8 bytes</code> to represent this value in transmission, wasting space since most bytes store no useful data. varint encoding uses a variable-length byte sequence to represent integers, reducing the space required for smaller values.</p>
+</li>
+<li>
+<p><strong>Compatibility</strong>: <code>varint</code> allows us to handle integers of different sizes without altering the encoding/decoding logic. This means fields can be upgraded from smaller types (like <code>uint32</code>) to larger ones (like <code>uint64</code>) without breaking backward compatibility.</p>
+</li>
+</ol>
+<p>This article will dive into Golang <code>varint</code> implementation, exploring its design principles and how it addresses the challenges of encoding negative numbers.</p>
+<!-- more  -->
+<blockquote>
+<p>This article was first published under the Medium MPP plan. Follow me on <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >Medium</a> if you&rsquo;re a Medium user.</p>
+</blockquote>
+<h2 id="the-design-principles-of-varint">The Design Principles of varint
+</h2><p><code>varint</code> is designed based on simple principles:</p>
+<ul>
+<li><strong>7-bit Grouping</strong>: The binary representation of an integer is divided into 7-bit groups. From the least significant bit to the most significant bit, every 7-bit group becomes a unit.</li>
+<li><strong>Continuation Bit</strong>: A flag bit is added before each 7-bit group, forming an 8-bit byte. If more bytes follow, the flag bit is set to 1; otherwise, it’s set to 0.<br>
+For example, the integer <code>uint64(300)</code> has a binary representation of <code>100101100</code>. Dividing this into two groups—<code>10</code> and <code>0101100</code>—and adding flag bits results in two bytes: <code>00000010</code> and <code>10101100</code>, which is the <code>varint</code> encoding of 300. Compared to <code>uint64</code>, which uses 4 bytes, <code>varint</code> reduces the storage by 75%.<br>
+list1:  uint64 to <code>varint</code></li>
+</ul>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span><span class="lnt">8
+</span><span class="lnt">9
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">v</span> <span class="o">:=</span> <span class="nb">uint64</span><span class="p">(</span><span class="mi">300</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">bytes</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">([]</span><span class="kt">byte</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">bytes</span> <span class="p">=</span> <span class="nx">binary</span><span class="p">.</span><span class="nf">AppendUvarint</span><span class="p">(</span><span class="nx">bytes</span><span class="p">,</span> <span class="nx">v</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="nx">bytes</span><span class="p">))</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="nb">len</span><span class="p">(</span><span class="nx">bytes</span><span class="p">);</span> <span class="nx">i</span> <span class="p">&gt;</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span><span class="o">--</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;%08b &#34;</span><span class="p">,</span> <span class="nx">bytes</span><span class="p">[</span><span class="nx">i</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p><img src="https://images.hxzhouh.com/blog-images/2024/09/5968188c58521a4262e1c0f76fcc010a.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Figure 1: varint encoding"
+	
+	
+></p>
+<h2 id="varint-for-unsigned-integers"><code>varint</code> for Unsigned Integers
+</h2><p>The Go standard library provides two sets of <code>varint</code> functions: one for unsigned integers (<a class="link" href="https://github.com/golang/go/blob/9e9b1f57c26a6d13fdaebef67136718b8042cdba/src/encoding/binary/varint.go#L51"  target="_blank" rel="noopener"
+    >PutUvarint</a>, <a class="link" href="https://github.com/golang/go/blob/9e9b1f57c26a6d13fdaebef67136718b8042cdba/src/encoding/binary/varint.go#L68"  target="_blank" rel="noopener"
+    >Uvarint</a>) and another for signed integers (<a class="link" href="https://github.com/golang/go/blob/9e9b1f57c26a6d13fdaebef67136718b8042cdba/src/encoding/binary/varint.go#L115"  target="_blank" rel="noopener"
+    >varint</a>, <a class="link" href="https://github.com/golang/go/blob/9e9b1f57c26a6d13fdaebef67136718b8042cdba/src/encoding/binary/varint.go#L101"  target="_blank" rel="noopener"
+    >Putvarint</a>).<br>
+Let&rsquo;s first look at the unsigned integer <code>varint</code> implementation:<br>
+list2: go src <code>PutUvarint</code></p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">PutUvarint</span><span class="p">(</span><span class="nx">buf</span> <span class="p">[]</span><span class="kt">byte</span><span class="p">,</span> <span class="nx">x</span> <span class="kt">uint64</span><span class="p">)</span> <span class="kt">int</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span>
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">x</span> <span class="o">&gt;=</span> <span class="mh">0x80</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">buf</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">=</span> <span class="nb">byte</span><span class="p">(</span><span class="nx">x</span><span class="p">)</span> <span class="p">|</span> <span class="mh">0x80</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">x</span> <span class="o">&gt;&gt;=</span> <span class="mi">7</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">i</span><span class="o">++</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">buf</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">=</span> <span class="nb">byte</span><span class="p">(</span><span class="nx">x</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">i</span> <span class="o">+</span> <span class="mi">1</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>There is a very important constant in the code: <code>0x80</code>, which corresponds to the binary code <code>1000 0000</code>. This constant is very important for the logic that follows:</p>
+<ol>
+<li><strong><code>x &gt;= 0x80</code></strong>: This checks if <code>x</code> requires more than 7 bits for representation. If it does, <code>x</code> needs to be split.</li>
+<li><strong><code>byte(x) | 0x80</code></strong>: This applies a bitwise OR with <code>0x80</code> (<code>1000 0000</code>), ensuring the highest bit is set to 1 and extracting the lowest 7 bits of <code>x</code>.</li>
+<li><strong><code>x &gt;&gt;= 7</code></strong>: Shift <code>x</code> right by 7 bits to process the next group.</li>
+<li><strong><code>buf[i] = byte(x)</code></strong>: When the loop ends, the highest bits are all zeros, so no further action is needed.</li>
+</ol>
+<p><code>Uvarint</code> is the reverse of <code>PutUvarint</code>.</p>
+<p>It should be noted that: <code>varint</code> splits integers into 7-bit groups, meaning large integers may face inefficiencies. For example, <code>uint64</code>&rsquo;s maximum value requires 10 bytes instead of the usual 8 (<code>64/7 ≈ 10</code>).</p>
+<h2 id="encoding-negative-numbers-zigzag-encoding">Encoding Negative Numbers: Zigzag Encoding
+</h2><p>Though <code>varint</code> is efficient, it doesn’t account for negative numbers. In computing, numbers are stored as two’s complement, which means a small negative number might have a sizeable binary representation.<br>
+For example, <code>-5</code> in 32-bit form is represented as <code>11111111111111111111111111111011</code>, requiring 5 bytes in <code>varint encoding</code></p>
+<p>Go uses <strong>zigzag encoding</strong> to solve this problem:</p>
+<ul>
+<li>For positive numbers <code>n</code>, map them to <code>2n</code>.</li>
+<li>For negative numbers <code>-n</code>, map them to <code>2n-1</code>.<br>
+This way, positive and negative numbers alternate without conflict, hence the name <code>zigzag encoding</code>.<br>
+For example, after zigzag encoding <code>int32(-5)</code>, the value becomes 9 (<code>00000000000000000000000000001001</code>), which <code>varint</code> can represent with just 1 byte.</li>
+</ul>
+<p>Here’s the Golang implementation:<br>
+list3: go src <code>Putvarint</code></p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">Putvarint</span><span class="p">(</span><span class="nx">buf</span> <span class="p">[]</span><span class="kt">byte</span><span class="p">,</span> <span class="nx">x</span> <span class="kt">int64</span><span class="p">)</span> <span class="kt">int</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">ux</span> <span class="o">:=</span> <span class="nb">uint64</span><span class="p">(</span><span class="nx">x</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="mi">1</span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">x</span> <span class="p">&lt;</span> <span class="mi">0</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">ux</span> <span class="p">=</span> <span class="p">^</span><span class="nx">ux</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nf">PutUvarint</span><span class="p">(</span><span class="nx">buf</span><span class="p">,</span> <span class="nx">ux</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>From the code, we can see that for the implementation of <code>varint</code> for signed integers, the Go standard library breaks it down into two steps:</p>
+<ol>
+<li>First, the integer is converted using <code>ZigZag encoding</code>.</li>
+<li>Then, the converted value is encoded using <code>varint</code>.</li>
+</ol>
+<p>For negative numbers, there is an extra step: <code>ux = ^ux</code>. This part might be confusing—why does this transformation result in <code>2n - 1</code>?</p>
+<p>We can roughly deduce the process, assuming we have an integer <code>-n</code>:</p>
+<ol>
+<li>First, the original value is shifted left, then inverted. This can be viewed as: first invert the value, then shift left, and finally add 1. This results in <code>2*(~(-n)) + 1</code>.</li>
+<li>the two’s complement of a negative number is the bitwise inversion of its absolute value plus 1. So, how do we derive the absolute value from the two’s complement? There is a formula: <code>|A| = ~A + 1</code>.</li>
+<li>Substituting this formula into the first step: <code>2*(n - 1) + 1 = 2n - 1</code>. This perfectly matches the ZigZag encoding for negative numbers (mathematics is indeed excellent).</li>
+</ol>
+<p><img src="https://images.hxzhouh.com/blog-images/2024/09/4a36258701ba672eb68d4ec7da38285e.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Figure 2: ZigZag encoding"
+	
+	
+></p>
+<p>In the Go standard library, calling <code>PutUvarint</code> only applies <code>varint</code> encoding, while calling <code>PutVarint</code> first applies ZigZag encoding and then <code>varint</code> encoding.</p>
+<p>In <code>protobuf</code>, if the type is <code>int32</code>, <code>int64</code>, <code>uint32</code>, or <code>uint64</code>, only <code>varint</code> encoding is used. However, for <code>sint32</code> and <code>sint64</code>, ZigZag encoding is applied first, followed by <code>varint</code> encoding.</p>
+<h2 id="when-varint-is-not-suitable">When <code>varint</code> Is Not Suitable
+</h2><p>Despite its benefits, <code>varint</code> isn&rsquo;t ideal for all scenarios:</p>
+<ul>
+<li><strong>Large integers</strong>: <code>varint</code> can be less efficient than fixed-length encoding for huge numbers.</li>
+<li><strong>Random data access</strong>: Since <code>varint</code> uses variable lengths, indexing specific integers directly is challenging.</li>
+<li><strong>Frequent mathematical operations</strong>: <code>varint-encoding</code> data requires decoding before operations, potentially affecting performance.</li>
+<li><strong>Security-sensitive applications</strong>: <code>varint encoding</code> may leak information about the original integer&rsquo;s size, which could be unacceptable in secure environments.</li>
+</ul>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/tags/go/">Go</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            Last updated on Sep 06, 2024 17:52 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+<aside class="related-content--wrapper">
+    <h2 class="section-title">Related content</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="has-image">
+    <a href="/p/decrypt-go-runtime.setfinalizer/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/09/44dc3c5b905dd33169c691b6ec42b4cf.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/09/44dc3c5b905dd33169c691b6ec42b4cf.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Decrypt Go: `runtime.SetFinalizer`</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/p/rpc-action-ep2-using-protobuf-and-creating-a-custom-plugin/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/09/f12cd0683ca01b5929359e404d7a0ebe.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/09/f12cd0683ca01b5929359e404d7a0ebe.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">RPC Action EP2: Using Protobuf and Creating a Custom Plugin</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/p/go-high-performance-programming-ep9-escape-analysis/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/08/317a5c9d3df72bec002eb7c0bd64c06d.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/08/317a5c9d3df72bec002eb7c0bd64c06d.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go High-Performance Programming EP9: Escape Analysis</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/p/rpc-action-ep1-implement-a-simple-rpc-interface-in-go/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/08/d4dddb722300af56ecbb03cefdf1aec1.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/08/d4dddb722300af56ecbb03cefdf1aec1.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">RPC Action EP1: Implement a simple RPC interface in Go</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/p/go-high-performance-programming-ep8-optimizing-gc-in-golang-using-go-trace/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/08/42af44f7ae36f49965e3ad6452fca825.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/08/42af44f7ae36f49965e3ad6452fca825.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go High-Performance Programming EP8:  Optimizing GC in Golang Using  go trace</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+
+    
+        
+    <script src="//cdn.jsdelivr.net/npm/twikoo@1.6.21/dist/twikoo.all.min.js"></script>
+<div id="tcomment"></div>
+<style>
+    .twikoo {
+        background-color: var(--card-background);
+        border-radius: var(--card-border-radius);
+        box-shadow: var(--shadow-l1);
+        padding: var(--card-padding);
+    }
+    :root[data-scheme="dark"] {
+        --twikoo-body-text-color-main: rgba(255, 255, 255, 0.9);
+        --twikoo-body-text-color: rgba(255, 255, 255, 0.7);
+    }
+    .twikoo .el-input-group__prepend,
+    .twikoo .tk-action-icon,
+    .twikoo .tk-submit-action-icon,
+    .twikoo .tk-time,
+    .twikoo .tk-comments-no,
+    .twikoo .tk-comments-count {
+        color: var(--twikoo-body-text-color);
+    }
+    .twikoo .el-input__inner,
+    .twikoo .el-textarea__inner,
+    .twikoo .tk-preview-container,
+    .twikoo .tk-content,
+    .twikoo .tk-nick,
+    .twikoo .tk-send {
+        color: var(--twikoo-body-text-color-main);
+    }
+    .twikoo .el-button{
+        color: var(--twikoo-body-text-color)!important;
+    }
+    .twikoo .el-input__count {
+        color: var(--twikoo-body-text-color) !important;
+    }
+    .OwO .OwO-body {
+        background-color: var(--body-background) !important;
+        color: var(--body-text-color) !important;
+    }
+</style><script>
+    twikoo.init({
+        envId: 'https:\/\/twikoo.yixiao9206.cn',
+        el: '#tcomment',lang: 'en',})
+</script>
+
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2024 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        Built with <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> <br />
+        Theme <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> designed by <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a>
+    </section>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>

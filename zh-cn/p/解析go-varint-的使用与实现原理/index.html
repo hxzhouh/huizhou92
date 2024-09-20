@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="zh-cn" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="最近发现 Golang 标准库竟然自带了 varint 的实现，代码位置在\u00a0encoding/binary/varint.go，这个跟protobuf里面的varint实现基本是一致的。刚好借助 golang 标准库的 varint 源码，我们来系统地学习和梳理下 varint。 熟悉 protobuf 的人肯定对 varint 不陌生，protobuf 里面除了带 fix (如 fixed32、fixed64) 之外的整数类型, 都是 varint 编码。 varint 的出现主要是为了解决两个问题： 空间效率：以 uint64 类型为例，可以表示的最大值为 18446744073709551615。然而在实际业务场景中，我们通常处理的整数值远小于 uint64 的最大值。假设在我们的业务中，需要处理的整数值仅为 1，但在网络传输过程中，我们却需要使用 8 个字节来表示这个值。这就导致了大量的空间浪费，因为大部分字节并没有实际存储有效的信息。varint 编码通过使用可变长度的字节序列来表示整数，使得小的整数可以用更少的字节表示，提高空间效率。 兼容性：varint 使得我们可以在不改变编码 / 解码逻辑的情况下，处理不同大小的整数。这意味着我们可以在不破坏向后兼容性的情况下，将一个字段从较小的整数类型（如 uint32）升级到较大的整数类型（如 uint64） 本文将通过分析 Golang 标准库自带的 varint 源码实现，介绍 varint 的设计原理以及Golang标准库是如何解决 varint 在编码负数时遇到的问题。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium.">
+<title>解析Go: varint 的使用与实现原理</title>
+
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/%E8%A7%A3%E6%9E%90go-varint-%E7%9A%84%E4%BD%BF%E7%94%A8%E4%B8%8E%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/'>
+
+<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="解析Go: varint 的使用与实现原理">
+<meta property='og:description' content="最近发现 Golang 标准库竟然自带了 varint 的实现，代码位置在\u00a0encoding/binary/varint.go，这个跟protobuf里面的varint实现基本是一致的。刚好借助 golang 标准库的 varint 源码，我们来系统地学习和梳理下 varint。 熟悉 protobuf 的人肯定对 varint 不陌生，protobuf 里面除了带 fix (如 fixed32、fixed64) 之外的整数类型, 都是 varint 编码。 varint 的出现主要是为了解决两个问题： 空间效率：以 uint64 类型为例，可以表示的最大值为 18446744073709551615。然而在实际业务场景中，我们通常处理的整数值远小于 uint64 的最大值。假设在我们的业务中，需要处理的整数值仅为 1，但在网络传输过程中，我们却需要使用 8 个字节来表示这个值。这就导致了大量的空间浪费，因为大部分字节并没有实际存储有效的信息。varint 编码通过使用可变长度的字节序列来表示整数，使得小的整数可以用更少的字节表示，提高空间效率。 兼容性：varint 使得我们可以在不改变编码 / 解码逻辑的情况下，处理不同大小的整数。这意味着我们可以在不破坏向后兼容性的情况下，将一个字段从较小的整数类型（如 uint32）升级到较大的整数类型（如 uint64） 本文将通过分析 Golang 标准库自带的 varint 源码实现，介绍 varint 的设计原理以及Golang标准库是如何解决 varint 在编码负数时遇到的问题。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium.">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/%E8%A7%A3%E6%9E%90go-varint-%E7%9A%84%E4%BD%BF%E7%94%A8%E4%B8%8E%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='go' /><meta property='article:published_time' content='2024-09-06T15:33:15&#43;08:00'/><meta property='article:modified_time' content='2024-09-06T15:33:13&#43;08:00'/>
+<meta name="twitter:site" content="@https://x.com/piaopiaopig">
+    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="解析Go: varint 的使用与实现原理">
+<meta name="twitter:description" content="最近发现 Golang 标准库竟然自带了 varint 的实现，代码位置在\u00a0encoding/binary/varint.go，这个跟protobuf里面的varint实现基本是一致的。刚好借助 golang 标准库的 varint 源码，我们来系统地学习和梳理下 varint。 熟悉 protobuf 的人肯定对 varint 不陌生，protobuf 里面除了带 fix (如 fixed32、fixed64) 之外的整数类型, 都是 varint 编码。 varint 的出现主要是为了解决两个问题： 空间效率：以 uint64 类型为例，可以表示的最大值为 18446744073709551615。然而在实际业务场景中，我们通常处理的整数值远小于 uint64 的最大值。假设在我们的业务中，需要处理的整数值仅为 1，但在网络传输过程中，我们却需要使用 8 个字节来表示这个值。这就导致了大量的空间浪费，因为大部分字节并没有实际存储有效的信息。varint 编码通过使用可变长度的字节序列来表示整数，使得小的整数可以用更少的字节表示，提高空间效率。 兼容性：varint 使得我们可以在不改变编码 / 解码逻辑的情况下，处理不同大小的整数。这意味着我们可以在不破坏向后兼容性的情况下，将一个字段从较小的整数类型（如 uint32）升级到较大的整数类型（如 uint64） 本文将通过分析 Golang 标准库自带的 varint 源码实现，介绍 varint 的设计原理以及Golang标准库是如何解决 varint 在编码负数时遇到的问题。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium.">
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="切换菜单">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/zh-cn/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+                    <span class="emoji">😄</span>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/zh-cn">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/zh-cn/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>主页</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/%E5%85%B3%E4%BA%8E/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>关于</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>归档</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>搜索</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" >English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" selected>中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>暗色模式</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">目录</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#varint-的设计原理">varint 的设计原理</a></li>
+    <li><a href="#无符号整数的-varint">无符号整数的 varint</a></li>
+    <li><a href="#负数的编码zigzag-编码">负数的编码：zigzag 编码</a></li>
+    <li><a href="#varint-不适用的情况">varint 不适用的情况</a></li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="main-article">
+    <header class="article-header">
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/zh-cn/categories/tech/" style="background-color: #2a9d8f; color: #fff;">
+                技术
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/zh-cn/p/%E8%A7%A3%E6%9E%90go-varint-%E7%9A%84%E4%BD%BF%E7%94%A8%E4%B8%8E%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/">解析Go: varint 的使用与实现原理</a>
+        </h2>
+    
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Sep 06, 2024</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    阅读时长: 3 分钟
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+        <footer class="article-translations">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+            <div>
+                
+                    <a href="https://huizhou92.com/p/decrypt-go-varint/" class="link">English</a>
+                
+            </div>
+        </footer>
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <p>最近发现 <code>Golang</code> 标准库竟然自带了 <code>varint</code> 的实现，代码位置在 <a class="link" href="https://github.com/golang/go/blob/9e9b1f57c26a6d13fdaebef67136718b8042cdba/src/encoding/binary/varint.go"  target="_blank" rel="noopener"
+    >encoding/binary/varint.go</a>，这个跟protobuf里面的varint实现基本是一致的。刚好借助 <code>golang</code> 标准库的 <code>varint</code> 源码，我们来系统地学习和梳理下 <code>varint</code>。<br>
+熟悉 <code>protobuf</code> 的人肯定对 <code>varint</code> 不陌生，<code>protobuf</code> 里面除了带 fix (如 fixed32、fixed64) 之外的整数类型, 都是 <code>varint</code> 编码。<br>
+<code>varint</code> 的出现主要是为了解决两个问题：</p>
+<ol>
+<li><strong>空间效率</strong>：以 <code>uint64</code> 类型为例，可以表示的最大值为 18446744073709551615。然而在实际业务场景中，我们通常处理的整数值远小于 uint64 的最大值。假设在我们的业务中，需要处理的整数值仅为 1，但在网络传输过程中，我们却需要使用 <code>8 个字节</code>来表示这个值。这就导致了大量的空间浪费，因为大部分字节并没有实际存储有效的信息。varint 编码通过使用可变长度的字节序列来表示整数，使得小的整数可以用更少的字节表示，提高空间效率。</li>
+<li><strong>兼容性</strong>：varint 使得我们可以在不改变编码 / 解码逻辑的情况下，处理不同大小的整数。这意味着我们可以在不破坏向后兼容性的情况下，将一个字段从较小的整数类型（如 uint32）升级到较大的整数类型（如 uint64）</li>
+</ol>
+<p>本文将通过分析 Golang 标准库自带的 varint 源码实现，介绍 varint 的设计原理以及Golang标准库是如何解决 varint 在编码负数时遇到的问题。</p>
+<!-- more-->
+<blockquote>
+<p>This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >Medium</a>. Thank you very much.</p>
+</blockquote>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+crossorigin="anonymous"></script>
+    <ins class="adsbygoogle"
+    style="display:block; text-align:center;"
+    data-ad-layout="in-article"
+    data-ad-format="fluid"
+    data-ad-client="ca-pub-9000447749076746"
+    data-ad-slot="5063552270"></ins>
+<script>
+(adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+<h2 id="varint-的设计原理">varint 的设计原理
+</h2><p>varint 的设计原理非常简单：</p>
+<ul>
+<li>7bit 为一组：将整数的二进制表示分为 7 个 bit 位一组。从低位到高位，每 7 个 bit 位作为一个单元。</li>
+<li>最高位表示 “继续” 标志。在每个 7 位的单元前面添加一个标志位，形成一个 8 位的字节。如果后面还有更多的字节，这个标志位就设置为 1，否则设置为 0。<br>
+例如：对于一个整数 <code>uint64(300)</code>，它的二进制表示是 <code>100101100</code>。我们可以将它分为两组，即 <code>10</code> 和 <code>0101100</code>。然后在每组前面添加标志位，得到两个字节 <code>00000010</code> 和 <code>10101100</code>，这两个字节就是 300 的 <code>varint</code> 编码。相比于用 <code>uint64</code> 的 4 字节表示，少了 75% 的存储空间。</li>
+</ul>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span><span class="lnt">8
+</span><span class="lnt">9
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">v</span> <span class="o">:=</span> <span class="nb">uint64</span><span class="p">(</span><span class="mi">300</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">bytes</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">([]</span><span class="kt">byte</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">bytes</span> <span class="p">=</span> <span class="nx">binary</span><span class="p">.</span><span class="nf">AppendUvarint</span><span class="p">(</span><span class="nx">bytes</span><span class="p">,</span> <span class="nx">v</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="nx">bytes</span><span class="p">))</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="nb">len</span><span class="p">(</span><span class="nx">bytes</span><span class="p">);</span> <span class="nx">i</span> <span class="p">&gt;</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span><span class="o">--</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;%08b &#34;</span><span class="p">,</span> <span class="nx">bytes</span><span class="p">[</span><span class="nx">i</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p><img src="https://images.hxzhouh.com/blog-images/2024/09/5968188c58521a4262e1c0f76fcc010a.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Figure 1: varint encoding "
+	
+	
+></p>
+<h2 id="无符号整数的-varint">无符号整数的 varint
+</h2><p>在 <code>Golang</code> 标准库中有两套 <code>varint</code> 的函数: 分别用于无符号整数的 <a class="link" href="https://github.com/golang/go/blob/9e9b1f57c26a6d13fdaebef67136718b8042cdba/src/encoding/binary/varint.go#L51"  target="_blank" rel="noopener"
+    >PutUvarint</a>和 <a class="link" href="https://github.com/golang/go/blob/9e9b1f57c26a6d13fdaebef67136718b8042cdba/src/encoding/binary/varint.go#L68"  target="_blank" rel="noopener"
+    >Uvarint</a>，以及用于有符号整数的 <a class="link" href="https://github.com/golang/go/blob/9e9b1f57c26a6d13fdaebef67136718b8042cdba/src/encoding/binary/varint.go#L115"  target="_blank" rel="noopener"
+    >Varint</a> 和 <a class="link" href="https://github.com/golang/go/blob/9e9b1f57c26a6d13fdaebef67136718b8042cdba/src/encoding/binary/varint.go#L101"  target="_blank" rel="noopener"
+    >PutVarint</a><br>
+我们先看下无符号整数的 varint 实现，代码如下：<br>
+list1: go src PutUvarint</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">PutUvarint</span><span class="p">(</span><span class="nx">buf</span> <span class="p">[]</span><span class="kt">byte</span><span class="p">,</span> <span class="nx">x</span> <span class="kt">uint64</span><span class="p">)</span> <span class="kt">int</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span>
+</span></span><span class="line"><span class="cl">	<span class="k">for</span> <span class="nx">x</span> <span class="o">&gt;=</span> <span class="mh">0x80</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">buf</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">=</span> <span class="nb">byte</span><span class="p">(</span><span class="nx">x</span><span class="p">)</span> <span class="p">|</span> <span class="mh">0x80</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">x</span> <span class="o">&gt;&gt;=</span> <span class="mi">7</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">i</span><span class="o">++</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">buf</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">=</span> <span class="nb">byte</span><span class="p">(</span><span class="nx">x</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="nx">i</span> <span class="o">+</span> <span class="mi">1</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>代码里有个非常重要的常量：0x80，对应于二进制编码就是 <code>1000 0000</code>。这个常量对接下来的逻辑非常重要：</p>
+<ol>
+<li><code>x &gt;= 0x80</code>。这意味着 x 的二进制表示形式至少有 8 位，我们刚才讲到 7 个 bit 位为一组，那 x 就需要被拆分了。</li>
+<li><code>byte(x) | 0x80</code>。将 x 的最低 8 位与 <code>1000 0000</code> 进行按位或操作，然后将结果存储在 buf[i] 中。这样 <strong>既可以将最高位设置为 1，同时也提取出了 x 的最低 7 位</strong>。</li>
+<li><code>x &gt;&gt;= 7</code>. 将 x 右移 7 位，处理下一个分组。</li>
+<li><code>buf[i] = byte(x)</code>。当 for 循环结束时，即意味着 x 的二进制表示形式最高位必然是 0。此时就不用做额外的补零操作了。</li>
+</ol>
+<p><code>Uvarint</code> 是 <code>PutUvarint</code> 的逆过程。</p>
+<p>需要注意的是，varint 将整数划分为 7 位一组。这意味着，对于大整数 varint 将会出现负向优化。例如对于 uint64 的最大值来说，本来只需要 8 个 byte 来表示，但在 varint 中却需要 10 个字节来表示了。（<code>64/7 ≈ 10</code>）<br>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+crossorigin="anonymous"></script>
+    <ins class="adsbygoogle"
+    style="display:block; text-align:center;"
+    data-ad-layout="in-article"
+    data-ad-format="fluid"
+    data-ad-client="ca-pub-9000447749076746"
+    data-ad-slot="5063552270"></ins>
+<script>
+(adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+</p>
+<h2 id="负数的编码zigzag-编码">负数的编码：zigzag 编码
+</h2><p>看似 varint 编码已经完美无缺了，但以上忽略了一点：负数的存在。</p>
+<p>我们知道，在计算机中数字是用补码来表示的，而负数的补码则是将其绝对值按位取反再加 1。这就意味着一个很小的负数，它的二进制形式对应于一个非常大的整数。<br>
+例如：对于一个 32 位的整数 <code>-5</code> 来说，其绝对值 5 的二进制形式是 <code>101</code>。 但 <code>-5</code> 的二进制形式却是 <code>11111111111111111111111111111011</code>，如果使用 <code>varint</code> 对其编码, 需要 5 个字节才能表示。</p>
+<p>Golang标准库引入了 <code>zigzag</code> 编码来解决这个问题，<code>zigzag</code> 的原理非常简单：</p>
+<ul>
+<li>对于正数 n，会将其映射为 <code>2n</code>。例如整数 2，经过 zigzag 编码之后变成了 4。</li>
+<li>对于负数 <code>-n</code> 来说，会将其映射为 <code>2n-1</code>。例如负数 <code>-3</code>，经过 zigzag 编码之后变成了 5。</li>
+</ul>
+<p><strong>这样负数和正数在数值上完全不会冲突，正整数和负整数交错排列</strong>，这也是为什么叫做 zigzag 编码 (锯齿形编码）的原因。<br>
+同时，负数被转换成正数之后，二进制编码也精简了许多。<br>
+例如： 对 <code>int32(-5)</code> 进行 zigzag 编码后，变成了 9，对应于二进制为 <code>00000000000000000000000000001001</code>，使用 1 个字节即可表示 varint。<br>
+我们看下 Golang 标准库的实现，代码如下：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">PutVarint</span><span class="p">(</span><span class="nx">buf</span> <span class="p">[]</span><span class="kt">byte</span><span class="p">,</span> <span class="nx">x</span> <span class="kt">int64</span><span class="p">)</span> <span class="kt">int</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">ux</span> <span class="o">:=</span> <span class="nb">uint64</span><span class="p">(</span><span class="nx">x</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="mi">1</span>
+</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">x</span> <span class="p">&lt;</span> <span class="mi">0</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">ux</span> <span class="p">=</span> <span class="p">^</span><span class="nx">ux</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="nf">PutUvarint</span><span class="p">(</span><span class="nx">buf</span><span class="p">,</span> <span class="nx">ux</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>从代码可以看出，对于有符号整数的varint实现，golang标准库这里分成了两步：</p>
+<ol>
+<li>先对整数进行 zigzag 编码进行转换</li>
+<li>对转换之后的数值再进行 varint 编码<br>
+对于负数，多了一步 <code>ux = ^ux</code> ，这就有些难以理解了，为什么这么转换之后就等于<code>2n - 1</code>了？</li>
+</ol>
+<p>我们可以大概推导下整个过程，假设我们有个整数 <code>-n</code>：</p>
+<ol>
+<li>对原数值先左移，再进行取反。其实可以看做：对原数值先取反，再左移，然后+1。 即 <code>2*(~(-n))+1</code></li>
+<li>我们知道<code>负数的补码=绝对值按位取反+1</code>，那如何根据补码再推导出绝对值？这里有个公式是：<code>|A| = ~A+1</code></li>
+<li>我们将这个公式带到第一步的式子里面： <code>2*(n-1) + 1 = 2n - 1</code>。这就完美对应上了负数的 ZigZag 编码 (数学多么美妙)。</li>
+</ol>
+<p><img src="https://images.hxzhouh.com/blog-images/2024/09/4a36258701ba672eb68d4ec7da38285e.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Figure 2: ZigZag encoding "
+	
+	
+></p>
+<p>在 Golang 标准库里面，调用 <code>PutUvarint</code> 时只会使用 <code>varint</code> 编码，调用 <code>PutVarint</code> 会先进行 <code>zigzag</code> 编码，再进行 <code>varint</code> 编码。<br>
+而在 <code>protobuf</code> 中，如果类型是<code> int32</code>、<code>int64</code>、<code>uint32</code>、<code>uint64</code>，只会使用 <code>varint</code> 编码。使用 <code>sint32</code>、<code>sint64</code> 将先进行 <code>zigzag</code> 编码，再进行 <code>varint</code> 编码</p>
+<h2 id="varint-不适用的情况">varint 不适用的情况
+</h2><p>虽然 varint 编码设计非常精妙，但并不适用于所有的场景：</p>
+<ul>
+<li><strong>大整数</strong>：对于非常大的整数，varint 编码可能会比固定长度的编码更消耗空间。例如当所有的整数值域大于 <code>2^63</code>，那使用 varint 会用到 10 字节。相比于传统的八字节整数，反而多用了 25% 的空间</li>
+<li><strong>需要快速随机访问的数据</strong>：由于 varint 是变长编码，所以我们无法直接通过索引来访问特定的整数，必须从头开始解码，直到找到我们需要的整数。这使得 varint 编码不适合用于需要快速随机访问的数据。</li>
+<li><strong>需要频繁进行数学运算的数据</strong>：由于 varint 编码的数据需要先解码才能进行数学运算，所以如果一个应用需要频繁地对数据进行数学运算，那么使用 varint 编码可能会导致性能下降。</li>
+<li><strong>安全敏感的应用</strong>：varint 编码的数据可能会暴露出一些关于原始整数的信息，例如它的大小。在某些安全敏感的应用中，这可能是不可接受的。</li>
+</ul>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/zh-cn/tags/go/">Go</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            最后更新于 Sep 06, 2024 15:33 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+<aside class="related-content--wrapper">
+    <h2 class="section-title">相关文章</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/go-runtime.setfinalizer/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/09/44dc3c5b905dd33169c691b6ec42b4cf.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/09/44dc3c5b905dd33169c691b6ec42b4cf.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go runtime.SetFinalizer</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/%E8%AE%A4%E8%AF%86rpc/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/08/d4dddb722300af56ecbb03cefdf1aec1.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/08/d4dddb722300af56ecbb03cefdf1aec1.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">认识RPC</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/rpc-action-2-protobuf-in-rpc/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">RPC Action 2: protobuf in rpc</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/go-action%E5%A6%82%E4%BD%95%E9%81%BF%E5%85%8D%E5%9B%A0%E4%B8%BA%E5%A4%A7%E5%A0%86%E4%BA%A7%E7%94%9F%E7%9A%84%E9%AB%98gc%E5%BC%80%E9%94%80/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go Action：如何避免因为大堆产生的高GC开销</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/go%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8B-ep7-%E4%BD%BF%E7%94%A8-singleflight-%E5%90%88%E5%B9%B6%E7%9B%B8%E5%90%8C%E7%9A%84%E8%AF%B7%E6%B1%82/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/07/d516998be001327a93e663f8f504840a.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/07/d516998be001327a93e663f8f504840a.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go高性能编程 EP7:  使用 SingleFlight 合并相同的请求</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+
+    
+        
+    <script src="//cdn.jsdelivr.net/npm/twikoo@1.6.21/dist/twikoo.all.min.js"></script>
+<div id="tcomment"></div>
+<style>
+    .twikoo {
+        background-color: var(--card-background);
+        border-radius: var(--card-border-radius);
+        box-shadow: var(--shadow-l1);
+        padding: var(--card-padding);
+    }
+    :root[data-scheme="dark"] {
+        --twikoo-body-text-color-main: rgba(255, 255, 255, 0.9);
+        --twikoo-body-text-color: rgba(255, 255, 255, 0.7);
+    }
+    .twikoo .el-input-group__prepend,
+    .twikoo .tk-action-icon,
+    .twikoo .tk-submit-action-icon,
+    .twikoo .tk-time,
+    .twikoo .tk-comments-no,
+    .twikoo .tk-comments-count {
+        color: var(--twikoo-body-text-color);
+    }
+    .twikoo .el-input__inner,
+    .twikoo .el-textarea__inner,
+    .twikoo .tk-preview-container,
+    .twikoo .tk-content,
+    .twikoo .tk-nick,
+    .twikoo .tk-send {
+        color: var(--twikoo-body-text-color-main);
+    }
+    .twikoo .el-button{
+        color: var(--twikoo-body-text-color)!important;
+    }
+    .twikoo .el-input__count {
+        color: var(--twikoo-body-text-color) !important;
+    }
+    .OwO .OwO-body {
+        background-color: var(--body-background) !important;
+        color: var(--body-text-color) !important;
+    }
+</style><script>
+    twikoo.init({
+        envId: 'https:\/\/twikoo.yixiao9206.cn',
+        el: '#tcomment',lang: 'en',})
+</script>
+
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2024 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+    </section>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>

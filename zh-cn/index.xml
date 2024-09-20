@@ -7,7 +7,202 @@
         <generator>Hugo -- gohugo.io</generator>
         <language>zh-cn</language>
         <copyright>Copyright © 2023 huizhou92</copyright>
-        <lastBuildDate>Mon, 09 Sep 2024 09:46:47 +0800</lastBuildDate><atom:link href="https://huizhou92.com/zh-cn/index.xml" rel="self" type="application/rss+xml" /><item>
+        <lastBuildDate>Sun, 15 Sep 2024 10:05:57 +0800</lastBuildDate><atom:link href="https://huizhou92.com/zh-cn/index.xml" rel="self" type="application/rss+xml" /><item>
+        <title>解析Go: varint 的使用与实现原理</title>
+        <link>https://huizhou92.com/zh-cn/p/%E8%A7%A3%E6%9E%90go-varint-%E7%9A%84%E4%BD%BF%E7%94%A8%E4%B8%8E%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/</link>
+        <pubDate>Fri, 06 Sep 2024 15:33:15 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/zh-cn/p/%E8%A7%A3%E6%9E%90go-varint-%E7%9A%84%E4%BD%BF%E7%94%A8%E4%B8%8E%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/</guid>
+        <description>&lt;p&gt;最近发现 &lt;code&gt;Golang&lt;/code&gt; 标准库竟然自带了 &lt;code&gt;varint&lt;/code&gt; 的实现，代码位置在 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/blob/9e9b1f57c26a6d13fdaebef67136718b8042cdba/src/encoding/binary/varint.go&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;encoding/binary/varint.go&lt;/a&gt;，这个跟protobuf里面的varint实现基本是一致的。刚好借助 &lt;code&gt;golang&lt;/code&gt; 标准库的 &lt;code&gt;varint&lt;/code&gt; 源码，我们来系统地学习和梳理下 &lt;code&gt;varint&lt;/code&gt;。&lt;br&gt;
+熟悉 &lt;code&gt;protobuf&lt;/code&gt; 的人肯定对 &lt;code&gt;varint&lt;/code&gt; 不陌生，&lt;code&gt;protobuf&lt;/code&gt; 里面除了带 fix (如 fixed32、fixed64) 之外的整数类型, 都是 &lt;code&gt;varint&lt;/code&gt; 编码。&lt;br&gt;
+&lt;code&gt;varint&lt;/code&gt; 的出现主要是为了解决两个问题：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;空间效率&lt;/strong&gt;：以 &lt;code&gt;uint64&lt;/code&gt; 类型为例，可以表示的最大值为 18446744073709551615。然而在实际业务场景中，我们通常处理的整数值远小于 uint64 的最大值。假设在我们的业务中，需要处理的整数值仅为 1，但在网络传输过程中，我们却需要使用 &lt;code&gt;8 个字节&lt;/code&gt;来表示这个值。这就导致了大量的空间浪费，因为大部分字节并没有实际存储有效的信息。varint 编码通过使用可变长度的字节序列来表示整数，使得小的整数可以用更少的字节表示，提高空间效率。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;兼容性&lt;/strong&gt;：varint 使得我们可以在不改变编码 / 解码逻辑的情况下，处理不同大小的整数。这意味着我们可以在不破坏向后兼容性的情况下，将一个字段从较小的整数类型（如 uint32）升级到较大的整数类型（如 uint64）&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;本文将通过分析 Golang 标准库自带的 varint 源码实现，介绍 varint 的设计原理以及Golang标准库是如何解决 varint 在编码负数时遇到的问题。&lt;/p&gt;
+&lt;!-- more--&gt;
+&lt;blockquote&gt;
+&lt;p&gt;This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on &lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt;. Thank you very much.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;script async src=&#34;https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746&#34;
+crossorigin=&#34;anonymous&#34;&gt;&lt;/script&gt;
+    &lt;ins class=&#34;adsbygoogle&#34;
+    style=&#34;display:block; text-align:center;&#34;
+    data-ad-layout=&#34;in-article&#34;
+    data-ad-format=&#34;fluid&#34;
+    data-ad-client=&#34;ca-pub-9000447749076746&#34;
+    data-ad-slot=&#34;5063552270&#34;&gt;&lt;/ins&gt;
+&lt;script&gt;
+(adsbygoogle = window.adsbygoogle || []).push({});
+&lt;/script&gt;
+
+&lt;h2 id=&#34;varint-的设计原理&#34;&gt;varint 的设计原理
+&lt;/h2&gt;&lt;p&gt;varint 的设计原理非常简单：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;7bit 为一组：将整数的二进制表示分为 7 个 bit 位一组。从低位到高位，每 7 个 bit 位作为一个单元。&lt;/li&gt;
+&lt;li&gt;最高位表示 “继续” 标志。在每个 7 位的单元前面添加一个标志位，形成一个 8 位的字节。如果后面还有更多的字节，这个标志位就设置为 1，否则设置为 0。&lt;br&gt;
+例如：对于一个整数 &lt;code&gt;uint64(300)&lt;/code&gt;，它的二进制表示是 &lt;code&gt;100101100&lt;/code&gt;。我们可以将它分为两组，即 &lt;code&gt;10&lt;/code&gt; 和 &lt;code&gt;0101100&lt;/code&gt;。然后在每组前面添加标志位，得到两个字节 &lt;code&gt;00000010&lt;/code&gt; 和 &lt;code&gt;10101100&lt;/code&gt;，这两个字节就是 300 的 &lt;code&gt;varint&lt;/code&gt; 编码。相比于用 &lt;code&gt;uint64&lt;/code&gt; 的 4 字节表示，少了 75% 的存储空间。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;9
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;main&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;v&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;uint64&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;300&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;bytes&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;make&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;([]&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;byte&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;bytes&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;binary&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;AppendUvarint&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;bytes&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;v&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;len&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;bytes&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;len&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;bytes&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;);&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;&amp;gt;&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;--&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;       &lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Printf&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;%08b &amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;bytes&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;-&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;])&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/09/5968188c58521a4262e1c0f76fcc010a.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Figure 1: varint encoding &#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;h2 id=&#34;无符号整数的-varint&#34;&gt;无符号整数的 varint
+&lt;/h2&gt;&lt;p&gt;在 &lt;code&gt;Golang&lt;/code&gt; 标准库中有两套 &lt;code&gt;varint&lt;/code&gt; 的函数: 分别用于无符号整数的 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/blob/9e9b1f57c26a6d13fdaebef67136718b8042cdba/src/encoding/binary/varint.go#L51&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;PutUvarint&lt;/a&gt;和 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/blob/9e9b1f57c26a6d13fdaebef67136718b8042cdba/src/encoding/binary/varint.go#L68&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Uvarint&lt;/a&gt;，以及用于有符号整数的 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/blob/9e9b1f57c26a6d13fdaebef67136718b8042cdba/src/encoding/binary/varint.go#L115&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Varint&lt;/a&gt; 和 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/blob/9e9b1f57c26a6d13fdaebef67136718b8042cdba/src/encoding/binary/varint.go#L101&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;PutVarint&lt;/a&gt;&lt;br&gt;
+我们先看下无符号整数的 varint 实现，代码如下：&lt;br&gt;
+list1: go src PutUvarint&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;PutUvarint&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;buf&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;[]&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;byte&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;x&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;uint64&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;x&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;gt;=&lt;/span&gt; &lt;span class=&#34;mh&#34;&gt;0x80&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;nx&#34;&gt;buf&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;byte&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;x&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;|&lt;/span&gt; &lt;span class=&#34;mh&#34;&gt;0x80&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;nx&#34;&gt;x&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;gt;&amp;gt;=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;7&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;++&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;buf&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;byte&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;x&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;+&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;代码里有个非常重要的常量：0x80，对应于二进制编码就是 &lt;code&gt;1000 0000&lt;/code&gt;。这个常量对接下来的逻辑非常重要：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;code&gt;x &amp;gt;= 0x80&lt;/code&gt;。这意味着 x 的二进制表示形式至少有 8 位，我们刚才讲到 7 个 bit 位为一组，那 x 就需要被拆分了。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;byte(x) | 0x80&lt;/code&gt;。将 x 的最低 8 位与 &lt;code&gt;1000 0000&lt;/code&gt; 进行按位或操作，然后将结果存储在 buf[i] 中。这样 &lt;strong&gt;既可以将最高位设置为 1，同时也提取出了 x 的最低 7 位&lt;/strong&gt;。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;x &amp;gt;&amp;gt;= 7&lt;/code&gt;. 将 x 右移 7 位，处理下一个分组。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;buf[i] = byte(x)&lt;/code&gt;。当 for 循环结束时，即意味着 x 的二进制表示形式最高位必然是 0。此时就不用做额外的补零操作了。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;&lt;code&gt;Uvarint&lt;/code&gt; 是 &lt;code&gt;PutUvarint&lt;/code&gt; 的逆过程。&lt;/p&gt;
+&lt;p&gt;需要注意的是，varint 将整数划分为 7 位一组。这意味着，对于大整数 varint 将会出现负向优化。例如对于 uint64 的最大值来说，本来只需要 8 个 byte 来表示，但在 varint 中却需要 10 个字节来表示了。（&lt;code&gt;64/7 ≈ 10&lt;/code&gt;）&lt;br&gt;
+&lt;script async src=&#34;https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746&#34;
+crossorigin=&#34;anonymous&#34;&gt;&lt;/script&gt;
+    &lt;ins class=&#34;adsbygoogle&#34;
+    style=&#34;display:block; text-align:center;&#34;
+    data-ad-layout=&#34;in-article&#34;
+    data-ad-format=&#34;fluid&#34;
+    data-ad-client=&#34;ca-pub-9000447749076746&#34;
+    data-ad-slot=&#34;5063552270&#34;&gt;&lt;/ins&gt;
+&lt;script&gt;
+(adsbygoogle = window.adsbygoogle || []).push({});
+&lt;/script&gt;
+&lt;/p&gt;
+&lt;h2 id=&#34;负数的编码zigzag-编码&#34;&gt;负数的编码：zigzag 编码
+&lt;/h2&gt;&lt;p&gt;看似 varint 编码已经完美无缺了，但以上忽略了一点：负数的存在。&lt;/p&gt;
+&lt;p&gt;我们知道，在计算机中数字是用补码来表示的，而负数的补码则是将其绝对值按位取反再加 1。这就意味着一个很小的负数，它的二进制形式对应于一个非常大的整数。&lt;br&gt;
+例如：对于一个 32 位的整数 &lt;code&gt;-5&lt;/code&gt; 来说，其绝对值 5 的二进制形式是 &lt;code&gt;101&lt;/code&gt;。 但 &lt;code&gt;-5&lt;/code&gt; 的二进制形式却是 &lt;code&gt;11111111111111111111111111111011&lt;/code&gt;，如果使用 &lt;code&gt;varint&lt;/code&gt; 对其编码, 需要 5 个字节才能表示。&lt;/p&gt;
+&lt;p&gt;Golang标准库引入了 &lt;code&gt;zigzag&lt;/code&gt; 编码来解决这个问题，&lt;code&gt;zigzag&lt;/code&gt; 的原理非常简单：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;对于正数 n，会将其映射为 &lt;code&gt;2n&lt;/code&gt;。例如整数 2，经过 zigzag 编码之后变成了 4。&lt;/li&gt;
+&lt;li&gt;对于负数 &lt;code&gt;-n&lt;/code&gt; 来说，会将其映射为 &lt;code&gt;2n-1&lt;/code&gt;。例如负数 &lt;code&gt;-3&lt;/code&gt;，经过 zigzag 编码之后变成了 5。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;这样负数和正数在数值上完全不会冲突，正整数和负整数交错排列&lt;/strong&gt;，这也是为什么叫做 zigzag 编码 (锯齿形编码）的原因。&lt;br&gt;
+同时，负数被转换成正数之后，二进制编码也精简了许多。&lt;br&gt;
+例如： 对 &lt;code&gt;int32(-5)&lt;/code&gt; 进行 zigzag 编码后，变成了 9，对应于二进制为 &lt;code&gt;00000000000000000000000000001001&lt;/code&gt;，使用 1 个字节即可表示 varint。&lt;br&gt;
+我们看下 Golang 标准库的实现，代码如下：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;7
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;PutVarint&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;buf&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;[]&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;byte&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;x&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int64&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;ux&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;uint64&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;x&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;k&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;x&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;nx&#34;&gt;ux&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;^&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ux&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;PutUvarint&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;buf&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;ux&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;从代码可以看出，对于有符号整数的varint实现，golang标准库这里分成了两步：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;先对整数进行 zigzag 编码进行转换&lt;/li&gt;
+&lt;li&gt;对转换之后的数值再进行 varint 编码&lt;br&gt;
+对于负数，多了一步 &lt;code&gt;ux = ^ux&lt;/code&gt; ，这就有些难以理解了，为什么这么转换之后就等于&lt;code&gt;2n - 1&lt;/code&gt;了？&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;我们可以大概推导下整个过程，假设我们有个整数 &lt;code&gt;-n&lt;/code&gt;：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;对原数值先左移，再进行取反。其实可以看做：对原数值先取反，再左移，然后+1。 即 &lt;code&gt;2*(~(-n))+1&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;我们知道&lt;code&gt;负数的补码=绝对值按位取反+1&lt;/code&gt;，那如何根据补码再推导出绝对值？这里有个公式是：&lt;code&gt;|A| = ~A+1&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;我们将这个公式带到第一步的式子里面： &lt;code&gt;2*(n-1) + 1 = 2n - 1&lt;/code&gt;。这就完美对应上了负数的 ZigZag 编码 (数学多么美妙)。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/09/4a36258701ba672eb68d4ec7da38285e.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Figure 2: ZigZag encoding &#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;在 Golang 标准库里面，调用 &lt;code&gt;PutUvarint&lt;/code&gt; 时只会使用 &lt;code&gt;varint&lt;/code&gt; 编码，调用 &lt;code&gt;PutVarint&lt;/code&gt; 会先进行 &lt;code&gt;zigzag&lt;/code&gt; 编码，再进行 &lt;code&gt;varint&lt;/code&gt; 编码。&lt;br&gt;
+而在 &lt;code&gt;protobuf&lt;/code&gt; 中，如果类型是&lt;code&gt; int32&lt;/code&gt;、&lt;code&gt;int64&lt;/code&gt;、&lt;code&gt;uint32&lt;/code&gt;、&lt;code&gt;uint64&lt;/code&gt;，只会使用 &lt;code&gt;varint&lt;/code&gt; 编码。使用 &lt;code&gt;sint32&lt;/code&gt;、&lt;code&gt;sint64&lt;/code&gt; 将先进行 &lt;code&gt;zigzag&lt;/code&gt; 编码，再进行 &lt;code&gt;varint&lt;/code&gt; 编码&lt;/p&gt;
+&lt;h2 id=&#34;varint-不适用的情况&#34;&gt;varint 不适用的情况
+&lt;/h2&gt;&lt;p&gt;虽然 varint 编码设计非常精妙，但并不适用于所有的场景：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;大整数&lt;/strong&gt;：对于非常大的整数，varint 编码可能会比固定长度的编码更消耗空间。例如当所有的整数值域大于 &lt;code&gt;2^63&lt;/code&gt;，那使用 varint 会用到 10 字节。相比于传统的八字节整数，反而多用了 25% 的空间&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;需要快速随机访问的数据&lt;/strong&gt;：由于 varint 是变长编码，所以我们无法直接通过索引来访问特定的整数，必须从头开始解码，直到找到我们需要的整数。这使得 varint 编码不适合用于需要快速随机访问的数据。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;需要频繁进行数学运算的数据&lt;/strong&gt;：由于 varint 编码的数据需要先解码才能进行数学运算，所以如果一个应用需要频繁地对数据进行数学运算，那么使用 varint 编码可能会导致性能下降。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;安全敏感的应用&lt;/strong&gt;：varint 编码的数据可能会暴露出一些关于原始整数的信息，例如它的大小。在某些安全敏感的应用中，这可能是不可接受的。&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+        </item>
+        <item>
         <title>Go runtime.SetFinalizer</title>
         <link>https://huizhou92.com/zh-cn/p/go-runtime.setfinalizer/</link>
         <pubDate>Wed, 04 Sep 2024 19:33:11 +0800</pubDate>
