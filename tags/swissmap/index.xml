@@ -1,0 +1,359 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+    <channel>
+        <title>Swissmap on huizhou92&#39;s Blog</title>
+        <link>https://huizhou92.com/tags/swissmap/</link>
+        <description>Recent content in Swissmap on huizhou92&#39;s Blog</description>
+        <generator>Hugo -- gohugo.io</generator>
+        <language>en</language>
+        <copyright>Copyright © 2023 huizhou92</copyright>
+        <lastBuildDate>Mon, 30 Sep 2024 11:45:52 +0800</lastBuildDate><atom:link href="https://huizhou92.com/tags/swissmap/index.xml" rel="self" type="application/rss+xml" /><item>
+        <title>SwissTable: A High-Performance Hash Table Implementation</title>
+        <link>https://huizhou92.com/p/swisstable-a-high-performance-hash-table-implementation/</link>
+        <pubDate>Mon, 30 Sep 2024 11:45:52 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/p/swisstable-a-high-performance-hash-table-implementation/</guid>
+        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2024/09/f08c74aea8485d51d461d18494df416e.png" alt="Featured image of post SwissTable: A High-Performance Hash Table Implementation" /&gt;&lt;h2 id=&#34;introduction&#34;&gt;Introduction
+&lt;/h2&gt;&lt;p&gt;In 2022, ByteDance proposed an &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/54766&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;issue&lt;/a&gt; recommending that &lt;code&gt;Golang&lt;/code&gt; adopt SwissTable for its map implementation. In 2023, Dolt published a blog post titled &lt;a class=&#34;link&#34; href=&#34;https://www.dolthub.com/blog/2023-03-28-swiss-map/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;SwissMap: A Smaller, Faster Golang Hash Table&lt;/a&gt;, detailing their design of a &lt;code&gt;swisstable&lt;/code&gt;, which garnered widespread attention. The Go core team is reevaluating the &lt;code&gt;swisstable&lt;/code&gt; design and has added some related code in the &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/blob/6a730e1ef0b7f312fe01815086a2eb5a25739f2d/src/runtime/map_swiss.go#L7&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;&lt;code&gt;runtime&lt;/code&gt;&lt;/a&gt;. With some free time during the holidays, let&amp;rsquo;s delve deeper into the principles, compare it to the &lt;code&gt;runtime map&lt;/code&gt;, and understand why it might become the standard for &lt;code&gt;map&lt;/code&gt; implementation.&lt;/p&gt;
+&lt;!-- more--&gt;
+&lt;blockquote&gt;
+&lt;p&gt;This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on &lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt;. Thank you very much.&lt;br&gt;
+&lt;script async src=&#34;https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746&#34;
+crossorigin=&#34;anonymous&#34;&gt;&lt;/script&gt;
+    &lt;ins class=&#34;adsbygoogle&#34;
+    style=&#34;display:block; text-align:center;&#34;
+    data-ad-layout=&#34;in-article&#34;
+    data-ad-format=&#34;fluid&#34;
+    data-ad-client=&#34;ca-pub-9000447749076746&#34;
+    data-ad-slot=&#34;5063552270&#34;&gt;&lt;/ins&gt;
+&lt;script&gt;
+(adsbygoogle = window.adsbygoogle || []).push({});
+&lt;/script&gt;
+&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;This article will not fully explain the principles of &lt;code&gt;hashtable&lt;/code&gt; or &lt;code&gt;swisstable&lt;/code&gt;. A basic understanding of &lt;code&gt;hashtable&lt;/code&gt; is required.&lt;/p&gt;
+&lt;p&gt;A &lt;code&gt;hashtable&lt;/code&gt; provides a mapping from a &lt;code&gt;key&lt;/code&gt; to a corresponding &lt;code&gt;value&lt;/code&gt; by converting the &lt;code&gt;key&lt;/code&gt; to some &amp;ldquo;position&amp;rdquo; using a &lt;code&gt;hash function&lt;/code&gt;. From this position, we can directly retrieve the desired value.&lt;/p&gt;
+&lt;h2 id=&#34;traditional-hashtable&#34;&gt;Traditional &lt;code&gt;Hashtable&lt;/code&gt;
+&lt;/h2&gt;&lt;p&gt;A &lt;code&gt;hashtable&lt;/code&gt; provides a mapping from a &lt;code&gt;key&lt;/code&gt; to a corresponding value by converting the key to some &amp;ldquo;position&amp;rdquo; using a hash function. However, even if the hash function is perfect, conflicts are still inevitable when mapping an infinite number of keys into a finite memory space: two different keys will be mapped to the same position. To solve this, traditional hashtables have several conflict resolution strategies, most commonly &lt;code&gt;chaining&lt;/code&gt; and &lt;code&gt;linear probing&lt;/code&gt;.&lt;/p&gt;
+&lt;h3 id=&#34;chaining&#34;&gt;Chaining
+&lt;/h3&gt;&lt;p&gt;Chaining is the most common method where if multiple keys map to the same position, these keys and values are stored in a linked list. During lookups, the hash function is used to find the position, and then the linked list at that position is traversed to find the matching key. Its structure is similar to this:&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Figure 1: Chaining implementation of &lt;code&gt;hashtable&lt;/code&gt;&lt;/strong&gt;&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/09/096dbea584499aaf3f2adb6111a89b0e.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20240929145217&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;Chaining is straightforward to implement, with fewer boundary conditions to consider. Data insertion and deletion are quick, using head insertion to add new entries and adjusting the next pointer for deletion. Chaining can also prevent performance degradation by converting overly long chains into search trees. However, chaining is not cache-friendly, and performance can be affected if there are many conflicts. Different &lt;code&gt;slots&lt;/code&gt; can be widely spread in memory, leading to poor spatial locality of the data structure overall.&lt;/p&gt;
+&lt;h3 id=&#34;linear-probing&#34;&gt;Linear Probing
+&lt;/h3&gt;&lt;p&gt;Linear probing is another standard hash table conflict resolution method. Unlike chaining, when a hash conflict occurs, it searches sequentially from the conflict position until it finds an empty slot or loops back to the conflict position. At this point, it resizes and rehashes the entries.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Figure 2: Linear probing animation&lt;/strong&gt;&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/09/bfb5cfbb7f611f0fed2f4d58c0eceaf4.gif&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Linear probing&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;Lookups work similarly: calculate the hash position for the key and then compare each key starting from that position, skipping any deleted entries until an empty slot is reached, indicating the key is not in the table. Deletion uses a tombstone marker.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Figure 3: Linear probing lookup animation&lt;/strong&gt;&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/09/f0052b66a4e66fb5e9558c4e48601bd7.gif&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Linear probing lookup&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;Linear probing has comparable time complexity to chaining. Its advantages include being cache-friendly and implementable with tight data structures like arrays. However, its drawbacks are:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Complex implementation with three states for a &lt;code&gt;slot&lt;/code&gt;: occupied, empty, and deleted.&lt;/li&gt;
+&lt;li&gt;Chain reaction of conflicts, leading to more frequent resizing than chaining and potentially more significant memory usage.&lt;/li&gt;
+&lt;li&gt;Higher likelihood of lookup process degradation to &lt;code&gt;O(n)&lt;/code&gt; without the ability to convert heavily conflicted areas into search trees.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Many libraries use chaining due to the difficulties with element deletion and conflict chain reactions in linear probing. Despite its drawbacks, linear probing&amp;rsquo;s cache friendliness and memory efficiency provide significant performance advantages on modern computers, leading to its use in languages like &lt;code&gt;golang&lt;/code&gt; and &lt;code&gt;Python&lt;/code&gt;.&lt;/p&gt;
+&lt;h3 id=&#34;go-map-data-storage&#34;&gt;Go Map Data Storage
+&lt;/h3&gt;&lt;p&gt;Let&amp;rsquo;s recap how &lt;code&gt;Go Map&lt;/code&gt; stores data:&lt;/p&gt;
+&lt;p&gt;**Figure 4: Go map **&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/09/02e000848c6f7972b40e08647618d409.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20240927142057&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;Quick summary:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Go &lt;code&gt;map&lt;/code&gt; uses a hash function to map keys to multiple &lt;code&gt;buckets&lt;/code&gt;, each with a fixed number of key-value &lt;code&gt;slots&lt;/code&gt; for storage.&lt;/li&gt;
+&lt;li&gt;Each &lt;code&gt;bucket&lt;/code&gt; stores up to 8 key-value pairs. The conflicting keys and values are stored within the same bucket when conflicts occur.&lt;/li&gt;
+&lt;li&gt;The map uses a hash function to compute the key&amp;rsquo;s hash value and locate the corresponding &lt;code&gt;bucket&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;If a &lt;code&gt;bucket&lt;/code&gt; is complete (all 8 &lt;code&gt;slots&lt;/code&gt; used), an &lt;code&gt;overflow bucket&lt;/code&gt; is generated to continue storing new key-value pairs.&lt;/li&gt;
+&lt;li&gt;For lookups, the key&amp;rsquo;s hash value is calculated, the corresponding &lt;code&gt;bucket&lt;/code&gt; is determined, and each &lt;code&gt;slot&lt;/code&gt; within the &lt;code&gt;bucket&lt;/code&gt; is checked. If there is an &lt;code&gt;overflow bucket&lt;/code&gt;, its keys are also checked sequentially.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;swisstable-an-efficient-hashtable-implementation&#34;&gt;SwissTable: An Efficient Hashtable Implementation
+&lt;/h2&gt;&lt;p&gt;&lt;code&gt;SwissTable&lt;/code&gt; is a &lt;code&gt;hashtable&lt;/code&gt; implementation based on an improved linear probing method. Its core idea is to optimize performance and memory usage by enhancing the &lt;code&gt;hashtable&lt;/code&gt; structure and metadata storsage. SwissTable uses a new metadata control mechanism to significantly reduce unnecessary &lt;code&gt;key&lt;/code&gt; comparisons and leverages SIMD instructions to boost throughput.&lt;/p&gt;
+&lt;p&gt;Reviewing the two standard &lt;code&gt;hashtable&lt;/code&gt; implementations shows they either waste memory, need to be cache-friendly or suffer performance drops in lookup, insertion, and deletion operations after conflicts. These issues persist even with a &amp;ldquo;perfect hash function.&amp;rdquo; Using a suboptimal hash function dramatically increases the probability of key conflicts and worsens performance, possibly even falling short of linear searches in an array.&lt;/p&gt;
+&lt;p&gt;The industry sought a hash table algorithm that was friendly to cache and resistant to lookup performance degradation. Many focused on developing better hash functions close to &amp;ldquo;perfect hash function&amp;rdquo; quality while optimizing calculation performance; others worked on improving the hash table&amp;rsquo;s structure to balance cache friendliness, performance, and memory usage. &lt;a class=&#34;link&#34; href=&#34;https://abseil.io/about/design/swisstables&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;&lt;code&gt;swisstable&lt;/code&gt;&lt;/a&gt; belongs to the latter.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;SwissTable&lt;/code&gt;&amp;rsquo;s time complexity is similar to linear probing, while its space complexity is between chaining and linear probing. The implementation I&amp;rsquo;ve referenced is primarily based on &lt;a class=&#34;link&#34; href=&#34;https://github.com/dolthub/swiss/tree/main&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;dolthub/swiss&lt;/a&gt;.&lt;/p&gt;
+&lt;h3 id=&#34;basic-structure-of-swisstable&#34;&gt;Basic Structure of SwissTable
+&lt;/h3&gt;&lt;p&gt;Although the name has changed, &lt;code&gt;swisstable&lt;/code&gt; is still a &lt;code&gt;hashtable&lt;/code&gt; utilizing an improved linear probing method for hash collisions. Its underlying structure resembles an array. Now, let&amp;rsquo;s delve into the structure of &lt;code&gt;swisstable&lt;/code&gt;:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;14
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;15
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;type&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;Map&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;K&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;comparable&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;V&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;any&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;ctrl&lt;/span&gt;     &lt;span class=&#34;p&#34;&gt;[]&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;metadata&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;groups&lt;/span&gt;   &lt;span class=&#34;p&#34;&gt;[]&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;group&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;K&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;V&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;hash&lt;/span&gt;     &lt;span class=&#34;nx&#34;&gt;maphash&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Hasher&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;K&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;resident&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;uint32&lt;/span&gt;   
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;dead&lt;/span&gt;     &lt;span class=&#34;kt&#34;&gt;uint32&lt;/span&gt;   
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;limit&lt;/span&gt;    &lt;span class=&#34;kt&#34;&gt;uint32&lt;/span&gt;   
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt; 
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;type&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;metadata&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;groupSize&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;int8&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;type&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;group&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;K&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;comparable&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;V&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;any&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;keys&lt;/span&gt;   &lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;groupSize&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;K&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;values&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;groupSize&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;V&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;In &lt;code&gt;swisstable&lt;/code&gt;, &lt;code&gt;ctrl&lt;/code&gt; is an array of &lt;code&gt;metadata&lt;/code&gt;, corresponding to the &lt;code&gt;group[K, V]&lt;/code&gt; array. Each &lt;code&gt;group&lt;/code&gt; has 8 &lt;code&gt;slots&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;The hash is divided into &lt;code&gt;57 bits&lt;/code&gt; for H1 to determine the starting &lt;code&gt;groups&lt;/code&gt;, and the remaining &lt;code&gt;7 bits&lt;/code&gt; called H2, stored in &lt;code&gt;metadata&lt;/code&gt; as the hash signature of the current key for subsequent search and filtering.&lt;/p&gt;
+&lt;p&gt;The key advantage of &lt;code&gt;swisstable&lt;/code&gt; over traditional hash tables lies in the metadata called &lt;code&gt;ctrl&lt;/code&gt;. Control information includes:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Whether a slot is empty: &lt;code&gt;0b10000000&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;Whether a slot has been deleted: &lt;code&gt;0b11111110&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;The key&amp;rsquo;s hash signature (H2) in a slot: &lt;code&gt;0bh2&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;The unique values of these states allow the use of SIMD instructions, maximizing performance.&lt;/p&gt;
+&lt;h3 id=&#34;adding-data&#34;&gt;Adding Data
+&lt;/h3&gt;&lt;p&gt;The process of adding data in &lt;code&gt;swisstable&lt;/code&gt; involves several steps:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Calculate the hash value and split it into &lt;code&gt;h1&lt;/code&gt; and &lt;code&gt;h2&lt;/code&gt;. Using &lt;code&gt;h1&lt;/code&gt;, determine the starting groups.&lt;/li&gt;
+&lt;li&gt;Use &lt;code&gt;metaMatchH2&lt;/code&gt; to check the current group&amp;rsquo;s &lt;code&gt;metadata&lt;/code&gt; for a matching &lt;code&gt;h2&lt;/code&gt;. If found, further check for the matching key and update the value if they match.&lt;/li&gt;
+&lt;li&gt;If no matching key is found, use &lt;code&gt;metaMatchEmpty&lt;/code&gt; to check for empty &lt;code&gt;slots&lt;/code&gt; in the current group. Insert the new key-value pair if an empty slot is found and update the &lt;code&gt;metadata&lt;/code&gt; and &lt;code&gt;resident&lt;/code&gt; count.&lt;/li&gt;
+&lt;li&gt;If no empty slots are available in the current group, perform linear probing to check the next &lt;code&gt;groups&lt;/code&gt;.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;14
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;15
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;16
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;17
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;18
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;19
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;20
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;21
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;22
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;23
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;24
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;25
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;26
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;27
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;28
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;29
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;30
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;31
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;32
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;33
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;34
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;35
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;36
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;37
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;38
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;39
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;40
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Map&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;K&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;V&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;])&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;Put&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;key&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;K&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;value&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;V&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;resident&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;gt;=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;limit&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;rehash&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;nextSize&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;())&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;hi&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;lo&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;splitHash&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;hash&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Hash&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;key&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;g&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;probeStart&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;hi&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;len&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;groups&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// inlined find loop  
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;        &lt;span class=&#34;nx&#34;&gt;matches&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;metaMatchH2&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ctrl&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;g&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;],&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;lo&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;matches&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;!=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;            &lt;span class=&#34;nx&#34;&gt;s&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;nextMatch&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;matches&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;            &lt;span class=&#34;k&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;key&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;==&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;groups&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;g&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;].&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;keys&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;s&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// update  
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;                &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;groups&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;g&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;].&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;keys&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;s&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;key&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;                &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;groups&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;g&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;].&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;values&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;s&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;value&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;                &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;            &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;nx&#34;&gt;matches&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;metaMatchEmpty&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ctrl&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;g&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;])&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;k&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;matches&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;!=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// insert  
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;            &lt;span class=&#34;nx&#34;&gt;s&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;nextMatch&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;matches&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;            &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;groups&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;g&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;].&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;keys&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;s&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;key&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;            &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;groups&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;g&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;].&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;values&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;s&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;value&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;            &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ctrl&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;g&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;][&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;s&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;int8&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;lo&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;            &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;resident&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;++&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;            &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;nx&#34;&gt;g&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;+=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// linear probing  
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;        &lt;span class=&#34;k&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;g&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;gt;=&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;uint32&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;len&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;groups&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;            &lt;span class=&#34;nx&#34;&gt;g&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;metaMatchH2&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;metadata&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;h&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;h2&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;bitset&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;hasZeroByte&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;castUint64&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;^&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;loBits&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;uint64&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;h&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)))&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;nextMatch&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;b&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;bitset&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;uint32&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;s&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;uint32&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;bits&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;TrailingZeros64&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;uint64&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;b&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)))&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;b&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;amp;=&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;^(&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;s&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;s&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;3&lt;/span&gt;   
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;Although the steps are few, they involve complex bit operations. Normally, &lt;code&gt;h2&lt;/code&gt; needs to be compared with all keys sequentially until the target is found. &lt;code&gt;swisstable&lt;/code&gt; cleverly achieves this by:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Multiplying &lt;code&gt;h2&lt;/code&gt; by &lt;code&gt;0x0101010101010101&lt;/code&gt; to get a uint64, allowing simultaneous comparison with 8 &lt;code&gt;ctrl&lt;/code&gt; values.&lt;/li&gt;
+&lt;li&gt;Performing &lt;code&gt;xor&lt;/code&gt; with &lt;code&gt;meta&lt;/code&gt;. If &lt;code&gt;h2&lt;/code&gt; exists in &lt;code&gt;metadata&lt;/code&gt;, the corresponding bit will be zero. The &lt;code&gt;metaMatchH2&lt;/code&gt; function helps us understand this process.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;14
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;15
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;16
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;17
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;18
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;19
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;20
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;21
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;22
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;TestMetaMatchH2&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;t&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;testing&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;T&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;metaData&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;make&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;([]&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;metadata&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;2&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;metaData&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;8&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;int8&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;mh&#34;&gt;0x7f&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;mh&#34;&gt;0x7f&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;mh&#34;&gt;0x7f&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;metaData&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;h&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;mh&#34;&gt;0x7f&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;metaUint64&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;castUint64&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;h2Pattern&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;loBits&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;uint64&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;h&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;xorResult&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;metaUint64&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;^&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;h2Pattern&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Printf&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;metaUint64: %b\n&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;xorResult&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;r&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;hasZeroByte&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;xorResult&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Printf&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;r: %b\n&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;r&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;r&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;!=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;nextMatch&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;r&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;o&#34;&gt;----&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nx&#34;&gt;output&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// metaUint64: 00000000 11111110 11111110 11111110 0000000 01111111 01111111 00000000
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// r: 10000000 00000000 00000000 00000000 10000000 00000000 00000000 10000000
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// 0
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// 3
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// 7
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;h3 id=&#34;advantages-of-swisstable&#34;&gt;Advantages of SwissTable
+&lt;/h3&gt;&lt;p&gt;Reviewing SwissTable implementation reveals several key benefits:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Operations are shifted from &lt;code&gt;slots&lt;/code&gt; to &lt;code&gt;ctrl&lt;/code&gt;, which are smaller and easily placed in the CPU cache, speeding up operations despite the additional step of locating &lt;code&gt;slots&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Records hash signatures, reducing meaningless key comparisons—the main cause of linear probing performance drops.&lt;/li&gt;
+&lt;li&gt;Batch operations on &lt;code&gt;ctrl&lt;/code&gt; for &lt;code&gt;slots&lt;/code&gt; increase throughput significantly.&lt;/li&gt;
+&lt;li&gt;Metadata and memory layout are optimized for SIMD instructions, maximizing performance.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Slot&lt;/code&gt; optimizations, such as compressing large data, increase cache hit rates.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;code&gt;swisstable&lt;/code&gt; solves spatial locality issues and exploits modern CPU features for batch element operations, significantly boosting performance.&lt;/p&gt;
+&lt;p&gt;Finally, running a benchmark on a local MacBook M1 (without SIMD support) shows significant performance improvements in large map scenarios.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Figure 5: Official &lt;code&gt;swisstable&lt;/code&gt; benchmark&lt;/strong&gt;&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2024/09/a59e237341d6076ed79395bd1d1b5f90.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20240930110905&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;h2 id=&#34;conclusion&#34;&gt;Conclusion
+&lt;/h2&gt;&lt;p&gt;Currently, the official implementation of &lt;code&gt;swisstable&lt;/code&gt; in Go is still under discussion, and there are a few community implementations like &lt;a class=&#34;link&#34; href=&#34;https://github.com/mhmtszr/concurrent-swiss-map&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;concurrent-swiss-map&lt;/a&gt; and &lt;a class=&#34;link&#34; href=&#34;https://github.com/dolthub/swiss&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;swiss&lt;/a&gt;. However, they are not perfect; in small map scenarios, &lt;code&gt;swisstable&lt;/code&gt; may even underperform compared to &lt;code&gt;runtime_map&lt;/code&gt;. Nonetheless, the potential demonstrated by &lt;code&gt;swisstable&lt;/code&gt; in other languages indicates that it is worth anticipation.&lt;/p&gt;
+&lt;h2 id=&#34;references&#34;&gt;References
+&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;Dolthub: &lt;a class=&#34;link&#34; href=&#34;https://www.dolthub.com/blog/2023-03-28-swiss-map/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;SwissMap&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;SwissTable principles: &lt;a class=&#34;link&#34; href=&#34;https://abseil.io/about/design/swisstables&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Abseil SwissTables&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Original SwissTable proposal at cppcon: &lt;a class=&#34;link&#34; href=&#34;https://www.youtube.com/watch?v=ncHmEUmJZf4&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;cppcon talk&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Improvements to SwissTable algorithm: &lt;a class=&#34;link&#34; href=&#34;https://www.youtube.com/watch?v=JZE3_0qvrMg&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;YouTube link&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Bit manipulation primer: &lt;a class=&#34;link&#34; href=&#34;http://graphics.stanford.edu/~seander/bithacks.html##ValueInWord&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Stanford Bit Hacks&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Hash function comparisons: &lt;a class=&#34;link&#34; href=&#34;https://aras-p.info/blog/2016/08/09/More-Hash-Function-Tests/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Hash function tests&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;An additional bit manipulation article: &lt;a class=&#34;link&#34; href=&#34;https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Fast Modulo Reduction&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+        </item>
+        
+    </channel>
+</rss>
