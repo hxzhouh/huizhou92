@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="zh-cn" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="分析 SwissTable 高性能的原因以及实现">
+<title> SwissTable 会成为 Golang std map嘛？</title>
+
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/swisstable-%E4%BC%9A%E6%88%90%E4%B8%BA-golang-std-map%E5%98%9B/'>
+
+<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content=" SwissTable 会成为 Golang std map嘛？">
+<meta property='og:description' content="分析 SwissTable 高性能的原因以及实现">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/swisstable-%E4%BC%9A%E6%88%90%E4%B8%BA-golang-std-map%E5%98%9B/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:published_time' content='2024-09-30T11:25:51&#43;08:00'/><meta property='article:modified_time' content='2024-09-30T11:25:48&#43;08:00'/><meta property='og:image' content='https://images.hxzhouh.com/blog-images/2024/09/f08c74aea8485d51d461d18494df416e.png' />
+<meta name="twitter:site" content="@https://x.com/piaopiaopig">
+    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content=" SwissTable 会成为 Golang std map嘛？">
+<meta name="twitter:description" content="分析 SwissTable 高性能的原因以及实现"><meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content='https://images.hxzhouh.com/blog-images/2024/09/f08c74aea8485d51d461d18494df416e.png' />
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="切换菜单">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/zh-cn/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+                    <span class="emoji">😄</span>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/zh-cn">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/zh-cn/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>主页</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/%E5%85%B3%E4%BA%8E/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>关于</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>归档</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>搜索</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" >English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" selected>中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>暗色模式</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">目录</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#传统-hashtable">传统 <code>hashtable</code></a>
+      <ol>
+        <li><a href="#链表法">链表法</a></li>
+        <li><a href="#线性探测法">线性探测法</a></li>
+        <li><a href="#go-hashmap-如何存储数据">go hashmap 如何存储数据</a></li>
+      </ol>
+    </li>
+    <li><a href="#swisstable一种高效的-hashtable-实现方式">SwissTable，一种高效的 <code>hashtable</code> 实现方式</a>
+      <ol>
+        <li><a href="#swisstable-的基本结构">SwissTable 的基本结构</a></li>
+        <li><a href="#添加数据">添加数据</a></li>
+        <li><a href="#swisstable-的优势">SwissTable 的优势</a></li>
+      </ol>
+    </li>
+    <li><a href="#总结">总结</a></li>
+    <li><a href="#参考文档">参考文档</a></li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="has-image main-article">
+    <header class="article-header">
+        <div class="article-image">
+            <a href="/zh-cn/p/swisstable-%E4%BC%9A%E6%88%90%E4%B8%BA-golang-std-map%E5%98%9B/">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/09/f08c74aea8485d51d461d18494df416e.png" loading="lazy" alt="Featured image of post  SwissTable 会成为 Golang std map嘛？" />
+                
+            </a>
+        </div>
+    
+
+    <div class="article-details">
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/zh-cn/p/swisstable-%E4%BC%9A%E6%88%90%E4%B8%BA-golang-std-map%E5%98%9B/"> SwissTable 会成为 Golang std map嘛？</a>
+        </h2>
+    
+        
+        <h3 class="article-subtitle">
+            分析 SwissTable 高性能的原因以及实现
+        </h3>
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Sep 30, 2024</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    阅读时长: 4 分钟
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <p>2022年，字节跳动给<code>Golang</code>提了<a class="link" href="https://github.com/golang/go/issues/54766"  target="_blank" rel="noopener"
+    >issue</a>建议把map的底层实现改成SwissTable的。2023年，dolt写了一篇博客<a class="link" href="https://www.dolthub.com/blog/2023-03-28-swiss-map/"  target="_blank" rel="noopener"
+    >SwissMap: A smaller, faster Golang Hash Table</a> 分享他们 设计了一个基于SwissTable 的 Map ,引起了广泛的关注。目前 Go 核心团队已经开始重新审视  <code>swisstable</code> 设计，在<a class="link" href="https://github.com/golang/go/blob/6a730e1ef0b7f312fe01815086a2eb5a25739f2d/src/runtime/map_swiss.go#L7"  target="_blank" rel="noopener"
+    ><code>runtime</code></a>中也添加了部分代码，趁着假期，刚好有时间深入了解一下原理，跟<code>runtime map</code> 相比有什么区别，以及为什么它可能会成为<code>map</code>的标准实现。</p>
+<!-- more-->
+<blockquote>
+<p>This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >Medium</a>. Thank you very much.<br>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+crossorigin="anonymous"></script>
+    <ins class="adsbygoogle"
+    style="display:block; text-align:center;"
+    data-ad-layout="in-article"
+    data-ad-format="fluid"
+    data-ad-client="ca-pub-9000447749076746"
+    data-ad-slot="5063552270"></ins>
+<script>
+(adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+</p>
+</blockquote>
+<p>本文不会完全解释<code>hashtable</code>或者<code>swisstable</code>的原理。您需要对<code>hashtable</code> 有一定的了解。</p>
+<p>哈希表提供了一个<code>key</code>到对应<code>value</code>的映射，通过一个<code>hash函数</code>把<code>key</code>转换成某个“位置“，从这个位置上可以直接拿到我们想要的value，</p>
+<h2 id="传统-hashtable">传统 <code>hashtable</code>
+</h2><p>哈希表提供了一个<code>key</code>到对应value的映射，通过一个<code>hash函数</code>把key转换成某个“位置“，从这个位置上可以直接拿到我们想要的value。不过，即使<code>hash函数</code>再完美，把无限的<code>key</code>映射到一个有限大小的内存空间内也还是不可避免得会产生冲突：两个不同的<code>key</code>会被映射到同一个位置。  为了解决这个问题，传统的<code>hashtable</code>有好几个解决方案，最常见的解决冲突的办法有“链表法”和“线性探测法”。</p>
+<h3 id="链表法">链表法
+</h3><p>链表法是最常见的，它的中心思想在于如果key映射到了相同的位置，那么就把这些key和value存在一张链表里。查找的时候先用hash函数计算得到位置，然后再从存放在该位置上的链表里一个个遍历找到key相等的条目。它的结构类似这样：<br>
+figure 1: 拉链法实现 <code>hashtable</code><br>
+<img src="https://images.hxzhouh.com/blog-images/2024/09/096dbea584499aaf3f2adb6111a89b0e.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Pasted image 20240929145217"
+	
+	
+><br>
+链表法实现很简单，没那么多边界条件要考虑,插入数据和删除数据很快，插入用链表的头插法，删除只需要移动部分节点的next指针。此外，链表法能采取扩容之外的手段阻止查询性能退化，比如把过长链表转换成搜索树等。链表法的缺点是本身对缓存不够友好，冲突较多的时候缓存命中率较低从而影响性能。不同的<code>slot</code>之间数据在内存里的跨度较大，数据结构整体的空间局部性较差。</p>
+<h3 id="线性探测法">线性探测法
+</h3><p>线性探测是另一种常见的哈希表冲突解决方法。它解决冲突的方式于链表法不同，在遇到hash冲突的时候，它会从冲突的位置开始向后一个个查找，直到找到一个空位，或者没找到然后索引回到了冲突发生的位置，这时会进行扩容然后再重新执行上述插入流程。<br>
+Figure 2 ：线性探测法添加数据 动画演示<br>
+<img src="https://images.hxzhouh.com/blog-images/2024/09/bfb5cfbb7f611f0fed2f4d58c0eceaf4.gif"
+	
+	
+	
+	loading="lazy"
+	
+		alt="线性探 测法动画演示"
+	
+	
+></p>
+<p>查找也是一样的，首先通过hash函数计算得到元素应该在的位置，然后从这个位置开始一个个比较key是否相等，遇到被删除的元素就跳过，遇到空的slot就停止搜索，这表示元素不在这个哈希表中。所以删除元素的时候，使用的是标记删除。<br>
+Figure 3: 线性探测法查找数据演示<br>
+<img src="https://images.hxzhouh.com/blog-images/2024/09/f0052b66a4e66fb5e9558c4e48601bd7.gif"
+	
+	
+	
+	loading="lazy"
+	
+		alt="线性探测法查找演示"
+	
+	
+><br>
+线性探测法 的时间复杂度跟链表法差不多，它的优点是对缓存友好，现在可以用数组之类的紧密数据结构实现。同时，它的缺点也很明显：</p>
+<ol>
+<li>实现复杂，一个<code>slot</code>有元素、空、被删除这三种状态</li>
+<li>hash冲突是连锁式的，一处冲突可能会连续影响多处，最终导致插入同样的数据，它扩容的次数会比链表法更多，最终可能会用掉更多的内存。</li>
+<li>因为冲突会造成后续插入和删除的连锁反应，所以查找过程退化到<code>O(n)</code>的概率更大，而且没法像链表法那样把有大量冲突的地方转换成搜索树之类的结构。<br>
+因为删除元素麻烦，加上冲突会有连锁影响，所以很多库实现的<code>hashtable</code>都是用的链表法。不过即使有这么多缺点，光缓存友好和内存利用率高在现代计算机上就是非常大的性能优势了，所以像<code>golang</code>和<code>python</code>都会使用线性探测法的近似变种来实现哈希表。</li>
+</ol>
+<h3 id="go-hashmap-如何存储数据">go hashmap 如何存储数据
+</h3><p>我们首先来回忆一下<code> Go Map</code> 是如何存储数据的。<br>
+figure 4: go map 示意图<br>
+<img src="https://images.hxzhouh.com/blog-images/2024/09/02e000848c6f7972b40e08647618d409.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Pasted image 20240927142057"
+	
+	
+><br>
+快速总结一下：</p>
+<ul>
+<li>Go <code>map</code> 底层通过哈希函数将 key 映射到多个 <code>bucket</code>中。每个 <code>bucket</code> 具有固定数量的键值对<code>slot</code>，用于存储 key 和对应的 value。</li>
+<li>每个 <code>bucket</code> 能存储 8个键值对。当冲突发生时（即多个 key 被映射到同一个 <code>bucket</code>），这些 key 和 value 会在同一个 <code>bucket</code> 内存储。</li>
+<li><code>map</code> 通过哈希函数计算 key 的哈希值，并根据哈希值找到对应的 <code>bucket</code>。</li>
+<li>如果某个 <code>bucket</code> 被填满（8 个<code>slot</code>已用完），会生成一个 <code>overflow bucket</code>，继续存储新的键值对。</li>
+<li>查找时数据时，首先计算要查找的 key 的哈希值，然后确定该哈希值映射到的 <code>bucket</code>。Go 会检查每个<code>slot</code>，如果 <code>bucket</code> 中存在<code>overflow bucket</code>，会顺序检查<code>overflow bucket</code>中的 key。</li>
+</ul>
+<h2 id="swisstable一种高效的-hashtable-实现方式">SwissTable，一种高效的 <code>hashtable</code> 实现方式
+</h2><p><code>SwissTable</code> 是一种基于改进的线性探测法的哈希表实现，其核心思想是通过改进哈希表的结构和元数据存储，优化了性能和内存使用。SwissTable 采用了一种新的元数据控制机制，大幅减少了不必要的键比较操作，同时利用 SIMD 指令提升吞吐量。</p>
+<p>我们回顾了一下两种常见的哈希表实现，它们要么浪费内存且对缓存不友好；要么发生冲突后会更容易导致查找、插入、删除操作性能下降。这还是在有“完美哈希函数”的情况下，如果你用了个不那么好的哈希函数，那会导致key冲突的概率大大上升，性能问题会更加明显，最坏的情况下性能甚至会不如在数组里进行线性搜索。</p>
+<p>业界开始寻找一种既对缓存友好又不会让查找性能退化的太厉害的哈希表算法。大多数人的研究方向是开发更好的哈希函数，在让哈希函数不断接近“完美哈希函数”的品质的同时用各种手段优化计算性能；另外一些人在改进哈希表本身的结构力求在缓存友好、性能和内存用量上找到平衡。<a class="link" href="https://abseil.io/about/design/swisstables"  target="_blank" rel="noopener"
+    ><code>swisstable</code></a>就属于后者。<br>
+<code>swisstable</code>的时间复杂度和线性探测法的差不多，空间复杂度介于链表法和线性探测之间。  <code>swisstable</code>的实现有很多，我主要基于<a class="link" href="https://github.com/dolthub/swiss/tree/main"  target="_blank" rel="noopener"
+    >dolthub/swiss</a>这个实现进行简要的介绍。</p>
+<h3 id="swisstable-的基本结构">SwissTable 的基本结构
+</h3><p>虽然名字变了，实际上<code>swisstable</code>依然是<code>hashtable</code>，而且使用改进的线性探测法来解决hash冲突。  所以大家应该能想象到，swisstable的底层应该也是个类似数组的结构。有了这样大致的模糊印象就可以了，现在我们可以来看看<a class="link" href="https://github.com/dolthub/swiss/blob/f4b2babd2bc1cf0a2d66bab4e579ca35b6202338/map.go#L27"  target="_blank" rel="noopener"
+    >swisstable</a>的结构了:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Map</span><span class="p">[</span><span class="nx">K</span> <span class="nx">comparable</span><span class="p">,</span> <span class="nx">V</span> <span class="nx">any</span><span class="p">]</span> <span class="kd">struct</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">ctrl</span>     <span class="p">[]</span><span class="nx">metadata</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">groups</span>   <span class="p">[]</span><span class="nx">group</span><span class="p">[</span><span class="nx">K</span><span class="p">,</span> <span class="nx">V</span><span class="p">]</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">hash</span>     <span class="nx">maphash</span><span class="p">.</span><span class="nx">Hasher</span><span class="p">[</span><span class="nx">K</span><span class="p">]</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">resident</span> <span class="kt">uint32</span>   <span class="c1">//currently occupied slots in the hash map 
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">dead</span>     <span class="kt">uint32</span>  <span class="c1">//A tombstone indicates a slot that was previously occupied but has been deleted 
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">limit</span>    <span class="kt">uint32</span>  <span class="c1">// This field represents the maximum number of elements that can be added to the hash map before it needs to be resized. It is calculated based on the load factor and the number of groups.
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="c1">// metadata is the h2 metadata array for a group.  
+</span></span></span><span class="line"><span class="cl"><span class="c1">// find operations first probe the controls bytes  
+</span></span></span><span class="line"><span class="cl"><span class="c1">// to filter candidates before matching keys  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">type</span> <span class="nx">metadata</span> <span class="p">[</span><span class="nx">groupSize</span><span class="p">]</span><span class="kt">int8</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="c1">// group is a group of 16 key-value pairstype group[K comparable, V any] struct {  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">keys</span>   <span class="p">[</span><span class="nx">groupSize</span><span class="p">]</span><span class="nx">K</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">values</span> <span class="p">[</span><span class="nx">groupSize</span><span class="p">]</span><span class="nx">V</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>在<code>swisstable</code> 的实现中，ctrl 是一个 <code>[]metadata</code> ，<code>[]metadata</code> 跟<code> []group[K, V]</code> 数量对应 。每个<code>group</code>有8个<code>slot</code></p>
+<p>hash会被分成两部分：<code>57bits</code>长度的为H1，用于确定从哪个<code>groups</code>开始探测，剩下的<code>7bits</code>叫做H2，刚好放在<code>metadata</code>中， 被用作是当前key的哈希特征值，用于后面的查找和过滤。<br>
+<code>swisstable</code>比传统哈希表更快的秘诀就在于这些被叫做<code>ctrl</code>的metadata。控制信息主要是下面这几种：</p>
+<ul>
+<li>slot是否为空: <code>0b10000000</code></li>
+<li>slot里的元素是否已经被删除: <code>0b11111110</code></li>
+<li>slot里存的键值对的key的哈希特征（H2）<code>0bh2</code><br>
+对于空、删除这几种特殊状态，对应的值都是特意设置的，目的是为了能够在后面的匹配中使用<code>SIMD</code>指令，获得最高的性能。</li>
+</ul>
+<p>查找、插入、删除都是基于这些<code>ctrl</code>的，它们非常小，可以尽量多的被放入CPU的高速缓存，同时又包含了足够的信息以满足哈希表的增删改查。而slot就只用来存数据，<code>ctrl</code>和<code>slot</code>一一对应，控制信息在<code>ctrl</code>里的索引就是对应的数据在slot里的索引，下面以添加数据为例，查找，删除 都差不多。</p>
+<h3 id="添加数据">添加数据
+</h3><p><code>swisstable</code> 添加数据的过程分成几个步骤。</p>
+<ol>
+<li>计算哈希值并分割为 <code>h1</code> 和 <code>h2</code> , 根据 <code>h1</code> 确定开始探测的<code>groups</code> ,</li>
+<li>使用 <code>metaMatchH2</code> 检查当前组中的 <code>metadata</code> 是否有匹配的<code> h2</code>。如果找到匹配的 <code>h2</code>，则进一步检查对应槽位中的键是否与目标键相同。如果相同，则更新值并返回。</li>
+<li>如果没有找到匹配的键，使用 <code>metaMatchEmpty</code> 检查当前组中是否有空闲<code>slot</code>。如果有<code>slot</code>，则插入新的键值对，并更新 <code>metadata</code> 和 <code>resident</code> 计数。</li>
+<li>如果当前组没有空闲槽位，进行线性探测，检查下一个<code>groups</code>。</li>
+</ol>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span><span class="lnt">25
+</span><span class="lnt">26
+</span><span class="lnt">27
+</span><span class="lnt">28
+</span><span class="lnt">29
+</span><span class="lnt">30
+</span><span class="lnt">31
+</span><span class="lnt">32
+</span><span class="lnt">33
+</span><span class="lnt">34
+</span><span class="lnt">35
+</span><span class="lnt">36
+</span><span class="lnt">37
+</span><span class="lnt">38
+</span><span class="lnt">39
+</span><span class="lnt">40
+</span><span class="lnt">41
+</span><span class="lnt">42
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="o">*</span><span class="nx">Map</span><span class="p">[</span><span class="nx">K</span><span class="p">,</span> <span class="nx">V</span><span class="p">])</span> <span class="nf">Put</span><span class="p">(</span><span class="nx">key</span> <span class="nx">K</span><span class="p">,</span> <span class="nx">value</span> <span class="nx">V</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">m</span><span class="p">.</span><span class="nx">resident</span> <span class="o">&gt;=</span> <span class="nx">m</span><span class="p">.</span><span class="nx">limit</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">m</span><span class="p">.</span><span class="nf">rehash</span><span class="p">(</span><span class="nx">m</span><span class="p">.</span><span class="nf">nextSize</span><span class="p">())</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">hi</span><span class="p">,</span> <span class="nx">lo</span> <span class="o">:=</span> <span class="nf">splitHash</span><span class="p">(</span><span class="nx">m</span><span class="p">.</span><span class="nx">hash</span><span class="p">.</span><span class="nf">Hash</span><span class="p">(</span><span class="nx">key</span><span class="p">))</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">g</span> <span class="o">:=</span> <span class="nf">probeStart</span><span class="p">(</span><span class="nx">hi</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="nx">m</span><span class="p">.</span><span class="nx">groups</span><span class="p">))</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="p">{</span> <span class="c1">// inlined find loop  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>       <span class="nx">matches</span> <span class="o">:=</span> <span class="nf">metaMatchH2</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">m</span><span class="p">.</span><span class="nx">ctrl</span><span class="p">[</span><span class="nx">g</span><span class="p">],</span> <span class="nx">lo</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">       <span class="k">for</span> <span class="nx">matches</span> <span class="o">!=</span> <span class="mi">0</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">s</span> <span class="o">:=</span> <span class="nf">nextMatch</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">matches</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">          <span class="k">if</span> <span class="nx">key</span> <span class="o">==</span> <span class="nx">m</span><span class="p">.</span><span class="nx">groups</span><span class="p">[</span><span class="nx">g</span><span class="p">].</span><span class="nx">keys</span><span class="p">[</span><span class="nx">s</span><span class="p">]</span> <span class="p">{</span> <span class="c1">// update  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>             <span class="nx">m</span><span class="p">.</span><span class="nx">groups</span><span class="p">[</span><span class="nx">g</span><span class="p">].</span><span class="nx">keys</span><span class="p">[</span><span class="nx">s</span><span class="p">]</span> <span class="p">=</span> <span class="nx">key</span>  
+</span></span><span class="line"><span class="cl">             <span class="nx">m</span><span class="p">.</span><span class="nx">groups</span><span class="p">[</span><span class="nx">g</span><span class="p">].</span><span class="nx">values</span><span class="p">[</span><span class="nx">s</span><span class="p">]</span> <span class="p">=</span> <span class="nx">value</span>  
+</span></span><span class="line"><span class="cl">             <span class="k">return</span>  
+</span></span><span class="line"><span class="cl">          <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">       <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">       <span class="c1">// |key| is not in group |g|,  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>       <span class="c1">// stop probing if we see an empty slot       matches = metaMatchEmpty(&amp;m.ctrl[g])  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>       <span class="k">if</span> <span class="nx">matches</span> <span class="o">!=</span> <span class="mi">0</span> <span class="p">{</span> <span class="c1">// insert  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>          <span class="nx">s</span> <span class="o">:=</span> <span class="nf">nextMatch</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">matches</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">m</span><span class="p">.</span><span class="nx">groups</span><span class="p">[</span><span class="nx">g</span><span class="p">].</span><span class="nx">keys</span><span class="p">[</span><span class="nx">s</span><span class="p">]</span> <span class="p">=</span> <span class="nx">key</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">m</span><span class="p">.</span><span class="nx">groups</span><span class="p">[</span><span class="nx">g</span><span class="p">].</span><span class="nx">values</span><span class="p">[</span><span class="nx">s</span><span class="p">]</span> <span class="p">=</span> <span class="nx">value</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">m</span><span class="p">.</span><span class="nx">ctrl</span><span class="p">[</span><span class="nx">g</span><span class="p">][</span><span class="nx">s</span><span class="p">]</span> <span class="p">=</span> <span class="nb">int8</span><span class="p">(</span><span class="nx">lo</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">m</span><span class="p">.</span><span class="nx">resident</span><span class="o">++</span>  
+</span></span><span class="line"><span class="cl">          <span class="k">return</span>  
+</span></span><span class="line"><span class="cl">       <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">g</span> <span class="o">+=</span> <span class="mi">1</span> <span class="c1">// linear probing  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>       <span class="k">if</span> <span class="nx">g</span> <span class="o">&gt;=</span> <span class="nb">uint32</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="nx">m</span><span class="p">.</span><span class="nx">groups</span><span class="p">))</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">g</span> <span class="p">=</span> <span class="mi">0</span>  
+</span></span><span class="line"><span class="cl">       <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">metaMatchH2</span><span class="p">(</span><span class="nx">m</span> <span class="o">*</span><span class="nx">metadata</span><span class="p">,</span> <span class="nx">h</span> <span class="nx">h2</span><span class="p">)</span> <span class="nx">bitset</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// https://graphics.stanford.edu/~seander/bithacks.html##ValueInWord  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">return</span> <span class="nf">hasZeroByte</span><span class="p">(</span><span class="nf">castUint64</span><span class="p">(</span><span class="nx">m</span><span class="p">)</span> <span class="p">^</span> <span class="p">(</span><span class="nx">loBits</span> <span class="o">*</span> <span class="nb">uint64</span><span class="p">(</span><span class="nx">h</span><span class="p">)))</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">nextMatch</span><span class="p">(</span><span class="nx">b</span> <span class="o">*</span><span class="nx">bitset</span><span class="p">)</span> <span class="kt">uint32</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">s</span> <span class="o">:=</span> <span class="nb">uint32</span><span class="p">(</span><span class="nx">bits</span><span class="p">.</span><span class="nf">TrailingZeros64</span><span class="p">(</span><span class="nb">uint64</span><span class="p">(</span><span class="o">*</span><span class="nx">b</span><span class="p">)))</span>  
+</span></span><span class="line"><span class="cl">    <span class="o">*</span><span class="nx">b</span> <span class="o">&amp;=</span> <span class="p">^(</span><span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="nx">s</span><span class="p">)</span> <span class="c1">// clear bit |s|  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">return</span> <span class="nx">s</span> <span class="o">&gt;&gt;</span> <span class="mi">3</span>   <span class="c1">// div by 8  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>虽然，步骤很少，但是里面使用了比较复杂的位运算，按照正常的流程，需要把<code>h2</code> 跟所有的 对比，直到找到我们要的目标。<code>swisstable</code> 使用了一个很巧妙的方式来实现这个目标。</p>
+<ul>
+<li>首先将<code>h2 * 0x0101010101010101</code>  得到一个uint64，这样就能一次性对比 8个 <code>ctrl</code></li>
+<li>然后跟<code>meta</code> 做 xor 运行。 如果 <code>h2</code> 存在于 <code>metadata</code> 中。那么对应的bit 就是<code>0b00000000</code> ， <code>metaMatchH2</code> 的作用，可以用 下面的单元测试理解，</li>
+<li><code>nextMatch</code>  用于确定 key 在group中的的具体位置。</li>
+</ul>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">TestMetaMatchH2</span><span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">metaData</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">([]</span><span class="nx">metadata</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">metaData</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="p">=</span> <span class="p">[</span><span class="mi">8</span><span class="p">]</span><span class="kt">int8</span><span class="p">{</span><span class="mh">0x7f</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mh">0x7f</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mh">0x7f</span><span class="p">}</span> <span class="c1">// Imitate ctrl
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="nx">m</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">metaData</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">h</span> <span class="o">:=</span> <span class="mh">0x7f</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">metaUint64</span> <span class="o">:=</span> <span class="nf">castUint64</span><span class="p">(</span><span class="nx">m</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">h2Pattern</span> <span class="o">:=</span> <span class="nx">loBits</span> <span class="o">*</span> <span class="nb">uint64</span><span class="p">(</span><span class="nx">h</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">xorResult</span> <span class="o">:=</span> <span class="nx">metaUint64</span> <span class="p">^</span> <span class="nx">h2Pattern</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;metaUint64: %b\n&#34;</span><span class="p">,</span> <span class="nx">xorResult</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">r</span> <span class="o">:=</span> <span class="nf">hasZeroByte</span><span class="p">(</span><span class="nx">xorResult</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;r: %b\n&#34;</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">for</span> <span class="nx">r</span> <span class="o">!=</span> <span class="mi">0</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">	    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nf">nextMatch</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">r</span><span class="p">))</span>  
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="o">----</span>
+</span></span><span class="line"><span class="cl"><span class="nx">output</span>
+</span></span><span class="line"><span class="cl"><span class="c1">// metaUint64: 00000000 11111110 11111110 11111110 0000000 01111111 01111111 00000000
+</span></span></span><span class="line"><span class="cl"><span class="c1">// r: 10000000 00000000 00000000 00000000 10000000 00000000 00000000 10000000
+</span></span></span><span class="line"><span class="cl"><span class="c1">// 0
+</span></span></span><span class="line"><span class="cl"><span class="c1">// 3
+</span></span></span><span class="line"><span class="cl"><span class="c1">// 7
+</span></span></span></code></pre></td></tr></table>
+</div>
+</div><h3 id="swisstable-的优势">SwissTable 的优势
+</h3><p>看完SwissTable的实现，可以总结为下面几点：</p>
+<ul>
+<li>对<code>hashtable</code>的操作从<code>slot</code>转移到了<code>ctrl</code>上，<code>ctrl</code>更小更容易被填入CPU的高速缓存，因此比直接在<code>slot</code>上操作更快，即使需要多付出一次从<code>ctrl</code>得到索引后再去查找<code>slot</code>的代价。</li>
+<li>记录哈希特征值，减少了无意义的key等值比较，这是线性探测法性能下降的主要元凶。</li>
+<li>对<code>slot</code>的查找和操作是通过<code>ctrl</code>批量进行的，单位时间内吞吐量有显著提升。</li>
+<li>标志位的值和整个数据结构的内存布局都为<code>SIMD</code>进行了优化，可以充分发挥性能优势。</li>
+<li>对<code>slot</code>也有优化，比如对太大的数据会压缩存储以提高缓存命中率。<br>
+<code>swisstable</code> 解决了空间局部性问题的基础上，还利用了现代CPU的特性批量操作元素，所以性能会有飞跃般的提升。</li>
+</ul>
+<p>最后在我本地<code>macbook m1</code> （不支持SIMD）上跑benchmark，结果如下，在大map场景下，<code>swisstable</code> 性能有比较明显的提升。<br>
+Figure 5:  <code>swisstable</code> 官方benchmark<br>
+<img src="https://images.hxzhouh.com/blog-images/2024/09/a59e237341d6076ed79395bd1d1b5f90.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Pasted image 20240930110905"
+	
+	
+></p>
+<h2 id="总结">总结
+</h2><p>目前go 官方还没有<code>swisstable</code> 的实现， 但是关于它的讨论一直再继续，目前社区也有几种实现。比如<a class="link" href="https://github.com/mhmtszr/concurrent-swiss-map"  target="_blank" rel="noopener"
+    >concurrent-swiss-map</a> ，<a class="link" href="https://github.com/dolthub/swiss"  target="_blank" rel="noopener"
+    >swiss</a> 等。<br>
+不过实现都不是特别完美，比如在小map 场景下<code>swisstable</code> 的性能甚至比不上 <code>runtime_map</code> 等。但是<code>swisstable</code> 表现出来的潜力已经在其他语言上的表现，说明它值得我们期待。</p>
+<h2 id="参考文档">参考文档
+</h2><ul>
+<li>dolthub <a class="link" href="https://www.dolthub.com/blog/2023-03-28-swiss-map/"  target="_blank" rel="noopener"
+    >https://www.dolthub.com/blog/2023-03-28-swiss-map/</a></li>
+<li>swisstable 原理 <a class="link" href="https://abseil.io/about/design/swisstables"  target="_blank" rel="noopener"
+    >https://abseil.io/about/design/swisstables</a></li>
+<li>首次提出<code>swisstable</code>的cppcon演讲：<a class="link" href="https://www.youtube.com/watch?v=ncHmEUmJZf4"  target="_blank" rel="noopener"
+    >https://www.youtube.com/watch?v=ncHmEUmJZf4</a></li>
+<li>针对<code>swisstable</code>算法的一些改进：<a class="link" href="https://www.youtube.com/watch?v=JZE3_0qvrMg"  target="_blank" rel="noopener"
+    >https://www.youtube.com/watch?v=JZE3_0qvrMg</a></li>
+<li>位运算原理:  <a class="link" href="http://graphics.stanford.edu/~seander/bithacks.html##ValueInWord"  target="_blank" rel="noopener"
+    >http://graphics.stanford.edu/~seander/bithacks.html##ValueInWord</a></li>
+<li>hash 函数对比： <a class="link" href="https://aras-p.info/blog/2016/08/09/More-Hash-Function-Tests/"  target="_blank" rel="noopener"
+    >https://aras-p.info/blog/2016/08/09/More-Hash-Function-Tests/</a></li>
+<li>另外一篇位运算原理的文章 <a class="link" href="https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/"  target="_blank" rel="noopener"
+    >https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/</a></li>
+</ul>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            最后更新于 Sep 30, 2024 11:25 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+
+    
+        
+    <script src="//cdn.jsdelivr.net/npm/twikoo@1.6.21/dist/twikoo.all.min.js"></script>
+<div id="tcomment"></div>
+<style>
+    .twikoo {
+        background-color: var(--card-background);
+        border-radius: var(--card-border-radius);
+        box-shadow: var(--shadow-l1);
+        padding: var(--card-padding);
+    }
+    :root[data-scheme="dark"] {
+        --twikoo-body-text-color-main: rgba(255, 255, 255, 0.9);
+        --twikoo-body-text-color: rgba(255, 255, 255, 0.7);
+    }
+    .twikoo .el-input-group__prepend,
+    .twikoo .tk-action-icon,
+    .twikoo .tk-submit-action-icon,
+    .twikoo .tk-time,
+    .twikoo .tk-comments-no,
+    .twikoo .tk-comments-count {
+        color: var(--twikoo-body-text-color);
+    }
+    .twikoo .el-input__inner,
+    .twikoo .el-textarea__inner,
+    .twikoo .tk-preview-container,
+    .twikoo .tk-content,
+    .twikoo .tk-nick,
+    .twikoo .tk-send {
+        color: var(--twikoo-body-text-color-main);
+    }
+    .twikoo .el-button{
+        color: var(--twikoo-body-text-color)!important;
+    }
+    .twikoo .el-input__count {
+        color: var(--twikoo-body-text-color) !important;
+    }
+    .OwO .OwO-body {
+        background-color: var(--body-background) !important;
+        color: var(--body-text-color) !important;
+    }
+</style><script>
+    twikoo.init({
+        envId: 'https:\/\/twikoo.yixiao9206.cn',
+        el: '#tcomment',lang: 'en',})
+</script>
+
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2024 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+    </section>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>
