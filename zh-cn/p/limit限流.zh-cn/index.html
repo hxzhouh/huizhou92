@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="zh-cn" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="在软件架构中，限流是一种控制资源使用和保护系统安全的重要机制。它通过限制在一定时间内可以处理的请求数量，来防止系统过载，确保系统在高负载情况下仍能保持稳定运行。 本文的目标是分析和实现几种常见的限流算法，以及分析他们优缺点。最后我们探讨一下真实业务代码中的一些限流设计。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much. 假设我们通过性能测试得出我们的系统最大的负载为10TPS。 流量计数器模式 最简单的做法，我们做一个计时器，每秒最多允许10个请求通过，超过这个数量的流量就拒绝。 Code1 ： windows limit run it https://gist.github.com/hxzhouh/51020e18622c2e38ebf21cd6a9dc5cc6 但是这个做法是有问题的，假设我们2秒内收到了都收到了10TPS请求，但是是在 0.9s 与 1.1s 收到的，这样虽然每个周期的流量都不超过10 TPS请求的阈值，但是系统确实曾经在1s内发生了超过阈值的20TPS请求。 流量计数器的缺陷根源在于它只是针对时间点进行离散的统计，为了弥补该缺陷，一种名为“滑动时间窗”的限流模式被设计出来，它可以实现平滑的基于时间片段统计。 滑动窗口机制 滑动窗口算法(Sliding Window Algorithm)在计算机科学的很多领域中都有成功的应用，譬如TCP协议的阻塞控制(Congestion Control)使用到滑动窗口算法 滑动窗口算法通过将时间分为多个小的时间段，每个时间段内维护一个独立的计数器。当一个请求到达时，它会被分配到当前时间所在的小时间段，并检查该时间段的计数器是否已达到限制。如果未达到，则允许请求并增加计数；如果已达到，则拒绝请求。随着时间的推移，旧的时间段会淡出窗口，新的时间段会加入。 code2: sliding_windows try it https://gist.github.com/hxzhouh/c5c79ea4b80ea5a026052471de07107f 滑动窗口算法其实就是把流量计数器算法的时间窗口划分小一点，提供更细致的流量控制，并不能完全解决瞬时大流量。也很难在更细粒度上对流量曲线进行整形，起不到削峰填谷的作用。下面继续介绍两种适用于阻塞式限流的限流模式。 漏桶算法 漏桶算法是通过一个固定容量的队列来模拟桶，以恒定速率从桶中取出请求进行处理，无论请求到达的频率如何，都保证请求以均匀的速度被处理，从而平滑流量并防止流量突增。 Code3: leakBucket try it https://gist.github.com/hxzhouh/ba78993644ce58958127f64fc0976c55 漏桶算法适用于需要强制执行固定速率处理的场景，如网络流量控制、API请求限制等。通过控制令牌的添加速率，漏桶算法能够有效地避免系统因瞬时流量高峰而过载。漏桶实现起来很容易，难点在于如何确定漏桶的两个参数：桶的大小和水的流出速率。如果桶设置得太大，那服务依然可能遭遇流量过大的冲击，不能完全发挥限流的作用；如果设置得太小，那很可能误杀掉一部分正常的请求。 令牌桶算法 令牌桶算法跟漏桶算法想法，更像现实生活中的排队算法，系统以固定的速率放号，我们首先要取号，然后再进行业务处理。 假设我们要限制系统在X秒内最大请求次数不超过Y，那就每间隔X/Y时间往桶中放一个令牌，当有请求进来时，首先要从桶中取得一个准入的令牌，然后才能进入系统进行处理。如果获取不到令牌就返回请求失败。 Code 4 ：token_limit try it https://gist.">
+<title>limit限流.zh-cn</title>
+
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/limit%E9%99%90%E6%B5%81.zh-cn/'>
+
+<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="limit限流.zh-cn">
+<meta property='og:description' content="在软件架构中，限流是一种控制资源使用和保护系统安全的重要机制。它通过限制在一定时间内可以处理的请求数量，来防止系统过载，确保系统在高负载情况下仍能保持稳定运行。 本文的目标是分析和实现几种常见的限流算法，以及分析他们优缺点。最后我们探讨一下真实业务代码中的一些限流设计。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much. 假设我们通过性能测试得出我们的系统最大的负载为10TPS。 流量计数器模式 最简单的做法，我们做一个计时器，每秒最多允许10个请求通过，超过这个数量的流量就拒绝。 Code1 ： windows limit run it https://gist.github.com/hxzhouh/51020e18622c2e38ebf21cd6a9dc5cc6 但是这个做法是有问题的，假设我们2秒内收到了都收到了10TPS请求，但是是在 0.9s 与 1.1s 收到的，这样虽然每个周期的流量都不超过10 TPS请求的阈值，但是系统确实曾经在1s内发生了超过阈值的20TPS请求。 流量计数器的缺陷根源在于它只是针对时间点进行离散的统计，为了弥补该缺陷，一种名为“滑动时间窗”的限流模式被设计出来，它可以实现平滑的基于时间片段统计。 滑动窗口机制 滑动窗口算法(Sliding Window Algorithm)在计算机科学的很多领域中都有成功的应用，譬如TCP协议的阻塞控制(Congestion Control)使用到滑动窗口算法 滑动窗口算法通过将时间分为多个小的时间段，每个时间段内维护一个独立的计数器。当一个请求到达时，它会被分配到当前时间所在的小时间段，并检查该时间段的计数器是否已达到限制。如果未达到，则允许请求并增加计数；如果已达到，则拒绝请求。随着时间的推移，旧的时间段会淡出窗口，新的时间段会加入。 code2: sliding_windows try it https://gist.github.com/hxzhouh/c5c79ea4b80ea5a026052471de07107f 滑动窗口算法其实就是把流量计数器算法的时间窗口划分小一点，提供更细致的流量控制，并不能完全解决瞬时大流量。也很难在更细粒度上对流量曲线进行整形，起不到削峰填谷的作用。下面继续介绍两种适用于阻塞式限流的限流模式。 漏桶算法 漏桶算法是通过一个固定容量的队列来模拟桶，以恒定速率从桶中取出请求进行处理，无论请求到达的频率如何，都保证请求以均匀的速度被处理，从而平滑流量并防止流量突增。 Code3: leakBucket try it https://gist.github.com/hxzhouh/ba78993644ce58958127f64fc0976c55 漏桶算法适用于需要强制执行固定速率处理的场景，如网络流量控制、API请求限制等。通过控制令牌的添加速率，漏桶算法能够有效地避免系统因瞬时流量高峰而过载。漏桶实现起来很容易，难点在于如何确定漏桶的两个参数：桶的大小和水的流出速率。如果桶设置得太大，那服务依然可能遭遇流量过大的冲击，不能完全发挥限流的作用；如果设置得太小，那很可能误杀掉一部分正常的请求。 令牌桶算法 令牌桶算法跟漏桶算法想法，更像现实生活中的排队算法，系统以固定的速率放号，我们首先要取号，然后再进行业务处理。 假设我们要限制系统在X秒内最大请求次数不超过Y，那就每间隔X/Y时间往桶中放一个令牌，当有请求进来时，首先要从桶中取得一个准入的令牌，然后才能进入系统进行处理。如果获取不到令牌就返回请求失败。 Code 4 ：token_limit try it https://gist.">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/limit%E9%99%90%E6%B5%81.zh-cn/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:published_time' content='2024-09-25T09:34:59&#43;08:00'/><meta property='article:modified_time' content='2024-09-25T09:34:57&#43;08:00'/><meta property='og:image' content='https://images.hxzhouh.com/blog-images/2024/09/f146e1aedafc425732135df81c5cd244.png' />
+<meta name="twitter:site" content="@https://x.com/piaopiaopig">
+    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="limit限流.zh-cn">
+<meta name="twitter:description" content="在软件架构中，限流是一种控制资源使用和保护系统安全的重要机制。它通过限制在一定时间内可以处理的请求数量，来防止系统过载，确保系统在高负载情况下仍能保持稳定运行。 本文的目标是分析和实现几种常见的限流算法，以及分析他们优缺点。最后我们探讨一下真实业务代码中的一些限流设计。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much. 假设我们通过性能测试得出我们的系统最大的负载为10TPS。 流量计数器模式 最简单的做法，我们做一个计时器，每秒最多允许10个请求通过，超过这个数量的流量就拒绝。 Code1 ： windows limit run it https://gist.github.com/hxzhouh/51020e18622c2e38ebf21cd6a9dc5cc6 但是这个做法是有问题的，假设我们2秒内收到了都收到了10TPS请求，但是是在 0.9s 与 1.1s 收到的，这样虽然每个周期的流量都不超过10 TPS请求的阈值，但是系统确实曾经在1s内发生了超过阈值的20TPS请求。 流量计数器的缺陷根源在于它只是针对时间点进行离散的统计，为了弥补该缺陷，一种名为“滑动时间窗”的限流模式被设计出来，它可以实现平滑的基于时间片段统计。 滑动窗口机制 滑动窗口算法(Sliding Window Algorithm)在计算机科学的很多领域中都有成功的应用，譬如TCP协议的阻塞控制(Congestion Control)使用到滑动窗口算法 滑动窗口算法通过将时间分为多个小的时间段，每个时间段内维护一个独立的计数器。当一个请求到达时，它会被分配到当前时间所在的小时间段，并检查该时间段的计数器是否已达到限制。如果未达到，则允许请求并增加计数；如果已达到，则拒绝请求。随着时间的推移，旧的时间段会淡出窗口，新的时间段会加入。 code2: sliding_windows try it https://gist.github.com/hxzhouh/c5c79ea4b80ea5a026052471de07107f 滑动窗口算法其实就是把流量计数器算法的时间窗口划分小一点，提供更细致的流量控制，并不能完全解决瞬时大流量。也很难在更细粒度上对流量曲线进行整形，起不到削峰填谷的作用。下面继续介绍两种适用于阻塞式限流的限流模式。 漏桶算法 漏桶算法是通过一个固定容量的队列来模拟桶，以恒定速率从桶中取出请求进行处理，无论请求到达的频率如何，都保证请求以均匀的速度被处理，从而平滑流量并防止流量突增。 Code3: leakBucket try it https://gist.github.com/hxzhouh/ba78993644ce58958127f64fc0976c55 漏桶算法适用于需要强制执行固定速率处理的场景，如网络流量控制、API请求限制等。通过控制令牌的添加速率，漏桶算法能够有效地避免系统因瞬时流量高峰而过载。漏桶实现起来很容易，难点在于如何确定漏桶的两个参数：桶的大小和水的流出速率。如果桶设置得太大，那服务依然可能遭遇流量过大的冲击，不能完全发挥限流的作用；如果设置得太小，那很可能误杀掉一部分正常的请求。 令牌桶算法 令牌桶算法跟漏桶算法想法，更像现实生活中的排队算法，系统以固定的速率放号，我们首先要取号，然后再进行业务处理。 假设我们要限制系统在X秒内最大请求次数不超过Y，那就每间隔X/Y时间往桶中放一个令牌，当有请求进来时，首先要从桶中取得一个准入的令牌，然后才能进入系统进行处理。如果获取不到令牌就返回请求失败。 Code 4 ：token_limit try it https://gist."><meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content='https://images.hxzhouh.com/blog-images/2024/09/f146e1aedafc425732135df81c5cd244.png' />
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="切换菜单">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/zh-cn/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+                    <span class="emoji">😄</span>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/zh-cn">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/zh-cn/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>主页</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/%E5%85%B3%E4%BA%8E/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>关于</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>归档</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>搜索</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" >English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" selected>中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>暗色模式</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">目录</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#流量计数器模式">流量计数器模式</a></li>
+    <li><a href="#滑动窗口机制">滑动窗口机制</a></li>
+    <li><a href="#漏桶算法">漏桶算法</a></li>
+    <li><a href="#令牌桶算法">令牌桶算法</a></li>
+    <li><a href="#实际业务中的限流算法">实际业务中的限流算法</a>
+      <ol>
+        <li><a href="#分布式限流算法">分布式限流算法</a></li>
+        <li><a href="#优先级">优先级</a></li>
+      </ol>
+    </li>
+    <li><a href="#结论">结论</a></li>
+    <li><a href="#参考文档">参考文档</a></li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="has-image main-article">
+    <header class="article-header">
+        <div class="article-image">
+            <a href="/zh-cn/p/limit%E9%99%90%E6%B5%81.zh-cn/">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/09/f146e1aedafc425732135df81c5cd244.png" loading="lazy" alt="Featured image of post limit限流.zh-cn" />
+                
+            </a>
+        </div>
+    
+
+    <div class="article-details">
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/zh-cn/p/limit%E9%99%90%E6%B5%81.zh-cn/">limit限流.zh-cn</a>
+        </h2>
+    
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Sep 25, 2024</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    阅读时长: 1 分钟
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <p>在软件架构中，限流是一种控制资源使用和保护系统安全的重要机制。它通过限制在一定时间内可以处理的请求数量，来防止系统过载，确保系统在高负载情况下仍能保持稳定运行。<br>
+本文的目标是分析和实现几种常见的限流算法，以及分析他们优缺点。最后我们探讨一下真实业务代码中的一些限流设计。</p>
+<!-- more-->
+<blockquote>
+<p>This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >Medium</a>. Thank you very much.</p>
+</blockquote>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+crossorigin="anonymous"></script>
+    <ins class="adsbygoogle"
+    style="display:block; text-align:center;"
+    data-ad-layout="in-article"
+    data-ad-format="fluid"
+    data-ad-client="ca-pub-9000447749076746"
+    data-ad-slot="5063552270"></ins>
+<script>
+(adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+<p>假设我们通过性能测试得出我们的系统最大的负载为10TPS。</p>
+<h2 id="流量计数器模式">流量计数器模式
+</h2><p>最简单的做法，我们做一个计时器，每秒最多允许10个请求通过，超过这个数量的流量就拒绝。<br>
+Code1 ： windows limit  <a class="link" href="https://go.dev/play/p/o9GpZGJ8N7i"  target="_blank" rel="noopener"
+    >run it</a></p>
+<p><a class="link" href="https://gist.github.com/hxzhouh/51020e18622c2e38ebf21cd6a9dc5cc6"  target="_blank" rel="noopener"
+    >https://gist.github.com/hxzhouh/51020e18622c2e38ebf21cd6a9dc5cc6</a><br>
+<script src="https://gist.github.com/hxzhouh/51020e18622c2e38ebf21cd6a9dc5cc6.js"></script>
+</p>
+<p>但是这个做法是有问题的，假设我们2秒内收到了都收到了10TPS请求，但是是在 0.9s 与 1.1s 收到的，这样虽然每个周期的流量都不超过10 TPS请求的阈值，但是系统确实曾经在1s内发生了超过阈值的20TPS请求。<br>
+流量计数器的缺陷根源在于它只是针对时间点进行离散的统计，为了弥补该缺陷，一种名为“滑动时间窗”的限流模式被设计出来，它可以实现平滑的基于时间片段统计。</p>
+<h2 id="滑动窗口机制">滑动窗口机制
+</h2><p>滑动窗口算法(Sliding Window Algorithm)在计算机科学的很多领域中都有成功的应用，譬如TCP协议的阻塞控制(Congestion Control)使用到滑动窗口算法</p>
+<p>滑动窗口算法通过将时间分为多个小的时间段，每个时间段内维护一个独立的计数器。当一个请求到达时，它会被分配到当前时间所在的小时间段，并检查该时间段的计数器是否已达到限制。如果未达到，则允许请求并增加计数；如果已达到，则拒绝请求。随着时间的推移，旧的时间段会淡出窗口，新的时间段会加入。<br>
+code2: sliding_windows <a class="link" href="https://go.dev/play/p/kc-MacnzPTh"  target="_blank" rel="noopener"
+    >try it</a><br>
+<a class="link" href="https://gist.github.com/hxzhouh/c5c79ea4b80ea5a026052471de07107f"  target="_blank" rel="noopener"
+    >https://gist.github.com/hxzhouh/c5c79ea4b80ea5a026052471de07107f</a><br>
+<script src="https://gist.github.com/hxzhouh/c5c79ea4b80ea5a026052471de07107f.js"></script>
+</p>
+<p>滑动窗口算法其实就是把流量计数器算法的时间窗口划分小一点，提供更细致的流量控制，并不能完全解决瞬时大流量。也很难在更细粒度上对流量曲线进行整形，起不到削峰填谷的作用。下面继续介绍两种适用于阻塞式限流的限流模式。</p>
+<h2 id="漏桶算法">漏桶算法
+</h2><p>漏桶算法是通过一个固定容量的队列来模拟桶，以恒定速率从桶中取出请求进行处理，无论请求到达的频率如何，都保证请求以均匀的速度被处理，从而平滑流量并防止流量突增。<br>
+Code3:  leakBucket <a class="link" href="https://go.dev/play/p/dbIFj2vCqFU"  target="_blank" rel="noopener"
+    >try it</a><br>
+<a class="link" href="https://gist.github.com/hxzhouh/ba78993644ce58958127f64fc0976c55"  target="_blank" rel="noopener"
+    >https://gist.github.com/hxzhouh/ba78993644ce58958127f64fc0976c55</a><br>
+<script src="https://gist.github.com/hxzhouh/ba78993644ce58958127f64fc0976c55.js"></script>
+</p>
+<p>漏桶算法适用于需要强制执行固定速率处理的场景，如网络流量控制、API请求限制等。通过控制令牌的添加速率，漏桶算法能够有效地避免系统因瞬时流量高峰而过载。漏桶实现起来很容易，难点在于如何确定漏桶的两个参数：桶的大小和水的流出速率。如果桶设置得太大，那服务依然可能遭遇流量过大的冲击，不能完全发挥限流的作用；如果设置得太小，那很可能误杀掉一部分正常的请求。</p>
+<h2 id="令牌桶算法">令牌桶算法
+</h2><p>令牌桶算法跟漏桶算法想法，更像现实生活中的排队算法，系统以固定的速率放号，我们首先要取号，然后再进行业务处理。 假设我们要限制系统在X秒内最大请求次数不超过Y，那就每间隔X/Y时间往桶中放一个令牌，当有请求进来时，首先要从桶中取得一个准入的令牌，然后才能进入系统进行处理。如果获取不到令牌就返回请求失败。</p>
+<p>Code 4 ：token_limit   <a class="link" href="https://go.dev/play/p/-JAqGoz2xK-"  target="_blank" rel="noopener"
+    >try it </a><br>
+<a class="link" href="https://gist.github.com/hxzhouh/0c172824334aeea5ef101bd682fef59e"  target="_blank" rel="noopener"
+    >https://gist.github.com/hxzhouh/0c172824334aeea5ef101bd682fef59e</a><br>
+<script src="https://gist.github.com/hxzhouh/0c172824334aeea5ef101bd682fef59e.js"></script>
+</p>
+<p>令牌桶算法适用于需要处理突发流量的场景，如网络通信、API调用等。通过控制令牌的填充速率和桶的容量，令牌桶算法能够有效地平衡流量，防止系统过载，同时 如果系统资源富裕的情况下，允许在短期内处理更多的请求。跟漏桶算法类似，令牌生成的速度，也是需要重点考虑的。</p>
+<h2 id="实际业务中的限流算法">实际业务中的限流算法
+</h2><h3 id="分布式限流算法">分布式限流算法
+</h3><p>上面介绍的四个限流算法，状态都是存储在内存中的，我们可以理解为单机限流算法，微服务架构下，它们就最多只能应用于集群最入口处的网关上，对整个服务集群进行流量控制，无法细粒度地管理流量在内部微服务节点中的流转情况。如果我们需要实现一个服务的多个节点之间协同限流，那么我们需要将状态保存在集群中共享，下面是一个使用Redis 实现分布式 令牌桶算法的实现。实际上，我在业务中使用更多的是这种方式。</p>
+<script src="https://gist.github.com/hxzhouh/9aee69a3b24c38aa20274b726a596e2d.js"></script>
+
+<h3 id="优先级">优先级
+</h3><p>服务器资源是宝贵的，再资源紧张的情况下，我们更加希望宝贵的资源用于服务我们的vip客户。因此，我们可以设计一种基于“货币化额度”的分布式限流方案。不同于传统令牌桶算法中的“准入/拒绝”二元判定方式，这里的“货币额度”是一种更灵活的限流方式。用户在访问集群中的服务时，每次都会消耗一定的额度，类似于消耗资源的“货币”，并且可以根据用户的等级分配不同的额度。VIP用户可能拥有更高的额度，普通用户则有一定的额度限制。当额度耗尽后，用户需要重新向“令牌桶”申请额度，才能继续访问。<br>
+code 5:  quota <a class="link" href="https://go.dev/play/p/MxKsxKRx9L_J"  target="_blank" rel="noopener"
+    >try it</a><br>
+<a class="link" href="https://gist.github.com/hxzhouh/dc06a2947f4d436bdce9743d65b6c9e6"  target="_blank" rel="noopener"
+    >https://gist.github.com/hxzhouh/dc06a2947f4d436bdce9743d65b6c9e6</a><br>
+<script src="https://gist.github.com/hxzhouh/dc06a2947f4d436bdce9743d65b6c9e6.js"></script>
+</p>
+<h2 id="结论">结论
+</h2><p>本文介绍了几种常见的限流算法，包括流量计数器、滑动窗口、漏桶、令牌桶等，并分析了它们在不同场景下的应用效果。流量计数器算法简单易用，但无法应对瞬时高峰流量，滑动窗口算法在一定程度上弥补了这一缺陷。漏桶算法通过固定速率处理请求，适合需要平滑流量的场景，而令牌桶算法则能够灵活处理突发流量，并允许系统在短时间内接收更多请求。</p>
+<p>在实际业务中，尤其是微服务架构下，分布式限流是非常重要的。通过 Redis 等中间件的协同，分布式令牌桶算法能有效管理多个节点的流量。此外，基于优先级的“货币化额度”方案为限流设计提供了更多灵活性，有助于提升 VIP 客户体验。限流机制不仅能够保护系统免受过载，还能提升系统的整体稳定性与性能。</p>
+<h2 id="参考文档">参考文档
+</h2><p>[1] <a class="link" href="https://icyfenix.cn/distribution/traffic-management/traffic-control.html#%E9%99%90%E6%B5%81%E8%AE%BE%E8%AE%A1%E6%A8%A1%E5%BC%8F"  target="_blank" rel="noopener"
+    >限流设计模式</a></p>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            最后更新于 Sep 25, 2024 09:34 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+
+    
+        
+    <script src="//cdn.jsdelivr.net/npm/twikoo@1.6.21/dist/twikoo.all.min.js"></script>
+<div id="tcomment"></div>
+<style>
+    .twikoo {
+        background-color: var(--card-background);
+        border-radius: var(--card-border-radius);
+        box-shadow: var(--shadow-l1);
+        padding: var(--card-padding);
+    }
+    :root[data-scheme="dark"] {
+        --twikoo-body-text-color-main: rgba(255, 255, 255, 0.9);
+        --twikoo-body-text-color: rgba(255, 255, 255, 0.7);
+    }
+    .twikoo .el-input-group__prepend,
+    .twikoo .tk-action-icon,
+    .twikoo .tk-submit-action-icon,
+    .twikoo .tk-time,
+    .twikoo .tk-comments-no,
+    .twikoo .tk-comments-count {
+        color: var(--twikoo-body-text-color);
+    }
+    .twikoo .el-input__inner,
+    .twikoo .el-textarea__inner,
+    .twikoo .tk-preview-container,
+    .twikoo .tk-content,
+    .twikoo .tk-nick,
+    .twikoo .tk-send {
+        color: var(--twikoo-body-text-color-main);
+    }
+    .twikoo .el-button{
+        color: var(--twikoo-body-text-color)!important;
+    }
+    .twikoo .el-input__count {
+        color: var(--twikoo-body-text-color) !important;
+    }
+    .OwO .OwO-body {
+        background-color: var(--body-background) !important;
+        color: var(--body-text-color) !important;
+    }
+</style><script>
+    twikoo.init({
+        envId: 'https:\/\/twikoo.yixiao9206.cn',
+        el: '#tcomment',lang: 'en',})
+</script>
+
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2024 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+    </section>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>
