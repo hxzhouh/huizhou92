@@ -2,19 +2,19 @@
 <html lang="zh-cn" dir="ltr">
     <head><meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
-<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="最近发现 Golang 标准库竟然自带了 varint 的实现，代码位置在\u00a0encoding/binary/varint.go，这个跟protobuf里面的varint实现基本是一致的。刚好借助 golang 标准库的 varint 源码，我们来系统地学习和梳理下 varint。 熟悉 protobuf 的人肯定对 varint 不陌生，protobuf 里面除了带 fix (如 fixed32、fixed64) 之外的整数类型, 都是 varint 编码。 varint 的出现主要是为了解决两个问题： 空间效率：以 uint64 类型为例，可以表示的最大值为 18446744073709551615。然而在实际业务场景中，我们通常处理的整数值远小于 uint64 的最大值。假设在我们的业务中，需要处理的整数值仅为 1，但在网络传输过程中，我们却需要使用 8 个字节来表示这个值。这就导致了大量的空间浪费，因为大部分字节并没有实际存储有效的信息。varint 编码通过使用可变长度的字节序列来表示整数，使得小的整数可以用更少的字节表示，提高空间效率。 兼容性：varint 使得我们可以在不改变编码 / 解码逻辑的情况下，处理不同大小的整数。这意味着我们可以在不破坏向后兼容性的情况下，将一个字段从较小的整数类型（如 uint32）升级到较大的整数类型（如 uint64） 本文将通过分析 Golang 标准库自带的 varint 源码实现，介绍 varint 的设计原理以及Golang标准库是如何解决 varint 在编码负数时遇到的问题。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium.">
-<title>解析Go: varint 的使用与实现原理</title>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="对于无锁编程来讲，无锁只是一个表象，编程者设法组织 data+processing，重点在于如何消除 dataracing。而消除 dataracing 而言，传统的并发编程逻辑是采用关键区、排他性锁、读写锁等方式来保护 data 不会因为 processing 而导致错误读或错误写，那么对于无锁编程来说，则是通过消除 data 的共享性，或者消除并发操作 data 等方式来解决问题。 所以最典型的无锁编程技法包含两个技巧： structure bumper loop 其他的方法都是相似思路的具体衍生。 这里的“其他的方法”，是指完全不使用锁定或 CAS 的算法设计方案。本文中讨论的是如何设计数据结构及其处理器（算法）来防止加锁，甚至于连 CAS 也去除。 至于在共享的data上强行消除竞争读写问题的其他无锁方案，例如RingBuffer之类的工具类库，则是完全依赖于具体的 data 实体并在具体的 CPU 上进行设计，基本上是一种很受限的方法，不具备高层次抽象层面的通用性。尽管其具体的设计思路有迹可循，但却不是最佳的选择：一个优秀的 RingBuffer，它的致命之处就在于在单核心的CPU上，或者单颗 vCPU 的 vHost 上可能是无法降级工作的，或者即使能工作也是低效的或者高消费的。所以本文讨论的是更通用的，在任何高级语言（无论其线程、协程支持度如何）于任何 Targets 上都可以通行的无锁编程技法。 Structure copy Structure copy是一种经典的无锁编程技法。它的核心思想在于将易变数据一一个 structure 管理，通常可能起名为 Entry，然后在这个 structure 上展开数据处理过程。如此，由于数据处理过程只会操作其所关联到的 structure，因此这一组数据本身就是非共享的，也就不需要考虑 dataracing 的潜在可能性的。 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 type Worker struct { closed int32 // avoid duplicated release rsrc in Close() entries []*Entry } type Entry struct { Count int Data []any } func (w *Worker) New(data .">
+<title>Go 高性能编程 EP9: 两个有用的 Golang 无锁编程技巧</title>
 
-<link rel='canonical' href='https://huizhou92.com/zh-cn/p/%E8%A7%A3%E6%9E%90go-varint-%E7%9A%84%E4%BD%BF%E7%94%A8%E4%B8%8E%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/'>
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8B-ep9-%E4%B8%A4%E4%B8%AA%E6%9C%89%E7%94%A8%E7%9A%84-golang-%E6%97%A0%E9%94%81%E7%BC%96%E7%A8%8B%E6%8A%80%E5%B7%A7/'>
 
-<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="解析Go: varint 的使用与实现原理">
-<meta property='og:description' content="最近发现 Golang 标准库竟然自带了 varint 的实现，代码位置在\u00a0encoding/binary/varint.go，这个跟protobuf里面的varint实现基本是一致的。刚好借助 golang 标准库的 varint 源码，我们来系统地学习和梳理下 varint。 熟悉 protobuf 的人肯定对 varint 不陌生，protobuf 里面除了带 fix (如 fixed32、fixed64) 之外的整数类型, 都是 varint 编码。 varint 的出现主要是为了解决两个问题： 空间效率：以 uint64 类型为例，可以表示的最大值为 18446744073709551615。然而在实际业务场景中，我们通常处理的整数值远小于 uint64 的最大值。假设在我们的业务中，需要处理的整数值仅为 1，但在网络传输过程中，我们却需要使用 8 个字节来表示这个值。这就导致了大量的空间浪费，因为大部分字节并没有实际存储有效的信息。varint 编码通过使用可变长度的字节序列来表示整数，使得小的整数可以用更少的字节表示，提高空间效率。 兼容性：varint 使得我们可以在不改变编码 / 解码逻辑的情况下，处理不同大小的整数。这意味着我们可以在不破坏向后兼容性的情况下，将一个字段从较小的整数类型（如 uint32）升级到较大的整数类型（如 uint64） 本文将通过分析 Golang 标准库自带的 varint 源码实现，介绍 varint 的设计原理以及Golang标准库是如何解决 varint 在编码负数时遇到的问题。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium.">
-<meta property='og:url' content='https://huizhou92.com/zh-cn/p/%E8%A7%A3%E6%9E%90go-varint-%E7%9A%84%E4%BD%BF%E7%94%A8%E4%B8%8E%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/'>
+<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="Go 高性能编程 EP9: 两个有用的 Golang 无锁编程技巧">
+<meta property='og:description' content="对于无锁编程来讲，无锁只是一个表象，编程者设法组织 data+processing，重点在于如何消除 dataracing。而消除 dataracing 而言，传统的并发编程逻辑是采用关键区、排他性锁、读写锁等方式来保护 data 不会因为 processing 而导致错误读或错误写，那么对于无锁编程来说，则是通过消除 data 的共享性，或者消除并发操作 data 等方式来解决问题。 所以最典型的无锁编程技法包含两个技巧： structure bumper loop 其他的方法都是相似思路的具体衍生。 这里的“其他的方法”，是指完全不使用锁定或 CAS 的算法设计方案。本文中讨论的是如何设计数据结构及其处理器（算法）来防止加锁，甚至于连 CAS 也去除。 至于在共享的data上强行消除竞争读写问题的其他无锁方案，例如RingBuffer之类的工具类库，则是完全依赖于具体的 data 实体并在具体的 CPU 上进行设计，基本上是一种很受限的方法，不具备高层次抽象层面的通用性。尽管其具体的设计思路有迹可循，但却不是最佳的选择：一个优秀的 RingBuffer，它的致命之处就在于在单核心的CPU上，或者单颗 vCPU 的 vHost 上可能是无法降级工作的，或者即使能工作也是低效的或者高消费的。所以本文讨论的是更通用的，在任何高级语言（无论其线程、协程支持度如何）于任何 Targets 上都可以通行的无锁编程技法。 Structure copy Structure copy是一种经典的无锁编程技法。它的核心思想在于将易变数据一一个 structure 管理，通常可能起名为 Entry，然后在这个 structure 上展开数据处理过程。如此，由于数据处理过程只会操作其所关联到的 structure，因此这一组数据本身就是非共享的，也就不需要考虑 dataracing 的潜在可能性的。 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 type Worker struct { closed int32 // avoid duplicated release rsrc in Close() entries []*Entry } type Entry struct { Count int Data []any } func (w *Worker) New(data .">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8B-ep9-%E4%B8%A4%E4%B8%AA%E6%9C%89%E7%94%A8%E7%9A%84-golang-%E6%97%A0%E9%94%81%E7%BC%96%E7%A8%8B%E6%8A%80%E5%B7%A7/'>
 <meta property='og:site_name' content='huizhou92&#39;s Blog'>
-<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='go' /><meta property='article:published_time' content='2024-09-06T15:33:15&#43;08:00'/><meta property='article:modified_time' content='2024-09-06T15:33:13&#43;08:00'/>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='go' /><meta property='article:tag' content='golang' /><meta property='article:published_time' content='2024-10-19T12:03:18&#43;08:00'/><meta property='article:modified_time' content='2024-10-19T12:03:09&#43;08:00'/>
 <meta name="twitter:site" content="@https://x.com/piaopiaopig">
-    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="解析Go: varint 的使用与实现原理">
-<meta name="twitter:description" content="最近发现 Golang 标准库竟然自带了 varint 的实现，代码位置在\u00a0encoding/binary/varint.go，这个跟protobuf里面的varint实现基本是一致的。刚好借助 golang 标准库的 varint 源码，我们来系统地学习和梳理下 varint。 熟悉 protobuf 的人肯定对 varint 不陌生，protobuf 里面除了带 fix (如 fixed32、fixed64) 之外的整数类型, 都是 varint 编码。 varint 的出现主要是为了解决两个问题： 空间效率：以 uint64 类型为例，可以表示的最大值为 18446744073709551615。然而在实际业务场景中，我们通常处理的整数值远小于 uint64 的最大值。假设在我们的业务中，需要处理的整数值仅为 1，但在网络传输过程中，我们却需要使用 8 个字节来表示这个值。这就导致了大量的空间浪费，因为大部分字节并没有实际存储有效的信息。varint 编码通过使用可变长度的字节序列来表示整数，使得小的整数可以用更少的字节表示，提高空间效率。 兼容性：varint 使得我们可以在不改变编码 / 解码逻辑的情况下，处理不同大小的整数。这意味着我们可以在不破坏向后兼容性的情况下，将一个字段从较小的整数类型（如 uint32）升级到较大的整数类型（如 uint64） 本文将通过分析 Golang 标准库自带的 varint 源码实现，介绍 varint 的设计原理以及Golang标准库是如何解决 varint 在编码负数时遇到的问题。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium.">
+    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="Go 高性能编程 EP9: 两个有用的 Golang 无锁编程技巧">
+<meta name="twitter:description" content="对于无锁编程来讲，无锁只是一个表象，编程者设法组织 data+processing，重点在于如何消除 dataracing。而消除 dataracing 而言，传统的并发编程逻辑是采用关键区、排他性锁、读写锁等方式来保护 data 不会因为 processing 而导致错误读或错误写，那么对于无锁编程来说，则是通过消除 data 的共享性，或者消除并发操作 data 等方式来解决问题。 所以最典型的无锁编程技法包含两个技巧： structure bumper loop 其他的方法都是相似思路的具体衍生。 这里的“其他的方法”，是指完全不使用锁定或 CAS 的算法设计方案。本文中讨论的是如何设计数据结构及其处理器（算法）来防止加锁，甚至于连 CAS 也去除。 至于在共享的data上强行消除竞争读写问题的其他无锁方案，例如RingBuffer之类的工具类库，则是完全依赖于具体的 data 实体并在具体的 CPU 上进行设计，基本上是一种很受限的方法，不具备高层次抽象层面的通用性。尽管其具体的设计思路有迹可循，但却不是最佳的选择：一个优秀的 RingBuffer，它的致命之处就在于在单核心的CPU上，或者单颗 vCPU 的 vHost 上可能是无法降级工作的，或者即使能工作也是低效的或者高消费的。所以本文讨论的是更通用的，在任何高级语言（无论其线程、协程支持度如何）于任何 Targets 上都可以通行的无锁编程技法。 Structure copy Structure copy是一种经典的无锁编程技法。它的核心思想在于将易变数据一一个 structure 管理，通常可能起名为 Entry，然后在这个 structure 上展开数据处理过程。如此，由于数据处理过程只会操作其所关联到的 structure，因此这一组数据本身就是非共享的，也就不需要考虑 dataracing 的潜在可能性的。 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 type Worker struct { closed int32 // avoid duplicated release rsrc in Close() entries []*Entry } type Entry struct { Count int Data []any } func (w *Worker) New(data .">
     <link rel="shortcut icon" href="/favicon.ico" />
 
   
@@ -328,10 +328,26 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
         <div class="widget--toc">
             <nav id="TableOfContents">
   <ol>
-    <li><a href="#varint-的设计原理">varint 的设计原理</a></li>
-    <li><a href="#无符号整数的-varint">无符号整数的 varint</a></li>
-    <li><a href="#负数的编码zigzag-编码">负数的编码：zigzag 编码</a></li>
-    <li><a href="#varint-不适用的情况">varint 不适用的情况</a></li>
+    <li><a href="#structure-copy">Structure copy</a>
+      <ol>
+        <li>
+          <ol>
+            <li><a href="#问题">问题</a></li>
+          </ol>
+        </li>
+        <li><a href="#应用">应用</a></li>
+      </ol>
+    </li>
+    <li><a href="#bumper-loop">Bumper Loop</a>
+      <ol>
+        <li>
+          <ol>
+            <li><a href="#问题-1">问题</a></li>
+          </ol>
+        </li>
+        <li><a href="#structure-copy-与-bumper-loop-结合">Structure Copy 与 Bumper Loop 结合</a></li>
+      </ol>
+    </li>
   </ol>
 </nav>
         </div>
@@ -369,7 +385,7 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 
     <div class="article-title-wrapper">
         <h2 class="article-title">
-            <a href="/zh-cn/p/%E8%A7%A3%E6%9E%90go-varint-%E7%9A%84%E4%BD%BF%E7%94%A8%E4%B8%8E%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/">解析Go: varint 的使用与实现原理</a>
+            <a href="/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8B-ep9-%E4%B8%A4%E4%B8%AA%E6%9C%89%E7%94%A8%E7%9A%84-golang-%E6%97%A0%E9%94%81%E7%BC%96%E7%A8%8B%E6%8A%80%E5%B7%A7/">Go 高性能编程 EP9: 两个有用的 Golang 无锁编程技巧</a>
         </h2>
     
         
@@ -391,7 +407,7 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
   <path d="M3 11h16" />
   <path d="M18 16.496v1.504l1 1" />
 </svg>
-                <time class="article-time--published">Sep 06, 2024</time>
+                <time class="article-time--published">Oct 19, 2024</time>
             </div>
         
 
@@ -406,7 +422,7 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 
 
                 <time class="article-time--reading">
-                    阅读时长: 3 分钟
+                    阅读时长: 2 分钟
                 </time>
             </div>
         
@@ -434,25 +450,6 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
     
 
     
-        <footer class="article-translations">
-            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
-  <path d="M4 5h7" />
-  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
-  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
-  <path d="M12 20l4 -9l4 9" />
-  <path d="M19.1 18h-6.2" />
-</svg>
-
-
-
-            <div>
-                
-                    <a href="https://huizhou92.com/p/decrypt-go-varint/" class="link">English</a>
-                
-            </div>
-        </footer>
-    
 </div>
 
 </header>
@@ -460,82 +457,19 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
     <section class="article-content">
     
     
-    <p>最近发现 <code>Golang</code> 标准库竟然自带了 <code>varint</code> 的实现，代码位置在 <a class="link" href="https://github.com/golang/go/blob/9e9b1f57c26a6d13fdaebef67136718b8042cdba/src/encoding/binary/varint.go"  target="_blank" rel="noopener"
-    >encoding/binary/varint.go</a>，这个跟protobuf里面的varint实现基本是一致的。刚好借助 <code>golang</code> 标准库的 <code>varint</code> 源码，我们来系统地学习和梳理下 <code>varint</code>。<br>
-熟悉 <code>protobuf</code> 的人肯定对 <code>varint</code> 不陌生，<code>protobuf</code> 里面除了带 fix (如 fixed32、fixed64) 之外的整数类型, 都是 <code>varint</code> 编码。<br>
-<code>varint</code> 的出现主要是为了解决两个问题：</p>
+    <p>对于无锁编程来讲，无锁只是一个表象，编程者设法组织 data+processing，重点在于如何消除 dataracing。而消除 dataracing 而言，传统的并发编程逻辑是采用关键区、排他性锁、读写锁等方式来保护 data 不会因为 processing 而导致错误读或错误写，那么对于无锁编程来说，则是通过消除 data 的共享性，或者消除并发操作 data 等方式来解决问题。<br>
+所以最典型的无锁编程技法包含两个技巧：</p>
 <ol>
-<li><strong>空间效率</strong>：以 <code>uint64</code> 类型为例，可以表示的最大值为 18446744073709551615。然而在实际业务场景中，我们通常处理的整数值远小于 uint64 的最大值。假设在我们的业务中，需要处理的整数值仅为 1，但在网络传输过程中，我们却需要使用 <code>8 个字节</code>来表示这个值。这就导致了大量的空间浪费，因为大部分字节并没有实际存储有效的信息。varint 编码通过使用可变长度的字节序列来表示整数，使得小的整数可以用更少的字节表示，提高空间效率。</li>
-<li><strong>兼容性</strong>：varint 使得我们可以在不改变编码 / 解码逻辑的情况下，处理不同大小的整数。这意味着我们可以在不破坏向后兼容性的情况下，将一个字段从较小的整数类型（如 uint32）升级到较大的整数类型（如 uint64）</li>
+<li>structure</li>
+<li>bumper loop<br>
+其他的方法都是相似思路的具体衍生。</li>
 </ol>
-<p>本文将通过分析 Golang 标准库自带的 varint 源码实现，介绍 varint 的设计原理以及Golang标准库是如何解决 varint 在编码负数时遇到的问题。</p>
-<!-- more-->
 <blockquote>
-<p>This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
-    >Medium</a>. Thank you very much.</p>
+<p>这里的“其他的方法”，是指完全不使用锁定或 CAS 的算法设计方案。本文中讨论的是如何设计数据结构及其处理器（算法）来防止加锁，甚至于连 CAS 也去除。</p>
 </blockquote>
-
-
-
-<ins class="adsbygoogle"
-   style="display:block"
-   data-ad-client="ca-pub-9000447749076746"
-   data-ad-slot="5063552270"
-   data-ad-format="auto"
-   data-full-width-responsive="true"></ins>
-<script>
-   (adsbygoogle = window.adsbygoogle || []).push({});
-</script>
-
-<h2 id="varint-的设计原理">varint 的设计原理
-</h2><p>varint 的设计原理非常简单：</p>
-<ul>
-<li>7bit 为一组：将整数的二进制表示分为 7 个 bit 位一组。从低位到高位，每 7 个 bit 位作为一个单元。</li>
-<li>最高位表示 “继续” 标志。在每个 7 位的单元前面添加一个标志位，形成一个 8 位的字节。如果后面还有更多的字节，这个标志位就设置为 1，否则设置为 0。<br>
-例如：对于一个整数 <code>uint64(300)</code>，它的二进制表示是 <code>100101100</code>。我们可以将它分为两组，即 <code>10</code> 和 <code>0101100</code>。然后在每组前面添加标志位，得到两个字节 <code>00000010</code> 和 <code>10101100</code>，这两个字节就是 300 的 <code>varint</code> 编码。相比于用 <code>uint64</code> 的 4 字节表示，少了 75% 的存储空间。</li>
-</ul>
-<div class="highlight"><div class="chroma">
-<table class="lntable"><tr><td class="lntd">
-<pre tabindex="0" class="chroma"><code><span class="lnt">1
-</span><span class="lnt">2
-</span><span class="lnt">3
-</span><span class="lnt">4
-</span><span class="lnt">5
-</span><span class="lnt">6
-</span><span class="lnt">7
-</span><span class="lnt">8
-</span><span class="lnt">9
-</span></code></pre></td>
-<td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">v</span> <span class="o">:=</span> <span class="nb">uint64</span><span class="p">(</span><span class="mi">300</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">bytes</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">([]</span><span class="kt">byte</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">bytes</span> <span class="p">=</span> <span class="nx">binary</span><span class="p">.</span><span class="nf">AppendUvarint</span><span class="p">(</span><span class="nx">bytes</span><span class="p">,</span> <span class="nx">v</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="nx">bytes</span><span class="p">))</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="nb">len</span><span class="p">(</span><span class="nx">bytes</span><span class="p">);</span> <span class="nx">i</span> <span class="p">&gt;</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span><span class="o">--</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;%08b &#34;</span><span class="p">,</span> <span class="nx">bytes</span><span class="p">[</span><span class="nx">i</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
-</div>
-</div><p><img src="https://images.hxzhouh.com/blog-images/2024/09/5968188c58521a4262e1c0f76fcc010a.png"
-	
-	
-	
-	loading="lazy"
-	
-		alt="Figure 1: varint encoding "
-	
-	
-></p>
-<h2 id="无符号整数的-varint">无符号整数的 varint
-</h2><p>在 <code>Golang</code> 标准库中有两套 <code>varint</code> 的函数: 分别用于无符号整数的 <a class="link" href="https://github.com/golang/go/blob/9e9b1f57c26a6d13fdaebef67136718b8042cdba/src/encoding/binary/varint.go#L51"  target="_blank" rel="noopener"
-    >PutUvarint</a>和 <a class="link" href="https://github.com/golang/go/blob/9e9b1f57c26a6d13fdaebef67136718b8042cdba/src/encoding/binary/varint.go#L68"  target="_blank" rel="noopener"
-    >Uvarint</a>，以及用于有符号整数的 <a class="link" href="https://github.com/golang/go/blob/9e9b1f57c26a6d13fdaebef67136718b8042cdba/src/encoding/binary/varint.go#L115"  target="_blank" rel="noopener"
-    >Varint</a> 和 <a class="link" href="https://github.com/golang/go/blob/9e9b1f57c26a6d13fdaebef67136718b8042cdba/src/encoding/binary/varint.go#L101"  target="_blank" rel="noopener"
-    >PutVarint</a><br>
-我们先看下无符号整数的 varint 实现，代码如下：<br>
-list1: go src PutUvarint</p>
+<p>至于在共享的<code>data</code>上强行消除竞争读写问题的其他无锁方案，例如<code>RingBuffer</code>之类的工具类库，则是完全依赖于具体的 <code>data</code> 实体并在具体的 CPU 上进行设计，基本上是一种很受限的方法，不具备高层次抽象层面的通用性。尽管其具体的设计思路有迹可循，但却不是最佳的选择：一个优秀的  <code>RingBuffer</code>，它的致命之处就在于在单核心的CPU上，或者单颗 vCPU 的 vHost 上可能是无法降级工作的，或者即使能工作也是低效的或者高消费的。所以本文讨论的是更通用的，在任何高级语言（无论其线程、协程支持度如何）于任何 Targets 上都可以通行的无锁编程技法。</p>
+<h2 id="structure-copy">Structure copy
+</h2><p><code>Structure copy</code>是一种经典的无锁编程技法。它的核心思想在于将易变数据一一个 structure 管理，通常可能起名为 Entry，然后在这个 structure 上展开数据处理过程。如此，由于数据处理过程只会操作其所关联到的 <code>structure</code>，因此这一组数据本身就是非共享的，也就不需要考虑 dataracing 的潜在可能性的。</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt"> 1
@@ -548,55 +482,93 @@ list1: go src PutUvarint</p>
 </span><span class="lnt"> 8
 </span><span class="lnt"> 9
 </span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">PutUvarint</span><span class="p">(</span><span class="nx">buf</span> <span class="p">[]</span><span class="kt">byte</span><span class="p">,</span> <span class="nx">x</span> <span class="kt">uint64</span><span class="p">)</span> <span class="kt">int</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span>
-</span></span><span class="line"><span class="cl">	<span class="k">for</span> <span class="nx">x</span> <span class="o">&gt;=</span> <span class="mh">0x80</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">		<span class="nx">buf</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">=</span> <span class="nb">byte</span><span class="p">(</span><span class="nx">x</span><span class="p">)</span> <span class="p">|</span> <span class="mh">0x80</span>
-</span></span><span class="line"><span class="cl">		<span class="nx">x</span> <span class="o">&gt;&gt;=</span> <span class="mi">7</span>
-</span></span><span class="line"><span class="cl">		<span class="nx">i</span><span class="o">++</span>
-</span></span><span class="line"><span class="cl">	<span class="p">}</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">buf</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">=</span> <span class="nb">byte</span><span class="p">(</span><span class="nx">x</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="nx">i</span> <span class="o">+</span> <span class="mi">1</span>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Worker</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">  <span class="nx">closed</span> <span class="kt">int32</span> <span class="c1">// avoid duplicated release rsrc in Close()
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>  <span class="nx">entries</span> <span class="p">[]</span><span class="o">*</span><span class="nx">Entry</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Entry</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">  <span class="nx">Count</span> <span class="kt">int</span>
+</span></span><span class="line"><span class="cl">  <span class="nx">Data</span> <span class="p">[]</span><span class="nx">any</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">w</span> <span class="o">*</span><span class="nx">Worker</span><span class="p">)</span> <span class="nf">New</span><span class="p">(</span><span class="nx">data</span> <span class="o">...</span><span class="nx">any</span><span class="p">)</span> <span class="o">*</span><span class="nx">Entry</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">  <span class="nx">e</span><span class="o">:=&amp;</span><span class="nx">Entry</span><span class="p">{</span><span class="nx">Data</span><span class="p">:</span><span class="nx">data</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">  <span class="nx">w</span><span class="p">.</span><span class="nx">entries</span> <span class="p">=</span> <span class="nb">append</span><span class="p">(</span><span class="nx">w</span><span class="p">.</span><span class="nx">entries</span><span class="p">,</span> <span class="nx">e</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">  <span class="k">return</span> <span class="nx">e</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">e</span> <span class="o">*</span><span class="nx">Entry</span><span class="p">)</span> <span class="nf">Run</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">  <span class="c1">// processing e.data
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>假设初始化数据 <code>data []any</code> 被提供给 Worker，基于此产生一个 <code>Entry</code>，然后通过 <code>Entry.Run</code> 来处理初始化数据，产生结果，那么上面的示例代码就避免了数据包（Count，Data）的共享问题，因为这个数据包是排他性独立的。</p>
+<p>有时候我们的数据包很难拆解，此时可以以衍生技法来实现拆解。具体的思路是设法进行分治。即数据包可以按照推进程度重新设计为 step1，step2，等等，每一步骤中的小数据包的计算结果依次提交给下一步骤。又或者数据包可以拆解为若干个小计项目，最后将多个小计结果合并计算（Map-Reduce?）。</p>
+<p>无论采取哪种拆解思路，总的思路不变，即单个 processing 所操作的 data 是排他性独立的一个副本，从而从根本上去除共享加锁解锁的需求。</p>
+<h4 id="问题">问题
+</h4><p>问题在于太多的小块内存（Entry struct）可能是不好的。一方面它可能带来额外的内存消耗（如果正在处理一个巨大的链表、数组之类，你不太可能总是制造它们的副本），另一方面，太多频繁的小块内存的分发和析构也会产生难以接受的开销。有时候，强制这样的小块内存在栈上分配（如果语言或者编译器支持）是解决后一问题的良药。不过更多的情况下、或许这的确就是不可行的。<br>
+当然，带有 GC 的语言这方面的压力会小一点。  其次，使用一个<code>sync.Pool</code>也可以减轻小内存频繁分配的压力。</p>
+<h3 id="应用">应用
+</h3><div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Logger</span> <span class="kd">struct</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">handler</span> <span class="nx">Handler</span> <span class="c1">// for structured logging  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Handler</span> <span class="kd">interface</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">	 <span class="nf">Handle</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span> <span class="nx">Record</span><span class="p">)</span> <span class="kt">error</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">l</span> <span class="o">*</span><span class="nx">Logger</span><span class="p">)</span> <span class="nf">Debug</span><span class="p">(</span><span class="nx">msg</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">args</span> <span class="o">...</span><span class="nx">any</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">l</span><span class="p">.</span><span class="nf">log</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(),</span> <span class="nx">LevelDebug</span><span class="p">,</span> <span class="nx">msg</span><span class="p">,</span> <span class="nx">args</span><span class="o">...</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">l</span> <span class="o">*</span><span class="nx">Logger</span><span class="p">)</span> <span class="nf">log</span><span class="p">(</span><span class="nx">ctx</span> <span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span> <span class="nx">level</span> <span class="nx">Level</span><span class="p">,</span> <span class="nx">msg</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">args</span> <span class="o">...</span><span class="nx">any</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="err">。。。。</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">r</span> <span class="o">:=</span> <span class="nf">NewRecord</span><span class="p">(</span><span class="nx">time</span><span class="p">.</span><span class="nf">Now</span><span class="p">(),</span> <span class="nx">level</span><span class="p">,</span> <span class="nx">msg</span><span class="p">,</span> <span class="nx">pc</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="err">。。。。</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">_</span> <span class="p">=</span> <span class="nx">l</span><span class="p">.</span><span class="nf">Handler</span><span class="p">().</span><span class="nf">Handle</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>  
 </span></span><span class="line"><span class="cl"><span class="p">}</span>
 </span></span></code></pre></td></tr></table>
 </div>
-</div><p>代码里有个非常重要的常量：0x80，对应于二进制编码就是 <code>1000 0000</code>。这个常量对接下来的逻辑非常重要：</p>
-<ol>
-<li><code>x &gt;= 0x80</code>。这意味着 x 的二进制表示形式至少有 8 位，我们刚才讲到 7 个 bit 位为一组，那 x 就需要被拆分了。</li>
-<li><code>byte(x) | 0x80</code>。将 x 的最低 8 位与 <code>1000 0000</code> 进行按位或操作，然后将结果存储在 buf[i] 中。这样 <strong>既可以将最高位设置为 1，同时也提取出了 x 的最低 7 位</strong>。</li>
-<li><code>x &gt;&gt;= 7</code>. 将 x 右移 7 位，处理下一个分组。</li>
-<li><code>buf[i] = byte(x)</code>。当 for 循环结束时，即意味着 x 的二进制表示形式最高位必然是 0。此时就不用做额外的补零操作了。</li>
-</ol>
-<p><code>Uvarint</code> 是 <code>PutUvarint</code> 的逆过程。</p>
-<p>需要注意的是，varint 将整数划分为 7 位一组。这意味着，对于大整数 varint 将会出现负向优化。例如对于 uint64 的最大值来说，本来只需要 8 个 byte 来表示，但在 varint 中却需要 10 个字节来表示了。（<code>64/7 ≈ 10</code>）<br>
-
-
-
-<ins class="adsbygoogle"
-   style="display:block"
-   data-ad-client="ca-pub-9000447749076746"
-   data-ad-slot="5063552270"
-   data-ad-format="auto"
-   data-full-width-responsive="true"></ins>
-<script>
-   (adsbygoogle = window.adsbygoogle || []).push({});
-</script>
-</p>
-<h2 id="负数的编码zigzag-编码">负数的编码：zigzag 编码
-</h2><p>看似 varint 编码已经完美无缺了，但以上忽略了一点：负数的存在。</p>
-<p>我们知道，在计算机中数字是用补码来表示的，而负数的补码则是将其绝对值按位取反再加 1。这就意味着一个很小的负数，它的二进制形式对应于一个非常大的整数。<br>
-例如：对于一个 32 位的整数 <code>-5</code> 来说，其绝对值 5 的二进制形式是 <code>101</code>。 但 <code>-5</code> 的二进制形式却是 <code>11111111111111111111111111111011</code>，如果使用 <code>varint</code> 对其编码, 需要 5 个字节才能表示。</p>
-<p>Golang标准库引入了 <code>zigzag</code> 编码来解决这个问题，<code>zigzag</code> 的原理非常简单：</p>
-<ul>
-<li>对于正数 n，会将其映射为 <code>2n</code>。例如整数 2，经过 zigzag 编码之后变成了 4。</li>
-<li>对于负数 <code>-n</code> 来说，会将其映射为 <code>2n-1</code>。例如负数 <code>-3</code>，经过 zigzag 编码之后变成了 5。</li>
-</ul>
-<p><strong>这样负数和正数在数值上完全不会冲突，正整数和负整数交错排列</strong>，这也是为什么叫做 zigzag 编码 (锯齿形编码）的原因。<br>
-同时，负数被转换成正数之后，二进制编码也精简了许多。<br>
-例如： 对 <code>int32(-5)</code> 进行 zigzag 编码后，变成了 9，对应于二进制为 <code>00000000000000000000000000001001</code>，使用 1 个字节即可表示 varint。<br>
-我们看下 Golang 标准库的实现，代码如下：</p>
+</div><p>在 <code>slog</code> 中，每条日志都会被包装成一个<code>NewRecord</code> ，避免了数据竞争。<br>
+Entry 模式可以说是到处都有在用，用途也不一定限于为了无锁。然而凡是运用到该模式的地方，自动获得了无锁的收益，这其实是很划算的。</p>
+<h2 id="bumper-loop">Bumper Loop
+</h2><p>Bumper Loop是一种 design pattern。</p>
+<blockquote>
+<p>Bumper Loop 最经典的例子是Redis, Redis 使用多线程网络模型，但是在事务处理上使用单线程。</p>
+</blockquote>
+<p>它的核心思想是将并行事件强行序列化，然后再一一分发给具体处理程序。于是对于这些具体处理程序来讲，共享数据总是排他性的：因为所有处理程序在同一时间下只会运行一个。如果具体处理程序总是飞快地完成，没有阻塞的忧虑，那么循环泵模式将会是一个非常好的消费模式。</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
@@ -606,49 +578,26 @@ list1: go src PutUvarint</p>
 </span><span class="lnt">5
 </span><span class="lnt">6
 </span><span class="lnt">7
+</span><span class="lnt">8
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">PutVarint</span><span class="p">(</span><span class="nx">buf</span> <span class="p">[]</span><span class="kt">byte</span><span class="p">,</span> <span class="nx">x</span> <span class="kt">int64</span><span class="p">)</span> <span class="kt">int</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">ux</span> <span class="o">:=</span> <span class="nb">uint64</span><span class="p">(</span><span class="nx">x</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="mi">1</span>
-</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">x</span> <span class="p">&lt;</span> <span class="mi">0</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">		<span class="nx">ux</span> <span class="p">=</span> <span class="p">^</span><span class="nx">ux</span>
-</span></span><span class="line"><span class="cl">	<span class="p">}</span>
-</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="nf">PutUvarint</span><span class="p">(</span><span class="nx">buf</span><span class="p">,</span> <span class="nx">ux</span><span class="p">)</span>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">w</span> <span class="o">*</span><span class="nx">Worker</span><span class="p">)</span> <span class="nf">runLoop</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">  <span class="k">for</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="k">switch</span><span class="p">{</span>
+</span></span><span class="line"><span class="cl">      <span class="k">case</span> <span class="nx">ev</span><span class="o">:=&lt;-</span><span class="nx">fileWatcherCh</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="nf">onFileChanged</span><span class="p">(</span><span class="nx">ev</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">  <span class="p">}</span>
 </span></span><span class="line"><span class="cl"><span class="p">}</span>
 </span></span></code></pre></td></tr></table>
 </div>
-</div><p>从代码可以看出，对于有符号整数的varint实现，golang标准库这里分成了两步：</p>
-<ol>
-<li>先对整数进行 zigzag 编码进行转换</li>
-<li>对转换之后的数值再进行 varint 编码<br>
-对于负数，多了一步 <code>ux = ^ux</code> ，这就有些难以理解了，为什么这么转换之后就等于<code>2n - 1</code>了？</li>
-</ol>
-<p>我们可以大概推导下整个过程，假设我们有个整数 <code>-n</code>：</p>
-<ol>
-<li>对原数值先左移，再进行取反。其实可以看做：对原数值先取反，再左移，然后+1。 即 <code>2*(~(-n))+1</code></li>
-<li>我们知道<code>负数的补码=绝对值按位取反+1</code>，那如何根据补码再推导出绝对值？这里有个公式是：<code>|A| = ~A+1</code></li>
-<li>我们将这个公式带到第一步的式子里面： <code>2*(n-1) + 1 = 2n - 1</code>。这就完美对应上了负数的 ZigZag 编码 (数学多么美妙)。</li>
-</ol>
-<p><img src="https://images.hxzhouh.com/blog-images/2024/09/4a36258701ba672eb68d4ec7da38285e.png"
-	
-	
-	
-	loading="lazy"
-	
-		alt="Figure 2: ZigZag encoding "
-	
-	
-></p>
-<p>在 Golang 标准库里面，调用 <code>PutUvarint</code> 时只会使用 <code>varint</code> 编码，调用 <code>PutVarint</code> 会先进行 <code>zigzag</code> 编码，再进行 <code>varint</code> 编码。<br>
-而在 <code>protobuf</code> 中，如果类型是<code> int32</code>、<code>int64</code>、<code>uint32</code>、<code>uint64</code>，只会使用 <code>varint</code> 编码。使用 <code>sint32</code>、<code>sint64</code> 将先进行 <code>zigzag</code> 编码，再进行 <code>varint</code> 编码</p>
-<h2 id="varint-不适用的情况">varint 不适用的情况
-</h2><p>虽然 varint 编码设计非常精妙，但并不适用于所有的场景：</p>
-<ul>
-<li><strong>大整数</strong>：对于非常大的整数，varint 编码可能会比固定长度的编码更消耗空间。例如当所有的整数值域大于 <code>2^63</code>，那使用 varint 会用到 10 字节。相比于传统的八字节整数，反而多用了 25% 的空间</li>
-<li><strong>需要快速随机访问的数据</strong>：由于 varint 是变长编码，所以我们无法直接通过索引来访问特定的整数，必须从头开始解码，直到找到我们需要的整数。这使得 varint 编码不适合用于需要快速随机访问的数据。</li>
-<li><strong>需要频繁进行数学运算的数据</strong>：由于 varint 编码的数据需要先解码才能进行数学运算，所以如果一个应用需要频繁地对数据进行数学运算，那么使用 varint 编码可能会导致性能下降。</li>
-<li><strong>安全敏感的应用</strong>：varint 编码的数据可能会暴露出一些关于原始整数的信息，例如它的大小。在某些安全敏感的应用中，这可能是不可接受的。</li>
-</ul>
+</div><p>对于低频事件的分发和简化并在此同时去除加锁需求、提升性能来说，循环泵模式是一时之选。在诸如 TCP/IP 服务器的<code> incoming data</code> 处理上通常<code>Bumper Loop</code> 是最佳选择：<br>
+对新进连接请求采取 Entry 模式制作一个独立的处理器 connectionProcessor，该处理器中以循环泵模式接受输入数据，识别输入数据的模式为规约命令，然后分发给具体的规约命令处理器。</p>
+<h4 id="问题-1">问题
+</h4><p><code>Bumper Loop </code>的问题在于，一个阻塞会破坏整个循环，一个过慢的处理会带来不可知的下一事件的处理延迟，高频率的事件会在分发点上阻塞、堆积，甚至是丢失。尽管 Bumper Loop 似乎很明显地有串行化的效率劣势，但它仍被广泛地用于 TCP/IP server/client 编程中。</p>
+<h3 id="structure-copy-与-bumper-loop-结合">Structure Copy 与 Bumper Loop 结合
+</h3><p>Bumper Loop 的问题之一是不太适合高频事件场景，一般来说事件频率在80ms以上时才比较好用。这种尺度的隐喻是说单次事件处理平均耗时应该小于 80ms。<br>
+在不那么严格的场景中（例如非金融高频交易），有时候可以在耗时的事件处理器中启动一个 <code>gorountine</code> 去异步地慢慢处理，而主体的 bumpper loop 则继续去分发后继事件。这时候异步 go routine 又可以用到 Entry 模式，适当地复制少许状态以便解耦竞态条件。</p>
 
 </section>
 
@@ -658,6 +607,8 @@ list1: go src PutUvarint</p>
     <section class="article-tags">
         
             <a href="/zh-cn/tags/go/">Go</a>
+        
+            <a href="/zh-cn/tags/golang/">Golang</a>
         
     </section>
 
@@ -684,7 +635,7 @@ list1: go src PutUvarint</p>
 
 
         <span>
-            最后更新于 Sep 06, 2024 15:33 CST
+            最后更新于 Oct 19, 2024 12:03 CST
         </span>
     </section></footer>
 
@@ -709,19 +660,6 @@ list1: go src PutUvarint</p>
     <h2 class="section-title">相关文章</h2>
     <div class="related-content">
         <div class="flex article-list--tile">
-            
-                
-<article class="">
-    <a href="/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8B-ep9-%E4%B8%A4%E4%B8%AA%E6%9C%89%E7%94%A8%E7%9A%84-golang-%E6%97%A0%E9%94%81%E7%BC%96%E7%A8%8B%E6%8A%80%E5%B7%A7/">
-        
-        
-
-        <div class="article-details">
-            <h2 class="article-title">Go 高性能编程 EP9: 两个有用的 Golang 无锁编程技巧</h2>
-        </div>
-    </a>
-</article>
-
             
                 
 <article class="has-image">
@@ -775,6 +713,19 @@ list1: go src PutUvarint</p>
 
         <div class="article-details">
             <h2 class="article-title">Go 提案: JSON v2 来了</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/%E8%A7%A3%E6%9E%90go-varint-%E7%9A%84%E4%BD%BF%E7%94%A8%E4%B8%8E%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">解析Go: varint 的使用与实现原理</h2>
         </div>
     </a>
 </article>
