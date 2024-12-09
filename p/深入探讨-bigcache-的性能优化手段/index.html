@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="BigCache[1] is a high-performance in-memory caching library designed for applications that demand high concurrency and low latency. This article explores BigCache&rsquo;s performance optimization techniques, including its sharding mechanism, efficient hashing algorithms, usage of read-write locks, and more, with detailed explanations based on the source code. Shard &amp; Locking From a user&rsquo;s perspective, a cache functions like a large hashtable to store key-value pairs (k/v). Could this be achieved with map[string][]byte and sync.">
+<title>深入探讨 BigCache 的性能优化手段</title>
+
+<link rel='canonical' href='https://huizhou92.com/p/%E6%B7%B1%E5%85%A5%E6%8E%A2%E8%AE%A8-bigcache-%E7%9A%84%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%E6%89%8B%E6%AE%B5/'>
+
+<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="深入探讨 BigCache 的性能优化手段">
+<meta property='og:description' content="BigCache[1] is a high-performance in-memory caching library designed for applications that demand high concurrency and low latency. This article explores BigCache&rsquo;s performance optimization techniques, including its sharding mechanism, efficient hashing algorithms, usage of read-write locks, and more, with detailed explanations based on the source code. Shard &amp; Locking From a user&rsquo;s perspective, a cache functions like a large hashtable to store key-value pairs (k/v). Could this be achieved with map[string][]byte and sync.">
+<meta property='og:url' content='https://huizhou92.com/p/%E6%B7%B1%E5%85%A5%E6%8E%A2%E8%AE%A8-bigcache-%E7%9A%84%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%E6%89%8B%E6%AE%B5/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:published_time' content='2024-12-05T22:15:37&#43;08:00'/><meta property='article:modified_time' content='2024-12-05T22:15:08&#43;08:00'/><meta property='og:image' content='https://images.hxzhouh.com/blog-images/2024/12/d1288ea91074f2a22a8ac4fec04d8b90.png' />
+<meta name="twitter:site" content="@https://x.com/piaopiaopig">
+    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="深入探讨 BigCache 的性能优化手段">
+<meta name="twitter:description" content="BigCache[1] is a high-performance in-memory caching library designed for applications that demand high concurrency and low latency. This article explores BigCache&rsquo;s performance optimization techniques, including its sharding mechanism, efficient hashing algorithms, usage of read-write locks, and more, with detailed explanations based on the source code. Shard &amp; Locking From a user&rsquo;s perspective, a cache functions like a large hashtable to store key-value pairs (k/v). Could this be achieved with map[string][]byte and sync."><meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content='https://images.hxzhouh.com/blog-images/2024/12/d1288ea91074f2a22a8ac4fec04d8b90.png' />
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="Toggle Menu">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>Home</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/about/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>About</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>Archives</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>Search</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" selected>English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" >中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>Dark Mode</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">Table of contents</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li>
+      <ol>
+        <li><a href="#shard--locking">Shard &amp; Locking</a>
+          <ol>
+            <li><a href="#source-code-example-sharding-in-bigcache">Source Code Example: Sharding in BigCache</a></li>
+            <li><a href="#optimal-number-of-shards-n">Optimal Number of Shards (<code>N</code>)</a></li>
+          </ol>
+        </li>
+        <li><a href="#choosing-the-right-hashing-algorithm">Choosing the Right Hashing Algorithm</a></li>
+        <li><a href="#memory-optimization">Memory Optimization</a></li>
+      </ol>
+    </li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="has-image main-article">
+    <header class="article-header">
+        <div class="article-image">
+            <a href="/p/%E6%B7%B1%E5%85%A5%E6%8E%A2%E8%AE%A8-bigcache-%E7%9A%84%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%E6%89%8B%E6%AE%B5/">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/12/d1288ea91074f2a22a8ac4fec04d8b90.png" loading="lazy" alt="Featured image of post 深入探讨 BigCache 的性能优化手段" />
+                
+            </a>
+        </div>
+    
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/categories/tech/" style="background-color: #2a9d8f; color: #ffff;">
+                tech
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/p/%E6%B7%B1%E5%85%A5%E6%8E%A2%E8%AE%A8-bigcache-%E7%9A%84%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%E6%89%8B%E6%AE%B5/">深入探讨 BigCache 的性能优化手段</a>
+        </h2>
+    
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Dec 05, 2024</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    7 minute read
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+        <footer class="article-translations">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+            <div>
+                
+                    <a href="https://huizhou92.com/zh-cn/p/%E6%B7%B1%E5%85%A5%E6%8E%A2%E8%AE%A8-bigcache-%E7%9A%84%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%E6%89%8B%E6%AE%B5/" class="link">中文</a>
+                
+            </div>
+        </footer>
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <p><a class="link" href="https://github.com/allegro/bigcache"  target="_blank" rel="noopener"
+    ><code>BigCache</code></a>[1] is a high-performance in-memory caching library designed for applications that demand high concurrency and low latency. This article explores BigCache&rsquo;s performance optimization techniques, including its sharding mechanism, efficient hashing algorithms, usage of read-write locks, and more, with detailed explanations based on the source code.</p>
+<h3 id="shard--locking">Shard &amp; Locking
+</h3><p>From a user&rsquo;s perspective, a cache functions like a large <code>hashtable</code> to store key-value pairs (<code>k/v</code>). Could this be achieved with <code>map[string][]byte</code> and <code>sync.RWMutex</code>?</p>
+<p>Yes, but only for low-performance requirements. Although <code>sync.RWMutex</code> optimizes reads and writes, it serializes concurrent writes, even for different keys. This creates bottlenecks under high write concurrency, blocking multiple <code>goroutines</code> and allowing only one writer at a time.</p>
+<p>BigCache addresses this by adopting a sharding mechanism inspired by Java&rsquo;s <code>ConcurrentMap</code>. It divides a large <code>hashtable</code> into multiple smaller shards, each protected by its lock. This strategy, commonly used in high-concurrency scenarios like MongoDB&rsquo;s sharding, effectively reduces contention. Golang also has a third-party implementation: <a class="link" href="https://github.com/orcaman/concurrent-map"  target="_blank" rel="noopener"
+    ><code>concurrent-map</code></a>[2].</p>
+<h4 id="source-code-example-sharding-in-bigcache">Source Code Example: Sharding in BigCache
+</h4><div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// https://github.com/allegro/bigcache/blob/a2f05d7cbfdc7000a8b7e1c40f27d3f239c204df/bigcache.go#L58
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">type</span> <span class="nx">BigCache</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">shards</span>       <span class="p">[]</span><span class="o">*</span><span class="nx">cacheShard</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">shardMask</span>    <span class="kt">uint64</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">config</span>       <span class="nx">Config</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">newBigCache</span><span class="p">(</span><span class="nx">ctx</span> <span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span> <span class="nx">config</span> <span class="nx">Config</span><span class="p">,</span> <span class="nx">clock</span> <span class="nx">clock</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">BigCache</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="o">......</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">cache</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">BigCache</span><span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">shards</span><span class="p">:</span> <span class="nb">make</span><span class="p">([]</span><span class="o">*</span><span class="nx">cacheShard</span><span class="p">,</span> <span class="nx">config</span><span class="p">.</span><span class="nx">Shards</span><span class="p">),</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">lifeWindow</span><span class="p">:</span> <span class="nx">lifeWindowSeconds</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">clock</span><span class="p">:</span> <span class="nx">clock</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">hash</span><span class="p">:</span> <span class="nx">config</span><span class="p">.</span><span class="nx">Hasher</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">config</span><span class="p">:</span> <span class="nx">config</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">shardMask</span><span class="p">:</span> <span class="nb">uint64</span><span class="p">(</span><span class="nx">config</span><span class="p">.</span><span class="nx">Shards</span> <span class="o">-</span> <span class="mi">1</span><span class="p">),</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">close</span><span class="p">:</span> <span class="nb">make</span><span class="p">(</span><span class="kd">chan</span> <span class="kd">struct</span><span class="p">{}),</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="o">......</span>
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nx">config</span><span class="p">.</span><span class="nx">Shards</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">cache</span><span class="p">.</span><span class="nx">shards</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">=</span> <span class="nf">initNewShard</span><span class="p">(</span><span class="nx">config</span><span class="p">,</span> <span class="nx">onRemove</span><span class="p">,</span> <span class="nx">clock</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="o">......</span>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">cache</span><span class="p">,</span> <span class="kc">nil</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>Each cache object calculates its hash based on its key: <code>hash(key) % N</code>. Ideally, concurrent requests are evenly distributed across shards, minimizing lock contention and reducing latency</p>
+<h4 id="optimal-number-of-shards-n">Optimal Number of Shards (<code>N</code>)
+</h4><p>Is a larger <code>N</code> always better? No. Excessive shards incur unnecessary overhead. It&rsquo;s crucial to balance performance and cost by choosing a reasonable <code>N</code>, typically powers of 2 (e.g., 16, 32, 64). This allows modulo operations to use fast bitwise calculations:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// https://github.com/allegro/bigcache/blob/a2f05d7cbfdc7000a8b7e1c40f27d3f239c204df/bigcache.go#L253
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">c</span> <span class="o">*</span><span class="nx">BigCache</span><span class="p">)</span> <span class="nf">getShard</span><span class="p">(</span><span class="nx">hashedKey</span> <span class="kt">uint64</span><span class="p">)</span> <span class="p">(</span><span class="nx">shard</span> <span class="o">*</span><span class="nx">cacheShard</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">c</span><span class="p">.</span><span class="nx">shards</span><span class="p">[</span><span class="nx">hashedKey</span> <span class="o">&amp;</span> <span class="nx">c</span><span class="p">.</span><span class="nx">shardMask</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>Since for a power <code>N</code> of 2, for any <code>x</code>, the following equation holds.<br>
+<code>x mod N = (x &amp; (N - 1))</code>.<br>
+So, you only need to use a bitwise AND (<code>&amp;</code>) once to find its remainder.</p>
+<h3 id="choosing-the-right-hashing-algorithm">Choosing the Right Hashing Algorithm
+</h3><p>Computer scientists have invented many <code>Hash algorithms</code>, and gopher has implemented many. An ideal hashing algorithm should meet these criteria:</p>
+<ul>
+<li>High randomness in hash values.</li>
+<li>Fast computation.</li>
+<li>Minimal memory allocations to reduce garbage collection (GC) pressure.</li>
+</ul>
+<p>BigCache&rsquo;s default implementation uses the <code>fnv64a</code> algorithm, leveraging bitwise operations on <strong>the stack to avoid heap allocations.</strong></p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">fnv64a</span> <span class="kd">struct</span><span class="p">{}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">const</span> <span class="p">(</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">offset64</span> <span class="p">=</span> <span class="mi">14695981039346656037</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">prime64</span> <span class="p">=</span> <span class="mi">1099511628211</span>
+</span></span><span class="line"><span class="cl"><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">f</span> <span class="nx">fnv64a</span><span class="p">)</span> <span class="nf">Sum64</span><span class="p">(</span><span class="nx">key</span> <span class="kt">string</span><span class="p">)</span> <span class="kt">uint64</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl"><span class="kd">var</span> <span class="nx">hash</span> <span class="kt">uint64</span> <span class="p">=</span> <span class="nx">offset64</span>
+</span></span><span class="line"><span class="cl"><span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="nx">key</span><span class="p">);</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">hash</span> <span class="p">^=</span> <span class="nb">uint64</span><span class="p">(</span><span class="nx">key</span><span class="p">[</span><span class="nx">i</span><span class="p">])</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">hash</span> <span class="o">*=</span> <span class="nx">prime64</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="k">return</span> <span class="nx">hash</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><h3 id="memory-optimization">Memory Optimization
+</h3><p>In Go, the garbage collector checks every element in the map during the <code>mark</code> and <code>scan</code> phases. If the cache contains millions of cached objects, the garbage collector&rsquo;s pointless checking of these objects leads to unnecessary time overhead.<br>
+That&rsquo;s because if the elements in the <code>hashtable</code> contain pointers, the GC scans every element that contains pointers at mark; if they don&rsquo;t, they are skipped at the mark stage.<br>
+We can test this with a simple example.</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span><span class="lnt">25
+</span><span class="lnt">26
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">var</span> <span class="nx">pointMap</span> <span class="kd">map</span><span class="p">[</span><span class="kt">int</span><span class="p">]</span><span class="o">*</span><span class="kt">int</span>  
+</span></span><span class="line"><span class="cl"><span class="kd">var</span> <span class="nx">noPointMap</span> <span class="kd">map</span><span class="p">[</span><span class="kt">int</span><span class="p">]</span><span class="kt">int</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">BenchmarkPointMap</span><span class="p">(</span><span class="nx">b</span> <span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">B</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">pointMap</span> <span class="p">=</span> <span class="nb">make</span><span class="p">(</span><span class="kd">map</span><span class="p">[</span><span class="kt">int</span><span class="p">]</span><span class="o">*</span><span class="kt">int</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="mf">10e6</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">pointMap</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">=</span> <span class="o">&amp;</span><span class="nx">i</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">b</span><span class="p">.</span><span class="nf">ResetTimer</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nx">b</span><span class="p">.</span><span class="nx">N</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nb">delete</span><span class="p">(</span><span class="nx">pointMap</span><span class="p">,</span> <span class="nx">i</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">pointMap</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">=</span> <span class="o">&amp;</span><span class="nx">i</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">BenchmarkNoPointMap</span><span class="p">(</span><span class="nx">b</span> <span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">B</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">noPointMap</span> <span class="p">=</span> <span class="nb">make</span><span class="p">(</span><span class="kd">map</span><span class="p">[</span><span class="kt">int</span><span class="p">]</span><span class="kt">int</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="mf">10e6</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">noPointMap</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">=</span> <span class="nx">i</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">b</span><span class="p">.</span><span class="nf">ResetTimer</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nx">b</span><span class="p">.</span><span class="nx">N</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nb">delete</span><span class="p">(</span><span class="nx">noPointMap</span><span class="p">,</span> <span class="nx">i</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">noPointMap</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">=</span> <span class="nx">i</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>Result</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">➜  gc git:<span class="o">(</span>main<span class="o">)</span> ✗ <span class="nv">GOMAXPROCS</span><span class="o">=</span><span class="m">1</span>  go <span class="nb">test</span> --bench<span class="o">=</span>. 
+</span></span><span class="line"><span class="cl">goos: darwin
+</span></span><span class="line"><span class="cl">goarch: arm64
+</span></span><span class="line"><span class="cl">pkg: blog-example/go/gc
+</span></span><span class="line"><span class="cl">cpu: Apple M1 Pro
+</span></span><span class="line"><span class="cl">BenchmarkPointMap        <span class="m">5273188</span>               209.4 ns/op
+</span></span><span class="line"><span class="cl">BenchmarkNoPointMap      <span class="m">7037848</span>               178.5 ns/op
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>Then, run two tests separately to analyze the GC</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">go <span class="nb">test</span> -bench<span class="o">=</span>BenchmarkPointMap -trace trace_point.out  
+</span></span><span class="line"><span class="cl">go <span class="nb">test</span> -bench<span class="o">=</span>BenchmarkNoPointMap -trace trace_no_point.out 
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>The <code>Wall Duration</code> of <code>NoPointMap</code> is only 2% of <code>PointMap</code>. Although the concurrency of <code>PointMap</code> is small and there is no competition for a single goroutine, the garbage collection takes hundreds of milliseconds to mark and traverse in the <code>mark/scan</code> phase due to the large number of elements.<br>
+<img src="https://images.hxzhouh.com/blog-images/2024/12/5443469823decaef512328239ef57643.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Pasted image 20241205155902"
+	
+	
+><br>
+<img src="https://images.hxzhouh.com/blog-images/2024/12/fac3a0899fcbdf7d53c323b4a5b448d2.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Pasted image 20241205155823"
+	
+	
+></p>
+<p>How does <code>bigcache</code> solve this problem? Disable your users from storing data with pointers on <code>bigcache</code>.<br>
+Just kidding, if you did, your users would abandon you. There are several ways to solve this problem.</p>
+<ol>
+<li>Refer to <a class="link" href="https://godoc.org/github.com/glycerine/offheap"  target="_blank" rel="noopener"
+    >offheap</a>[4] to use customized <code>Malloc()</code> and <code>Free()</code> to manage memory manually while bypassing the <code>runtime</code> garbage collection, but this can be more likely to lead to memory leaks.</li>
+<li>The second way is to use <a class="link" href="https://github.com/coocood/freecache"  target="_blank" rel="noopener"
+    >freecache</a>[5]. freecache implements map with zero GC overhead by reducing the number of pointers. it stores the keys and values in a <code>ringbuffer</code> and uses the index to look up the object.<br>
+The way <code>bigcache</code> implements this is to use the hash value as the key of <code>map[int]int</code>. Serialize the cached object into a pre-allocated large byte array, and then use its offset in the array as the value of <code>map[int]int</code>.</li>
+</ol>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span><span class="lnt">25
+</span><span class="lnt">26
+</span><span class="lnt">27
+</span><span class="lnt">28
+</span><span class="lnt">29
+</span><span class="lnt">30
+</span><span class="lnt">31
+</span><span class="lnt">32
+</span><span class="lnt">33
+</span><span class="lnt">34
+</span><span class="lnt">35
+</span><span class="lnt">36
+</span><span class="lnt">37
+</span><span class="lnt">38
+</span><span class="lnt">39
+</span><span class="lnt">40
+</span><span class="lnt">41
+</span><span class="lnt">42
+</span><span class="lnt">43
+</span><span class="lnt">44
+</span><span class="lnt">45
+</span><span class="lnt">46
+</span><span class="lnt">47
+</span><span class="lnt">48
+</span><span class="lnt">49
+</span><span class="lnt">50
+</span><span class="lnt">51
+</span><span class="lnt">52
+</span><span class="lnt">53
+</span><span class="lnt">54
+</span><span class="lnt">55
+</span><span class="lnt">56
+</span><span class="lnt">57
+</span><span class="lnt">58
+</span><span class="lnt">59
+</span><span class="lnt">60
+</span><span class="lnt">61
+</span><span class="lnt">62
+</span><span class="lnt">63
+</span><span class="lnt">64
+</span><span class="lnt">65
+</span><span class="lnt">66
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">//https://github.com/allegro/bigcache/blob/a2f05d7cbfdc7000a8b7e1c40f27d3f239c204df/shard.go#L18
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">type</span> <span class="nx">cacheShard</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">hashmap</span>     <span class="kd">map</span><span class="p">[</span><span class="kt">uint64</span><span class="p">]</span><span class="kt">uint32</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">entries</span>     <span class="nx">queue</span><span class="p">.</span><span class="nx">BytesQueue</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">lock</span>        <span class="nx">sync</span><span class="p">.</span><span class="nx">RWMutex</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">entryBuffer</span> <span class="p">[]</span><span class="kt">byte</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">onRemove</span>    <span class="nx">onRemoveCallback</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">isVerbose</span>    <span class="kt">bool</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">statsEnabled</span> <span class="kt">bool</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">logger</span>       <span class="nx">Logger</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">clock</span>        <span class="nx">clock</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">lifeWindow</span>   <span class="kt">uint64</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">hashmapStats</span> <span class="kd">map</span><span class="p">[</span><span class="kt">uint64</span><span class="p">]</span><span class="kt">uint32</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">stats</span>        <span class="nx">Stats</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">s</span> <span class="o">*</span><span class="nx">cacheShard</span><span class="p">)</span> <span class="nf">set</span><span class="p">(</span><span class="nx">key</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">hashedKey</span> <span class="kt">uint64</span><span class="p">,</span> <span class="nx">entry</span> <span class="p">[]</span><span class="kt">byte</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">currentTimestamp</span> <span class="o">:=</span> <span class="nb">uint64</span><span class="p">(</span><span class="nx">s</span><span class="p">.</span><span class="nx">clock</span><span class="p">.</span><span class="nf">Epoch</span><span class="p">())</span> 
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">    <span class="nx">s</span><span class="p">.</span><span class="nx">lock</span><span class="p">.</span><span class="nf">Lock</span><span class="p">()</span> 
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">previousIndex</span> <span class="o">:=</span> <span class="nx">s</span><span class="p">.</span><span class="nx">hashmap</span><span class="p">[</span><span class="nx">hashedKey</span><span class="p">];</span> <span class="nx">previousIndex</span> <span class="o">!=</span> <span class="mi">0</span> <span class="p">{</span> <span class="c1">// Check for old entries with the same hash key
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>       <span class="k">if</span> <span class="nx">previousEntry</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">s</span><span class="p">.</span><span class="nx">entries</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="nx">previousIndex</span><span class="p">));</span> <span class="nx">err</span> <span class="o">==</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">          <span class="nf">resetHashFromEntry</span><span class="p">(</span><span class="nx">previousEntry</span><span class="p">)</span> <span class="c1">// reset hash of old entries
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>          <span class="nb">delete</span><span class="p">(</span><span class="nx">s</span><span class="p">.</span><span class="nx">hashmap</span><span class="p">,</span> <span class="nx">hashedKey</span><span class="p">)</span> <span class="c1">// Remove old entries from the hash table 
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>       <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="p">!</span><span class="nx">s</span><span class="p">.</span><span class="nx">cleanEnabled</span> <span class="p">{</span> <span class="c1">// If cleanup is not enabled  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>       <span class="k">if</span> <span class="nx">oldestEntry</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">s</span><span class="p">.</span><span class="nx">entries</span><span class="p">.</span><span class="nf">Peek</span><span class="p">();</span> <span class="nx">err</span> <span class="o">==</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">s</span><span class="p">.</span><span class="nf">onEvict</span><span class="p">(</span><span class="nx">oldestEntry</span><span class="p">,</span> <span class="nx">currentTimestamp</span><span class="p">,</span> <span class="nx">s</span><span class="p">.</span><span class="nx">removeOldestEntry</span><span class="p">)</span> <span class="c1">// Process the oldest entries
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>       <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">    <span class="nx">w</span> <span class="o">:=</span> <span class="nf">wrapEntry</span><span class="p">(</span><span class="nx">currentTimestamp</span><span class="p">,</span> <span class="nx">hashedKey</span><span class="p">,</span> <span class="nx">key</span><span class="p">,</span> <span class="nx">entry</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">s</span><span class="p">.</span><span class="nx">entryBuffer</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="k">if</span> <span class="nx">index</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">s</span><span class="p">.</span><span class="nx">entries</span><span class="p">.</span><span class="nf">Push</span><span class="p">(</span><span class="nx">w</span><span class="p">);</span> <span class="nx">err</span> <span class="o">==</span> <span class="kc">nil</span> <span class="p">{</span> <span class="c1">// Try to push new entries into the queue
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>          <span class="nx">s</span><span class="p">.</span><span class="nx">hashmap</span><span class="p">[</span><span class="nx">hashedKey</span><span class="p">]</span> <span class="p">=</span> <span class="nb">uint64</span><span class="p">(</span><span class="nx">index</span><span class="p">)</span><span class="c1">// Update the hash table 
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>          <span class="nx">s</span><span class="p">.</span><span class="nx">lock</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">()</span> 
+</span></span><span class="line"><span class="cl">          <span class="k">return</span> <span class="kc">nil</span> 
+</span></span><span class="line"><span class="cl">       <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">       <span class="k">if</span> <span class="nx">s</span><span class="p">.</span><span class="nf">removeOldestEntry</span><span class="p">(</span><span class="nx">NoSpace</span><span class="p">)</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span> <span class="c1">// If there is not enough space, delete the oldest entry  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>          <span class="nx">s</span><span class="p">.</span><span class="nx">lock</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">          <span class="k">return</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="s">&#34;entry is bigger than max shard size&#34;</span><span class="p">)</span> 
+</span></span><span class="line"><span class="cl">       <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">s</span> <span class="o">*</span><span class="nx">cacheShard</span><span class="p">)</span> <span class="nf">getValidWrapEntry</span><span class="p">(</span><span class="nx">key</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">hashedKey</span> <span class="kt">uint64</span><span class="p">)</span> <span class="p">([]</span><span class="kt">byte</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">wrappedEntry</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">s</span><span class="p">.</span><span class="nf">getWrappedEntry</span><span class="p">(</span><span class="nx">hashedKey</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="p">!</span><span class="nf">compareKeyFromEntry</span><span class="p">(</span><span class="nx">wrappedEntry</span><span class="p">,</span> <span class="nx">key</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">s</span><span class="p">.</span><span class="nf">collision</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">       <span class="k">if</span> <span class="nx">s</span><span class="p">.</span><span class="nx">isVerbose</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">s</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Collision detected. Both %q and %q have the same hash %x&#34;</span><span class="p">,</span> <span class="nx">key</span><span class="p">,</span> <span class="nf">readKeyFromEntry</span><span class="p">(</span><span class="nx">wrappedEntry</span><span class="p">),</span> <span class="nx">hashedKey</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">       <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">  
+</span></span><span class="line"><span class="cl">       <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">ErrEntryNotFound</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">s</span><span class="p">.</span><span class="nf">hitWithoutLock</span><span class="p">(</span><span class="nx">hashedKey</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">wrappedEntry</span><span class="p">,</span> <span class="kc">nil</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p><code>queue.BytesQueue</code> is an array of bytes, on demand. When a <code>[]byte</code> is added, it copies the data to the end.<br>
+When <code>bigcache</code> deletes a cached element, it just removes the index it was added from from <code>map[uint64]uint32</code> and sets its data in the <code>queue.BytesQueue</code> queue to 0. The deletion operation creates a lot of &quot; Empty holes<code>and these</code>wormholes<code>will not be organized or removed. Because it is implemented using a byte array underneath, the removal of the &quot;holes&quot; is a time-consuming operation that causes locks to be held for too long.</code>bigcache` can only wait for the cleanup mechanism to remove these &ldquo;holes&rdquo;.</p>
+<p>Some other details:</p>
+<ol>
+<li>Cache objects in <code>bigcache</code> do not have the ability to refresh their expiration time. all caches will eventually expire.</li>
+<li>The life cycle of all caches is configured by <code>config.LifeWindow</code> and cannot be set for individual keys.</li>
+</ol>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/tags/golang/">Golang</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            Last updated on Dec 05, 2024 22:15 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+<aside class="related-content--wrapper">
+    <h2 class="section-title">Related content</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="">
+    <a href="/p/go-high-performance-programming-ep10-two-useful-golang-lock-free-programming-tips/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go High-Performance Programming EP10: Two Useful Golang Lock-Free Programming Tips</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/p/swisstable-a-high-performance-hash-table-implementation/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/09/f08c74aea8485d51d461d18494df416e.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/09/f08c74aea8485d51d461d18494df416e.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">SwissTable: A High-Performance Hash Table Implementation</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/p/go-high-performance-programming-ep9-escape-analysis/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/08/317a5c9d3df72bec002eb7c0bd64c06d.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/08/317a5c9d3df72bec002eb7c0bd64c06d.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go High-Performance Programming EP9: Escape Analysis</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/p/performance-profiling-of-golangs-biggest-killers-pprof/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.yixiao9206.cn/blog-images/2024/05/acdc34e1b74e3daad61599c01f949411.png" loading="lazy" data-key="" data-hash="https://images.yixiao9206.cn/blog-images/2024/05/acdc34e1b74e3daad61599c01f949411.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Performance Profiling of Golang&#39;s Biggest Killers: PProf</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/p/how-to-analyze-go-code-in-assembly/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">How to analyze Go code in assembly</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+
+    
+        
+    <script src="//cdn.jsdelivr.net/npm/twikoo@1.6.21/dist/twikoo.all.min.js"></script>
+<div id="tcomment"></div>
+<style>
+    .twikoo {
+        background-color: var(--card-background);
+        border-radius: var(--card-border-radius);
+        box-shadow: var(--shadow-l1);
+        padding: var(--card-padding);
+    }
+    :root[data-scheme="dark"] {
+        --twikoo-body-text-color-main: rgba(255, 255, 255, 0.9);
+        --twikoo-body-text-color: rgba(255, 255, 255, 0.7);
+    }
+    .twikoo .el-input-group__prepend,
+    .twikoo .tk-action-icon,
+    .twikoo .tk-submit-action-icon,
+    .twikoo .tk-time,
+    .twikoo .tk-comments-no,
+    .twikoo .tk-comments-count {
+        color: var(--twikoo-body-text-color);
+    }
+    .twikoo .el-input__inner,
+    .twikoo .el-textarea__inner,
+    .twikoo .tk-preview-container,
+    .twikoo .tk-content,
+    .twikoo .tk-nick,
+    .twikoo .tk-send {
+        color: var(--twikoo-body-text-color-main);
+    }
+    .twikoo .el-button{
+        color: var(--twikoo-body-text-color)!important;
+    }
+    .twikoo .el-input__count {
+        color: var(--twikoo-body-text-color) !important;
+    }
+    .OwO .OwO-body {
+        background-color: var(--body-background) !important;
+        color: var(--body-text-color) !important;
+    }
+</style><script>
+    twikoo.init({
+        envId: 'https:\/\/twikoo.yixiao9206.cn',
+        el: '#tcomment',lang: 'en',})
+</script>
+
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2024 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        Built with <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> <br />
+        Theme <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> designed by <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a>
+    </section>
+    <script src="/js/adblock-detection.js" defer></script>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>
