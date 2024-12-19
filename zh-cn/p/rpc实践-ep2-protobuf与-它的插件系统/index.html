@@ -2,19 +2,19 @@
 <html lang="zh-cn" dir="ltr">
     <head><meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
-<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="在上一篇文章中，我用net/rpc 包实现了一个简单的 RPC接口，并且尝试了net/rpc自带的Gob编码以及JSON编码，学习了Golang RPC 的一些基本知识。本篇文章，我会将net/rpc 跟protobuf结合起来，同时会创建一个自己的protobuf 插件来帮助我们生成代码，开始吧。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much. 我们在工作过程中一定使用过gRPC + protobuf ,但是它们两个并不是绑定关系，gRPC可以使用JSON编码，protobuf 也可以在其他语言中实现。 Protocol Buffers 是谷歌推出的编码标准，它在传输效率和编解码性能上都要优于 JSON。但其代价则是需要依赖中间描述语言（IDL）来定义数据和服务的结构（\u00a0*.proto\u00a0文件），并且需要一整套的工具链（protoc 及其插件）来生成对应的序列化和反序列化代码。除了谷歌官方提供的工具和插件（比如生成 go 代码的 protoc-gen-go）外，我们还可以开发或定制自己的插件，根据业务需要按照 proto 文件的定义生成代码或者文档。由 IDL 生成代码或者文档是元编程的一种形式，可以极大的解放程序员的生产力。 一个使用protobuf 的例子 首先我们写一个proto 文件 hello-service.proto ，定义一个message “String” 1 2 3 4 5 6 7 syntax = &#34;proto3&#34;; package api; option go_package=&#34;api&#34;; message String { string value = 1; } 然后使用protoc 工具生成message String 的 Go代码">
-<title>RPC Action 2: protobuf in rpc</title>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="在上一篇文章中，我用net/rpc 包实现了一个简单的 RPC接口，并且尝试了net/rpc自带的Gob编码以及JSON编码，学习了Golang RPC 的一些基本知识。本篇文章，我会将net/rpc 跟 protobuf结合起来，然后在了解一下如何使用Protobuf + 插件 生成 gRPC 的代码。 最后会尝试创建一个自己的protobuf插件来帮助我们生成代码，开始吧。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much. 我们在工作过程中一定使用过gRPC + protobuf ,但是它们两个并不是绑定关系，gRPC可以使用JSON编码，protobuf也可以在其他语言中实现。 Protocol Buffers 是谷歌推出的编码标准，它在传输效率和编解码性能上都要优于 JSON。但其代价则是需要依赖中间描述语言（IDL）来定义数据和服务的结构（\u00a0*.proto\u00a0文件），并且需要一整套的工具链（protoc 及其插件）来生成对应的序列化和反序列化代码。 除了谷歌官方提供的工具和插件（比如生成 go 代码的 protoc-gen-go）外，我们还可以开发或定制自己的插件，根据业务需要按照 proto 文件的定义生成代码或者文档。由 IDL 生成代码或者文档是元编程的一种形式，可以极大的解放程序员的生产力。 一个使用protobuf 的例子 首先我们写一个proto 文件 hello-service.proto，定义一个message “String“ 1 2 3 4 5 6 7 syntax = &#34;proto3&#34;; package api; option go_package=&#34;api&#34;; message String { string value = 1; } 然后使用protoc 工具生成message String 的 Go代码">
+<title>RPC实践 EP2: Protobuf与 它的插件系统。</title>
 
-<link rel='canonical' href='https://huizhou92.com/zh-cn/p/rpc-action-2-protobuf-in-rpc/'>
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/rpc%E5%AE%9E%E8%B7%B5-ep2-protobuf%E4%B8%8E-%E5%AE%83%E7%9A%84%E6%8F%92%E4%BB%B6%E7%B3%BB%E7%BB%9F/'>
 
-<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="RPC Action 2: protobuf in rpc">
-<meta property='og:description' content="在上一篇文章中，我用net/rpc 包实现了一个简单的 RPC接口，并且尝试了net/rpc自带的Gob编码以及JSON编码，学习了Golang RPC 的一些基本知识。本篇文章，我会将net/rpc 跟protobuf结合起来，同时会创建一个自己的protobuf 插件来帮助我们生成代码，开始吧。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much. 我们在工作过程中一定使用过gRPC + protobuf ,但是它们两个并不是绑定关系，gRPC可以使用JSON编码，protobuf 也可以在其他语言中实现。 Protocol Buffers 是谷歌推出的编码标准，它在传输效率和编解码性能上都要优于 JSON。但其代价则是需要依赖中间描述语言（IDL）来定义数据和服务的结构（\u00a0*.proto\u00a0文件），并且需要一整套的工具链（protoc 及其插件）来生成对应的序列化和反序列化代码。除了谷歌官方提供的工具和插件（比如生成 go 代码的 protoc-gen-go）外，我们还可以开发或定制自己的插件，根据业务需要按照 proto 文件的定义生成代码或者文档。由 IDL 生成代码或者文档是元编程的一种形式，可以极大的解放程序员的生产力。 一个使用protobuf 的例子 首先我们写一个proto 文件 hello-service.proto ，定义一个message “String” 1 2 3 4 5 6 7 syntax = &#34;proto3&#34;; package api; option go_package=&#34;api&#34;; message String { string value = 1; } 然后使用protoc 工具生成message String 的 Go代码">
-<meta property='og:url' content='https://huizhou92.com/zh-cn/p/rpc-action-2-protobuf-in-rpc/'>
+<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="RPC实践 EP2: Protobuf与 它的插件系统。">
+<meta property='og:description' content="在上一篇文章中，我用net/rpc 包实现了一个简单的 RPC接口，并且尝试了net/rpc自带的Gob编码以及JSON编码，学习了Golang RPC 的一些基本知识。本篇文章，我会将net/rpc 跟 protobuf结合起来，然后在了解一下如何使用Protobuf + 插件 生成 gRPC 的代码。 最后会尝试创建一个自己的protobuf插件来帮助我们生成代码，开始吧。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much. 我们在工作过程中一定使用过gRPC + protobuf ,但是它们两个并不是绑定关系，gRPC可以使用JSON编码，protobuf也可以在其他语言中实现。 Protocol Buffers 是谷歌推出的编码标准，它在传输效率和编解码性能上都要优于 JSON。但其代价则是需要依赖中间描述语言（IDL）来定义数据和服务的结构（\u00a0*.proto\u00a0文件），并且需要一整套的工具链（protoc 及其插件）来生成对应的序列化和反序列化代码。 除了谷歌官方提供的工具和插件（比如生成 go 代码的 protoc-gen-go）外，我们还可以开发或定制自己的插件，根据业务需要按照 proto 文件的定义生成代码或者文档。由 IDL 生成代码或者文档是元编程的一种形式，可以极大的解放程序员的生产力。 一个使用protobuf 的例子 首先我们写一个proto 文件 hello-service.proto，定义一个message “String“ 1 2 3 4 5 6 7 syntax = &#34;proto3&#34;; package api; option go_package=&#34;api&#34;; message String { string value = 1; } 然后使用protoc 工具生成message String 的 Go代码">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/rpc%E5%AE%9E%E8%B7%B5-ep2-protobuf%E4%B8%8E-%E5%AE%83%E7%9A%84%E6%8F%92%E4%BB%B6%E7%B3%BB%E7%BB%9F/'>
 <meta property='og:site_name' content='huizhou92&#39;s Blog'>
 <meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='go' /><meta property='article:tag' content='RPC' /><meta property='article:published_time' content='2024-08-13T16:10:53&#43;08:00'/><meta property='article:modified_time' content='2024-08-13T15:59:57&#43;08:00'/>
 <meta name="twitter:site" content="@https://x.com/piaopiaopig">
-    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="RPC Action 2: protobuf in rpc">
-<meta name="twitter:description" content="在上一篇文章中，我用net/rpc 包实现了一个简单的 RPC接口，并且尝试了net/rpc自带的Gob编码以及JSON编码，学习了Golang RPC 的一些基本知识。本篇文章，我会将net/rpc 跟protobuf结合起来，同时会创建一个自己的protobuf 插件来帮助我们生成代码，开始吧。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much. 我们在工作过程中一定使用过gRPC + protobuf ,但是它们两个并不是绑定关系，gRPC可以使用JSON编码，protobuf 也可以在其他语言中实现。 Protocol Buffers 是谷歌推出的编码标准，它在传输效率和编解码性能上都要优于 JSON。但其代价则是需要依赖中间描述语言（IDL）来定义数据和服务的结构（\u00a0*.proto\u00a0文件），并且需要一整套的工具链（protoc 及其插件）来生成对应的序列化和反序列化代码。除了谷歌官方提供的工具和插件（比如生成 go 代码的 protoc-gen-go）外，我们还可以开发或定制自己的插件，根据业务需要按照 proto 文件的定义生成代码或者文档。由 IDL 生成代码或者文档是元编程的一种形式，可以极大的解放程序员的生产力。 一个使用protobuf 的例子 首先我们写一个proto 文件 hello-service.proto ，定义一个message “String” 1 2 3 4 5 6 7 syntax = &#34;proto3&#34;; package api; option go_package=&#34;api&#34;; message String { string value = 1; } 然后使用protoc 工具生成message String 的 Go代码">
+    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="RPC实践 EP2: Protobuf与 它的插件系统。">
+<meta name="twitter:description" content="在上一篇文章中，我用net/rpc 包实现了一个简单的 RPC接口，并且尝试了net/rpc自带的Gob编码以及JSON编码，学习了Golang RPC 的一些基本知识。本篇文章，我会将net/rpc 跟 protobuf结合起来，然后在了解一下如何使用Protobuf + 插件 生成 gRPC 的代码。 最后会尝试创建一个自己的protobuf插件来帮助我们生成代码，开始吧。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much. 我们在工作过程中一定使用过gRPC + protobuf ,但是它们两个并不是绑定关系，gRPC可以使用JSON编码，protobuf也可以在其他语言中实现。 Protocol Buffers 是谷歌推出的编码标准，它在传输效率和编解码性能上都要优于 JSON。但其代价则是需要依赖中间描述语言（IDL）来定义数据和服务的结构（\u00a0*.proto\u00a0文件），并且需要一整套的工具链（protoc 及其插件）来生成对应的序列化和反序列化代码。 除了谷歌官方提供的工具和插件（比如生成 go 代码的 protoc-gen-go）外，我们还可以开发或定制自己的插件，根据业务需要按照 proto 文件的定义生成代码或者文档。由 IDL 生成代码或者文档是元编程的一种形式，可以极大的解放程序员的生产力。 一个使用protobuf 的例子 首先我们写一个proto 文件 hello-service.proto，定义一个message “String“ 1 2 3 4 5 6 7 syntax = &#34;proto3&#34;; package api; option go_package=&#34;api&#34;; message String { string value = 1; } 然后使用protoc 工具生成message String 的 Go代码">
     <link rel="shortcut icon" href="/favicon.ico" />
 
   
@@ -376,7 +376,7 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 
     <div class="article-title-wrapper">
         <h2 class="article-title">
-            <a href="/zh-cn/p/rpc-action-2-protobuf-in-rpc/">RPC Action 2: protobuf in rpc</a>
+            <a href="/zh-cn/p/rpc%E5%AE%9E%E8%B7%B5-ep2-protobuf%E4%B8%8E-%E5%AE%83%E7%9A%84%E6%8F%92%E4%BB%B6%E7%B3%BB%E7%BB%9F/">RPC实践 EP2: Protobuf与 它的插件系统。</a>
         </h2>
     
         
@@ -448,20 +448,21 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
     <section class="article-content">
     
     
-    <p>在<a class="link" href="obsidian://open?vault=hxzhouh&amp;file=007-blog%2Fpost%2Fgolang%2Fgrpc%2FRPC%E5%AE%9E%E8%B7%B5%2F01%20%E8%AE%A4%E8%AF%86RPC%2F%E8%AE%A4%E8%AF%86RPC.zh-cn" >上一篇</a>文章中，我用<code>net/rpc</code> 包实现了一个简单的 RPC接口，并且尝试了<code>net/rpc</code>自带的<code>Gob</code>编码以及<code>JSON</code>编码，学习了Golang RPC 的一些基本知识。本篇文章，我会将<code>net/rpc</code> 跟protobuf结合起来，同时会创建一个自己的<code>protobuf </code>插件来帮助我们生成代码，开始吧。</p>
+    <p>在<a class="link" href="" >上一篇</a>文章中，我用<code>net/rpc</code> 包实现了一个简单的 RPC接口，并且尝试了<code>net/rpc</code>自带的<code>Gob</code>编码以及<code>JSON</code>编码，学习了Golang RPC 的一些基本知识。本篇文章，我会将<code>net/rpc</code> 跟 protobuf结合起来，然后在了解一下如何使用Protobuf + 插件 生成 <code>gRPC</code> 的代码。 最后会尝试创建一个自己的<code>protobuf</code>插件来帮助我们生成代码，开始吧。</p>
 <!-- more -->
 <blockquote>
 <p>This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
     >Medium</a>. Thank you very much.</p>
 </blockquote>
 <p>我们在工作过程中一定使用过<code>gRPC</code> + <code>protobuf</code> ,但是它们两个并不是绑定关系，<code>gRPC</code>可以使用JSON编码，<a class="link" href="https://en.wikipedia.org/wiki/Protocol_Buffers"  target="_blank" rel="noopener"
-    >protobuf</a> 也可以在其他语言中实现。</p>
+    >protobuf</a>也可以在其他语言中实现。</p>
 <blockquote>
 <p><a class="link" href="https://en.wikipedia.org/wiki/Protocol_Buffers"  target="_blank" rel="noopener"
-    >Protocol Buffers</a> 是谷歌推出的编码标准，它在传输效率和编解码性能上都要优于 JSON。但其代价则是需要依赖中间描述语言（IDL）来定义数据和服务的结构（ <code>*.proto</code> 文件），并且需要一整套的工具链（protoc 及其插件）来生成对应的序列化和反序列化代码。除了谷歌官方提供的工具和插件（比如生成 go 代码的 protoc-gen-go）外，我们还可以开发或定制自己的插件，根据业务需要按照 proto 文件的定义生成代码或者文档。由 IDL 生成代码或者文档是元编程的一种形式，可以极大的解放程序员的生产力。</p>
+    >Protocol Buffers</a> 是谷歌推出的编码标准，它在传输效率和编解码性能上都要优于 JSON。但其代价则是需要依赖中间描述语言（IDL）来定义数据和服务的结构（ <code>*.proto</code> 文件），并且需要一整套的工具链（protoc 及其插件）来生成对应的序列化和反序列化代码。</p>
+<p>除了谷歌官方提供的工具和插件（比如生成 go 代码的 protoc-gen-go）外，我们还可以开发或定制自己的插件，根据业务需要按照 proto 文件的定义生成代码或者文档。由 IDL 生成代码或者文档是元编程的一种形式，可以极大的解放程序员的生产力。</p>
 </blockquote>
 <h2 id="一个使用protobuf-的例子">一个使用protobuf 的例子
-</h2><p>首先我们写一个<code>proto</code> 文件 hello-service.proto ，定义一个message “String”</p>
+</h2><p>首先我们写一个<code>proto</code> 文件<code> hello-service.proto</code>，定义一个message <code>“String“</code></p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
@@ -488,10 +489,29 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">protoc --go_out<span class="o">=</span>. hello-service.proto
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">protoc --go_out<span class="o">=</span>./api proto/hello.proto 
 </span></span></code></pre></td></tr></table>
 </div>
-</div><p>然后我们修改一下Hello 函数的参数，使用proto 生成 的String。</p>
+</div><p>生成的代码 里面有一个  <code>String</code> struct</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">String</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">Value</span>                <span class="kt">string</span>   <span class="s">`protobuf:&#34;bytes,1,opt,name=value,proto3&#34; json:&#34;value,omitempty&#34;`</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">XXX_NoUnkeyedLiteral</span> <span class="kd">struct</span><span class="p">{}</span> <span class="s">`json:&#34;-&#34;`</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">XXX_unrecognized</span>     <span class="p">[]</span><span class="kt">byte</span>   <span class="s">`json:&#34;-&#34;`</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">XXX_sizecache</span>        <span class="kt">int32</span>    <span class="s">`json:&#34;-&#34;`</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>我们可以直接使用它，修改一下函数的参数。</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
@@ -504,7 +524,11 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </span></span><span class="line"><span class="cl"><span class="p">}</span>  
 </span></span></code></pre></td></tr></table>
 </div>
-</div><p>其实使用起来跟以前没什么区别，甚至，还不如直接使用string方便。那么我们为什么要使用Protobuf? 正如前面所说的，<strong>用Protobuf定义与语言无关的RPC服务接口以及message，然后使用<code>protoc</code>工具生成不同语言的代码，才是它真正的价值所在</strong>。比如使用官方提供的插件<code>protoc-gen-go</code>来生成<code>gRPC</code>代码。</p>
+</div><p>其实使用起来跟以前没什么区别。甚至还不如直接使用<code>string</code>方便。<br>
+那么我们为什么要使用Protobuf?<br>
+正如前面所说的，<strong>用Protobuf定义与语言无关的RPC服务接口以及message，然后使用<code>protoc</code>工具生成不同语言的代码，才是它真正的价值所在</strong>。</p>
+<h2 id="protoc--的插件系统">protoc  的插件系统
+</h2><p><code>protobuf</code>是一个与编程语言无关的协议。它通过<code>protoc</code>跟各种不同的插件来将protobuf文件编译成不同的编程语言，我们以<code>Golang</code>+<code>gRPC</code> 为例子。</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
@@ -513,11 +537,9 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 <pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">protoc --go_out<span class="o">=</span><span class="nv">plugins</span><span class="o">=</span>grpc. hello-service.proto
 </span></span></code></pre></td></tr></table>
 </div>
-</div><h2 id="protoc--的插件系统">protoc  的插件系统
-</h2><p>如果要根据 proto 文件生成代码，必须安装protoc工具，但是protoc 工具并不能知道我们的目标语言是什么，所以我们需要插件来帮助我们生成代码。protoc 的插件系统是如何工作的？以上面的grpc 为例子:<br>
-这里有一个 <code>--go_out</code> 参数。因为我们调用的插件是<code>protoc-gen-go</code>，所以参数名字叫 go_out；如果名字叫 XXX，那参数名字就叫 XXX_out。<br>
-protoc 在运行的时候首先会解析 proto 文件的所有内容，生成一组 Protocol Buffers 编码的描述数据，首先会判断protoc 内部是否包含<code>go</code>插件, 然后会尝试在<code>$PATH</code> 里面寻找<code>protoc-gen-go</code>，找不到会报错，然后运行<code>protoc-gen-go</code> 命令，并且通过 stdin 将描述数据发送给插件命令。插件生成好文件内容后再向 stdout 输入 Protocol Buffers 编码的数据来告诉 protoc 生成具体的文件。<br>
-<code>plugins=grpc</code> 是 为了调用<code>protoc-gen-go</code> 自带的一个插件，如果不使用它，那么只会生成 Go 语言 的message信息，使用这个插件才会生成grpc 相关的代码。</p>
+</div><p>这里有一个 <code>--go_out</code> 参数。因为我们调用的插件是<code>protoc-gen-go</code>，所以参数名字叫 go_out；如果名字叫 XXX，那参数名字就叫 XXX_out。</p>
+<p>protoc 在运行的时候首先会解析 proto 文件的所有内容，生成一组 Protocol Buffers 编码的描述数据，首先会判断protoc 内部是否包含<code>go</code>插件, 然后会尝试在<code>$PATH</code> 里面寻找<code>protoc-gen-go</code>，找不到会报错，然后运行<code>protoc-gen-go</code> 命令，并且通过 stdin 将描述数据发送给插件命令。插件生成好文件内容后再向 stdout 输入 Protocol Buffers 编码的数据来告诉 protoc 生成具体的文件。</p>
+<p><code>plugins=grpc</code> 是 为了调用<code>protoc-gen-go</code> 自带的一个插件，如果不使用它，那么只会生成 Go 语言 的message信息，使用这个插件才会生成grpc 相关的代码。</p>
 <h2 id="自定义一个-protoc-插件">自定义一个 protoc 插件
 </h2><p>如果在protobuf 中添加<code>Hello</code> 接口的定时，我们是不是可以自定义一个 <code>protoc</code> 插件，直接生成代码？</p>
 <div class="highlight"><div class="chroma">

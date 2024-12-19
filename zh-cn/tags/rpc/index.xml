@@ -403,25 +403,26 @@
 </description>
         </item>
         <item>
-        <title>RPC Action 2: protobuf in rpc</title>
-        <link>https://huizhou92.com/zh-cn/p/rpc-action-2-protobuf-in-rpc/</link>
+        <title>RPC实践 EP2: Protobuf与 它的插件系统。</title>
+        <link>https://huizhou92.com/zh-cn/p/rpc%E5%AE%9E%E8%B7%B5-ep2-protobuf%E4%B8%8E-%E5%AE%83%E7%9A%84%E6%8F%92%E4%BB%B6%E7%B3%BB%E7%BB%9F/</link>
         <pubDate>Tue, 13 Aug 2024 16:10:53 +0800</pubDate>
         
-        <guid>https://huizhou92.com/zh-cn/p/rpc-action-2-protobuf-in-rpc/</guid>
-        <description>&lt;p&gt;在&lt;a class=&#34;link&#34; href=&#34;obsidian://open?vault=hxzhouh&amp;amp;file=007-blog%2Fpost%2Fgolang%2Fgrpc%2FRPC%E5%AE%9E%E8%B7%B5%2F01%20%E8%AE%A4%E8%AF%86RPC%2F%E8%AE%A4%E8%AF%86RPC.zh-cn&#34; &gt;上一篇&lt;/a&gt;文章中，我用&lt;code&gt;net/rpc&lt;/code&gt; 包实现了一个简单的 RPC接口，并且尝试了&lt;code&gt;net/rpc&lt;/code&gt;自带的&lt;code&gt;Gob&lt;/code&gt;编码以及&lt;code&gt;JSON&lt;/code&gt;编码，学习了Golang RPC 的一些基本知识。本篇文章，我会将&lt;code&gt;net/rpc&lt;/code&gt; 跟protobuf结合起来，同时会创建一个自己的&lt;code&gt;protobuf &lt;/code&gt;插件来帮助我们生成代码，开始吧。&lt;/p&gt;
+        <guid>https://huizhou92.com/zh-cn/p/rpc%E5%AE%9E%E8%B7%B5-ep2-protobuf%E4%B8%8E-%E5%AE%83%E7%9A%84%E6%8F%92%E4%BB%B6%E7%B3%BB%E7%BB%9F/</guid>
+        <description>&lt;p&gt;在&lt;a class=&#34;link&#34; href=&#34;&#34; &gt;上一篇&lt;/a&gt;文章中，我用&lt;code&gt;net/rpc&lt;/code&gt; 包实现了一个简单的 RPC接口，并且尝试了&lt;code&gt;net/rpc&lt;/code&gt;自带的&lt;code&gt;Gob&lt;/code&gt;编码以及&lt;code&gt;JSON&lt;/code&gt;编码，学习了Golang RPC 的一些基本知识。本篇文章，我会将&lt;code&gt;net/rpc&lt;/code&gt; 跟 protobuf结合起来，然后在了解一下如何使用Protobuf + 插件 生成 &lt;code&gt;gRPC&lt;/code&gt; 的代码。 最后会尝试创建一个自己的&lt;code&gt;protobuf&lt;/code&gt;插件来帮助我们生成代码，开始吧。&lt;/p&gt;
 &lt;!-- more --&gt;
 &lt;blockquote&gt;
 &lt;p&gt;This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on &lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;Medium&lt;/a&gt;. Thank you very much.&lt;/p&gt;
 &lt;/blockquote&gt;
 &lt;p&gt;我们在工作过程中一定使用过&lt;code&gt;gRPC&lt;/code&gt; + &lt;code&gt;protobuf&lt;/code&gt; ,但是它们两个并不是绑定关系，&lt;code&gt;gRPC&lt;/code&gt;可以使用JSON编码，&lt;a class=&#34;link&#34; href=&#34;https://en.wikipedia.org/wiki/Protocol_Buffers&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;protobuf&lt;/a&gt; 也可以在其他语言中实现。&lt;/p&gt;
+    &gt;protobuf&lt;/a&gt;也可以在其他语言中实现。&lt;/p&gt;
 &lt;blockquote&gt;
 &lt;p&gt;&lt;a class=&#34;link&#34; href=&#34;https://en.wikipedia.org/wiki/Protocol_Buffers&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Protocol Buffers&lt;/a&gt; 是谷歌推出的编码标准，它在传输效率和编解码性能上都要优于 JSON。但其代价则是需要依赖中间描述语言（IDL）来定义数据和服务的结构（ &lt;code&gt;*.proto&lt;/code&gt; 文件），并且需要一整套的工具链（protoc 及其插件）来生成对应的序列化和反序列化代码。除了谷歌官方提供的工具和插件（比如生成 go 代码的 protoc-gen-go）外，我们还可以开发或定制自己的插件，根据业务需要按照 proto 文件的定义生成代码或者文档。由 IDL 生成代码或者文档是元编程的一种形式，可以极大的解放程序员的生产力。&lt;/p&gt;
+    &gt;Protocol Buffers&lt;/a&gt; 是谷歌推出的编码标准，它在传输效率和编解码性能上都要优于 JSON。但其代价则是需要依赖中间描述语言（IDL）来定义数据和服务的结构（ &lt;code&gt;*.proto&lt;/code&gt; 文件），并且需要一整套的工具链（protoc 及其插件）来生成对应的序列化和反序列化代码。&lt;/p&gt;
+&lt;p&gt;除了谷歌官方提供的工具和插件（比如生成 go 代码的 protoc-gen-go）外，我们还可以开发或定制自己的插件，根据业务需要按照 proto 文件的定义生成代码或者文档。由 IDL 生成代码或者文档是元编程的一种形式，可以极大的解放程序员的生产力。&lt;/p&gt;
 &lt;/blockquote&gt;
 &lt;h2 id=&#34;一个使用protobuf-的例子&#34;&gt;一个使用protobuf 的例子
-&lt;/h2&gt;&lt;p&gt;首先我们写一个&lt;code&gt;proto&lt;/code&gt; 文件 hello-service.proto ，定义一个message “String”&lt;/p&gt;
+&lt;/h2&gt;&lt;p&gt;首先我们写一个&lt;code&gt;proto&lt;/code&gt; 文件&lt;code&gt; hello-service.proto&lt;/code&gt;，定义一个message &lt;code&gt;“String“&lt;/code&gt;&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
 &lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
 &lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
@@ -448,10 +449,29 @@
 &lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
 &lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
 &lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-shell&#34; data-lang=&#34;shell&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;protoc --go_out&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;. hello-service.proto
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-shell&#34; data-lang=&#34;shell&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;protoc --go_out&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;./api proto/hello.proto 
 &lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
 &lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;然后我们修改一下Hello 函数的参数，使用proto 生成 的String。&lt;/p&gt;
+&lt;/div&gt;&lt;p&gt;生成的代码 里面有一个  &lt;code&gt;String&lt;/code&gt; struct&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;type&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;String&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;Value&lt;/span&gt;                &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;   &lt;span class=&#34;s&#34;&gt;`protobuf:&amp;#34;bytes,1,opt,name=value,proto3&amp;#34; json:&amp;#34;value,omitempty&amp;#34;`&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;XXX_NoUnkeyedLiteral&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;struct&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{}&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;`json:&amp;#34;-&amp;#34;`&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;XXX_unrecognized&lt;/span&gt;     &lt;span class=&#34;p&#34;&gt;[]&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;byte&lt;/span&gt;   &lt;span class=&#34;s&#34;&gt;`json:&amp;#34;-&amp;#34;`&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;XXX_sizecache&lt;/span&gt;        &lt;span class=&#34;kt&#34;&gt;int32&lt;/span&gt;    &lt;span class=&#34;s&#34;&gt;`json:&amp;#34;-&amp;#34;`&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;我们可以直接使用它，修改一下函数的参数。&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
 &lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
 &lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
@@ -464,7 +484,11 @@
 &lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;  
 &lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
 &lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;其实使用起来跟以前没什么区别，甚至，还不如直接使用string方便。那么我们为什么要使用Protobuf? 正如前面所说的，&lt;strong&gt;用Protobuf定义与语言无关的RPC服务接口以及message，然后使用&lt;code&gt;protoc&lt;/code&gt;工具生成不同语言的代码，才是它真正的价值所在&lt;/strong&gt;。比如使用官方提供的插件&lt;code&gt;protoc-gen-go&lt;/code&gt;来生成&lt;code&gt;gRPC&lt;/code&gt;代码。&lt;/p&gt;
+&lt;/div&gt;&lt;p&gt;其实使用起来跟以前没什么区别。甚至还不如直接使用&lt;code&gt;string&lt;/code&gt;方便。&lt;br&gt;
+那么我们为什么要使用Protobuf?&lt;br&gt;
+正如前面所说的，&lt;strong&gt;用Protobuf定义与语言无关的RPC服务接口以及message，然后使用&lt;code&gt;protoc&lt;/code&gt;工具生成不同语言的代码，才是它真正的价值所在&lt;/strong&gt;。&lt;/p&gt;
+&lt;h2 id=&#34;protoc--的插件系统&#34;&gt;protoc  的插件系统
+&lt;/h2&gt;&lt;p&gt;&lt;code&gt;protobuf&lt;/code&gt;是一个与编程语言无关的协议。它通过&lt;code&gt;protoc&lt;/code&gt;跟各种不同的插件来将protobuf文件编译成不同的编程语言，我们以&lt;code&gt;Golang&lt;/code&gt;+&lt;code&gt;gRPC&lt;/code&gt; 为例子。&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
 &lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
 &lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
@@ -473,11 +497,9 @@
 &lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-shell&#34; data-lang=&#34;shell&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;protoc --go_out&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;plugins&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;grpc. hello-service.proto
 &lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
 &lt;/div&gt;
-&lt;/div&gt;&lt;h2 id=&#34;protoc--的插件系统&#34;&gt;protoc  的插件系统
-&lt;/h2&gt;&lt;p&gt;如果要根据 proto 文件生成代码，必须安装protoc工具，但是protoc 工具并不能知道我们的目标语言是什么，所以我们需要插件来帮助我们生成代码。protoc 的插件系统是如何工作的？以上面的grpc 为例子:&lt;br&gt;
-这里有一个 &lt;code&gt;--go_out&lt;/code&gt; 参数。因为我们调用的插件是&lt;code&gt;protoc-gen-go&lt;/code&gt;，所以参数名字叫 go_out；如果名字叫 XXX，那参数名字就叫 XXX_out。&lt;br&gt;
-protoc 在运行的时候首先会解析 proto 文件的所有内容，生成一组 Protocol Buffers 编码的描述数据，首先会判断protoc 内部是否包含&lt;code&gt;go&lt;/code&gt;插件, 然后会尝试在&lt;code&gt;$PATH&lt;/code&gt; 里面寻找&lt;code&gt;protoc-gen-go&lt;/code&gt;，找不到会报错，然后运行&lt;code&gt;protoc-gen-go&lt;/code&gt; 命令，并且通过 stdin 将描述数据发送给插件命令。插件生成好文件内容后再向 stdout 输入 Protocol Buffers 编码的数据来告诉 protoc 生成具体的文件。&lt;br&gt;
-&lt;code&gt;plugins=grpc&lt;/code&gt; 是 为了调用&lt;code&gt;protoc-gen-go&lt;/code&gt; 自带的一个插件，如果不使用它，那么只会生成 Go 语言 的message信息，使用这个插件才会生成grpc 相关的代码。&lt;/p&gt;
+&lt;/div&gt;&lt;p&gt;这里有一个 &lt;code&gt;--go_out&lt;/code&gt; 参数。因为我们调用的插件是&lt;code&gt;protoc-gen-go&lt;/code&gt;，所以参数名字叫 go_out；如果名字叫 XXX，那参数名字就叫 XXX_out。&lt;/p&gt;
+&lt;p&gt;protoc 在运行的时候首先会解析 proto 文件的所有内容，生成一组 Protocol Buffers 编码的描述数据，首先会判断protoc 内部是否包含&lt;code&gt;go&lt;/code&gt;插件, 然后会尝试在&lt;code&gt;$PATH&lt;/code&gt; 里面寻找&lt;code&gt;protoc-gen-go&lt;/code&gt;，找不到会报错，然后运行&lt;code&gt;protoc-gen-go&lt;/code&gt; 命令，并且通过 stdin 将描述数据发送给插件命令。插件生成好文件内容后再向 stdout 输入 Protocol Buffers 编码的数据来告诉 protoc 生成具体的文件。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;plugins=grpc&lt;/code&gt; 是 为了调用&lt;code&gt;protoc-gen-go&lt;/code&gt; 自带的一个插件，如果不使用它，那么只会生成 Go 语言 的message信息，使用这个插件才会生成grpc 相关的代码。&lt;/p&gt;
 &lt;h2 id=&#34;自定义一个-protoc-插件&#34;&gt;自定义一个 protoc 插件
 &lt;/h2&gt;&lt;p&gt;如果在protobuf 中添加&lt;code&gt;Hello&lt;/code&gt; 接口的定时，我们是不是可以自定义一个 &lt;code&gt;protoc&lt;/code&gt; 插件，直接生成代码？&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
