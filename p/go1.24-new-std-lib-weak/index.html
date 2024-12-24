@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Go 1.24 introduces the `weak` package for managing memory more flexibly with weak pointers, preventing GC issues. Ideal for caching! 💻✨">
+<title>GO1.24: New Std-Lib weak</title>
+
+<link rel='canonical' href='https://huizhou92.com/p/go1.24-new-std-lib-weak/'>
+
+<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="GO1.24: New Std-Lib weak">
+<meta property='og:description' content="Go 1.24 introduces the `weak` package for managing memory more flexibly with weak pointers, preventing GC issues. Ideal for caching! 💻✨">
+<meta property='og:url' content='https://huizhou92.com/p/go1.24-new-std-lib-weak/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='go' /><meta property='article:tag' content='go1_24' /><meta property='article:published_time' content='2024-12-16T19:06:40&#43;08:00'/><meta property='article:modified_time' content='2024-12-16T19:06:38&#43;08:00'/><meta property='og:image' content='https://images.hxzhouh.com/blog-images/2024/12/edbf334955e117265be0194bba455ee3.png' />
+<meta name="twitter:site" content="@https://x.com/piaopiaopig">
+    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="GO1.24: New Std-Lib weak">
+<meta name="twitter:description" content="Go 1.24 introduces the `weak` package for managing memory more flexibly with weak pointers, preventing GC issues. Ideal for caching! 💻✨"><meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content='https://images.hxzhouh.com/blog-images/2024/12/edbf334955e117265be0194bba455ee3.png' />
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="Toggle Menu">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>Home</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/about/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>About</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>Archives</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>Search</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" selected>English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" >中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>Dark Mode</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">Table of contents</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li>
+      <ol>
+        <li><a href="#simple-definition-of-weak">Simple Definition of <code>weak</code></a></li>
+        <li><a href="#example-output">Example Output:</a></li>
+        <li><a href="#key-takeaways">Key Takeaways:</a></li>
+        <li><a href="#the-practical-use-of-weak">The Practical Use of <code>weak</code></a>
+          <ol>
+            <li><a href="#canonicalization-maps">Canonicalization Maps</a></li>
+            <li><a href="#implementing-a-fixed-size-cache">Implementing a Fixed-Size Cache</a></li>
+          </ol>
+        </li>
+        <li><a href="#further-reading-on-weak">Further Reading on <code>weak</code>:</a></li>
+      </ol>
+    </li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="has-image main-article">
+    <header class="article-header">
+        <div class="article-image">
+            <a href="/p/go1.24-new-std-lib-weak/">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/12/edbf334955e117265be0194bba455ee3.png" loading="lazy" alt="Featured image of post GO1.24: New Std-Lib weak" />
+                
+            </a>
+        </div>
+    
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/categories/tech/" style="background-color: #2a9d8f; color: #ffff;">
+                tech
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/p/go1.24-new-std-lib-weak/">GO1.24: New Std-Lib weak</a>
+        </h2>
+    
+        
+        <h3 class="article-subtitle">
+            Go 1.24 introduces the `weak` package for managing memory more flexibly with weak pointers, preventing GC issues. Ideal for caching! 💻✨
+        </h3>
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Dec 16, 2024</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    4 minute read
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+        <footer class="article-translations">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+            <div>
+                
+                    <a href="https://huizhou92.com/zh-cn/p/go1.24-%E6%96%B0%E7%9A%84%E6%A0%87%E5%87%86%E5%BA%93-weak/" class="link">中文</a>
+                
+            </div>
+        </footer>
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <p><code>Go 1.24</code> introduces a new <code>std-lib</code> package called <code>weak</code>, which allows you to create safe references to <code>*T</code> without preventing the garbage collector (GC) from reclaiming the memory associated with <code>*T</code>.</p>
+<blockquote>
+<p>The <code>weak</code> package provides ways to safely reference memory weakly without preventing the garbage collector&rsquo;s reclamation.</p>
+</blockquote>
+<p>Much like <code>OS.ROOT</code>, <code>weak</code> is a feature that has existed in other programming languages for some time, including:</p>
+<ul>
+<li>In <code>Java</code>, <code>WeakReference</code> and <code>SoftReference</code> are classic implementations primarily used for caching and object pools. These references allow automatic garbage collection when the JVM detects a memory shortage.</li>
+<li>In <code>Python</code>, the <code>weakref</code> module allows the creation of weak references, commonly used to prevent circular reference issues or for caching.</li>
+<li>In <code>C++</code>, <code>std::weak_ptr</code> was introduced alongside <code>std::shared_ptr</code> to solve circular dependency problems with shared pointers.</li>
+<li>In <code>Rust</code>, <code>Weak</code> is the weak reference version of <code>Rc</code> and <code>Arc</code>, which helps prevent circular references and provides more flexible memory management.</li>
+</ul>
+<h3 id="simple-definition-of-weak">Simple Definition of <code>weak</code>
+</h3><p>The <code>weak</code> package is defined, with just a <code>Make</code> method and a <code>Value</code> method.<br>
+<img src="https://images.hxzhouh.com/blog-images/2024/12/6bd1951326d504266e1694b6b5f61f47.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Pasted image 20241216144653"
+	
+	
+></p>
+<p>By using <code>weak.Make</code>, a <code>weak.Pointer</code> is created, and if the original <code>*T</code> has not been GC, we can access its address through <code>weak.Pointer.Value</code>. If the object has been collected, the <code>Value</code> will return <code>nil</code>.</p>
+<p>You can see an example implementation of <code>weak</code> here: <a class="link" href="https://gist.github.com/hxzhouh/abd6be9ed8860e506643031bb2d446ce"  target="_blank" rel="noopener"
+    >Example Code on Gist</a></p>
+<h3 id="example-output">Example Output:
+</h3><div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span><span class="lnt">8
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">➜  weak git:<span class="o">(</span>main<span class="o">)</span> ✗ gotip version 
+</span></span><span class="line"><span class="cl">go version devel go1.24-18b5435 Sun Dec <span class="m">15</span> 21:41:28 <span class="m">2024</span> -0800 darwin/arm64
+</span></span><span class="line"><span class="cl">➜  weak git:<span class="o">(</span>main<span class="o">)</span> ✗ gotip run main.go              
+</span></span><span class="line"><span class="cl">originalObject:addr <span class="m">14000010050</span>
+</span></span><span class="line"><span class="cl">weakPtr addr:<span class="o">{</span>1400000e0d0<span class="o">}</span>,size:8
+</span></span><span class="line"><span class="cl">First GC :value:  Hello, World!
+</span></span><span class="line"><span class="cl">originalObject clean at:  <span class="m">1734340907</span>
+</span></span><span class="line"><span class="cl">Second GC: Weak reference value is nil
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>In this example:</p>
+<ul>
+<li>We create a <code>string</code> variable <code>originalObject</code> and use <code>weak.Make</code> to create a <code>weak.Pointer</code> called <code>weakPtr</code>.</li>
+<li>During the first garbage collection (GC), since <code>originalObject</code> is still in use, <code>weakPtr.Value</code> returns the address of <code>originalObject</code>.</li>
+<li>In the second GC, since <code>originalObject</code> is no longer used, it is collected by the GC, and <code>weakPtr.Value</code> returns <code>nil</code>.</li>
+</ul>
+<p>Also, <code>runtime.AddCleanup</code>, a new feature in Go 1.24, works similarly to <code>runtime.SetFinalizer</code> by allowing you to execute code when an object is garbage collected. This feature will be covered in more detail in a later post.</p>
+<h3 id="key-takeaways">Key Takeaways:
+</h3><ol>
+<li><code>weak.Make</code> creates a <code>weak.Pointer</code>, which hides the real memory address but does not affect the GC.</li>
+<li>If the real object is garbage collected, <code>weak.Pointer.Value</code> will return <code>nil</code>. Since we don&rsquo;t know when the real object will be reclaimed, always check the return value of <code>weak.Pointer.Value</code>.</li>
+</ol>
+<hr>
+<h3 id="the-practical-use-of-weak">The Practical Use of <code>weak</code>
+</h3><h4 id="canonicalization-maps">Canonicalization Maps
+</h4><p>You might remember the <code>unique</code> feature introduced in Go 1.23, which uses a single pointer (8 bytes) to represent multiple identical strings, saving memory. The <code>weak</code> package can achieve similar functionality (In fact, in Go 1.24, <code>unique</code> has been refactored using <code>weak</code>).</p>
+<h4 id="implementing-a-fixed-size-cache">Implementing a Fixed-Size Cache
+</h4><div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span><span class="lnt">25
+</span><span class="lnt">26
+</span><span class="lnt">27
+</span><span class="lnt">28
+</span><span class="lnt">29
+</span><span class="lnt">30
+</span><span class="lnt">31
+</span><span class="lnt">32
+</span><span class="lnt">33
+</span><span class="lnt">34
+</span><span class="lnt">35
+</span><span class="lnt">36
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">WeakCache</span> <span class="kd">struct</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">cache</span>   <span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="nx">weak</span><span class="p">.</span><span class="nx">Pointer</span><span class="p">[</span><span class="nx">list</span><span class="p">.</span><span class="nx">Element</span><span class="p">]</span> <span class="c1">// Use weak references to store values  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">mu</span>      <span class="nx">sync</span><span class="p">.</span><span class="nx">Mutex</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">storage</span> <span class="nx">Storage</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>  
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1">// Storage is a fixed-length cache based on doubly linked tables  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">type</span> <span class="nx">Storage</span> <span class="kd">struct</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">capacity</span> <span class="kt">int</span> <span class="c1">// Maximum size of the cache  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">list</span>     <span class="o">*</span><span class="nx">list</span><span class="p">.</span><span class="nx">List</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1">// Set
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">c</span> <span class="o">*</span><span class="nx">WeakCache</span><span class="p">)</span> <span class="nf">Set</span><span class="p">(</span><span class="nx">key</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">value</span> <span class="nx">any</span><span class="p">)</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// If the element already exists, update the value and move it to the head of the chain table  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">if</span> <span class="nx">elem</span><span class="p">,</span> <span class="nx">exists</span> <span class="o">:=</span> <span class="nx">c</span><span class="p">.</span><span class="nx">cache</span><span class="p">[</span><span class="nx">key</span><span class="p">];</span> <span class="nx">exists</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="k">if</span> <span class="nx">elemValue</span> <span class="o">:=</span> <span class="nx">elem</span><span class="p">.</span><span class="nf">Value</span><span class="p">();</span> <span class="nx">elemValue</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">elemValue</span><span class="p">.</span><span class="nx">Value</span> <span class="p">=</span> <span class="o">&amp;</span><span class="nx">CacheItem</span><span class="p">{</span><span class="nx">key</span><span class="p">:</span> <span class="nx">key</span><span class="p">,</span> <span class="nx">value</span><span class="p">:</span> <span class="nx">value</span><span class="p">}</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">c</span><span class="p">.</span><span class="nx">storage</span><span class="p">.</span><span class="nx">list</span><span class="p">.</span><span class="nf">MoveToFront</span><span class="p">(</span><span class="nx">elemValue</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">elemWeak</span> <span class="o">:=</span> <span class="nx">weak</span><span class="p">.</span><span class="nf">Make</span><span class="p">(</span><span class="nx">elemValue</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">c</span><span class="p">.</span><span class="nx">cache</span><span class="p">[</span><span class="nx">key</span><span class="p">]</span> <span class="p">=</span> <span class="nx">elemWeak</span>  
+</span></span><span class="line"><span class="cl">          <span class="k">return</span>  
+</span></span><span class="line"><span class="cl">       <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">          <span class="nx">c</span><span class="p">.</span><span class="nf">removeElement</span><span class="p">(</span><span class="nx">key</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">       <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// Remove the oldest unused element if capacity is full  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">if</span> <span class="nx">c</span><span class="p">.</span><span class="nx">storage</span><span class="p">.</span><span class="nx">list</span><span class="p">.</span><span class="nf">Len</span><span class="p">()</span> <span class="o">&gt;=</span> <span class="nx">c</span><span class="p">.</span><span class="nx">storage</span><span class="p">.</span><span class="nx">capacity</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">c</span><span class="p">.</span><span class="nf">evict</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="c1">// Add new element  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">elem</span> <span class="o">:=</span> <span class="nx">c</span><span class="p">.</span><span class="nx">storage</span><span class="p">.</span><span class="nx">list</span><span class="p">.</span><span class="nf">PushFront</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">CacheItem</span><span class="p">{</span><span class="nx">key</span><span class="p">:</span> <span class="nx">key</span><span class="p">,</span> <span class="nx">value</span><span class="p">:</span> <span class="nx">value</span><span class="p">})</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">elemWeak</span> <span class="o">:=</span> <span class="nx">weak</span><span class="p">.</span><span class="nf">Make</span><span class="p">(</span><span class="nx">elem</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">c</span><span class="p">.</span><span class="nx">cache</span><span class="p">[</span><span class="nx">key</span><span class="p">]</span> <span class="p">=</span> <span class="nx">elemWeak</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>In this example, we use a fixed-size list and a <code>Map</code> to store the position of each key in the list, where the value is a <code>weak.Pointer</code> to a <code>list.Element</code>. When we add a new cache item, we first check if the list is full. If so, the oldest item is evicted. When a key exists in the cache, <code>Map[key].Value</code> will return the address of the list element. If the item is evicted, <code>Map[key].Value</code> returns <code>nil</code>.</p>
+<p>This design helps to create an efficient, fixed-size cache system. Using <code>weak</code> with a lock-free queue structure allows for even more efficient data handling.</p>
+<p>I find <code>weak</code> to be quite helpful in specific scenarios. It&rsquo;s easy to use, and I plan to incorporate it into my projects.</p>
+<h3 id="further-reading-on-weak">Further Reading on <code>weak</code>:
+</h3><ol>
+<li><a class="link" href="https://tip.golang.org/doc/go1.24#weak"  target="_blank" rel="noopener"
+    >Go 1.24 Weak Documentation</a></li>
+<li><a class="link" href="https://github.com/golang/go/issues/67552"  target="_blank" rel="noopener"
+    >Go GitHub Issue #67552</a></li>
+</ol>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/tags/go/">Go</a>
+        
+            <a href="/tags/go1_24/">Go1_24</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            Last updated on Dec 16, 2024 19:06 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+<aside class="related-content--wrapper">
+    <h2 class="section-title">Related content</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="">
+    <a href="/p/go-high-performance-programming-ep11-lock-free-practice/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go High-Performance Programming EP11: lock-free practice</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/p/go-high-performance-programming-ep10-two-useful-golang-lock-free-programming-tips/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go High-Performance Programming EP10: Two Useful Golang Lock-Free Programming Tips</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/p/common-causes-of-memory-leaks-in-go-how-to-avoid-them/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Common Causes of Memory Leaks in Go: How to Avoid Them</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/p/common-rate-limiting-algorithms-analysis-and-implementation/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/09/f146e1aedafc425732135df81c5cd244.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/09/f146e1aedafc425732135df81c5cd244.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Common Rate Limiting Algorithms: Analysis and Implementation</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/p/go-proposal-a-new-json-lib-ep1/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/09/5cfcc61c5e45994e3e35ceb82bfa6bc8.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/09/5cfcc61c5e45994e3e35ceb82bfa6bc8.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go Proposal: A New Json Lib Ep1</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+
+    
+        
+    <script src="//cdn.jsdelivr.net/npm/twikoo@1.6.21/dist/twikoo.all.min.js"></script>
+<div id="tcomment"></div>
+<style>
+    .twikoo {
+        background-color: var(--card-background);
+        border-radius: var(--card-border-radius);
+        box-shadow: var(--shadow-l1);
+        padding: var(--card-padding);
+    }
+    :root[data-scheme="dark"] {
+        --twikoo-body-text-color-main: rgba(255, 255, 255, 0.9);
+        --twikoo-body-text-color: rgba(255, 255, 255, 0.7);
+    }
+    .twikoo .el-input-group__prepend,
+    .twikoo .tk-action-icon,
+    .twikoo .tk-submit-action-icon,
+    .twikoo .tk-time,
+    .twikoo .tk-comments-no,
+    .twikoo .tk-comments-count {
+        color: var(--twikoo-body-text-color);
+    }
+    .twikoo .el-input__inner,
+    .twikoo .el-textarea__inner,
+    .twikoo .tk-preview-container,
+    .twikoo .tk-content,
+    .twikoo .tk-nick,
+    .twikoo .tk-send {
+        color: var(--twikoo-body-text-color-main);
+    }
+    .twikoo .el-button{
+        color: var(--twikoo-body-text-color)!important;
+    }
+    .twikoo .el-input__count {
+        color: var(--twikoo-body-text-color) !important;
+    }
+    .OwO .OwO-body {
+        background-color: var(--body-background) !important;
+        color: var(--body-text-color) !important;
+    }
+</style><script>
+    twikoo.init({
+        envId: 'https:\/\/twikoo.yixiao9206.cn',
+        el: '#tcomment',lang: 'en',})
+</script>
+
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2024 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        Built with <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> <br />
+        Theme <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> designed by <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a>
+    </section>
+    <script src="/js/adblock-detection.js" defer></script>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>
