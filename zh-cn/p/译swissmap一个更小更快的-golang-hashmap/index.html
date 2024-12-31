@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="zh-cn" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="SwissMap是一个新开源的Golang HashMap，更快、更省内存，适用于高性能需求。它解决了Golang内置Map的局限性，提高了查找速度和内存效率。">
+<title>【译】SwissMap：一个更小、更快的 Golang HashMap</title>
+
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/%E8%AF%91swissmap%E4%B8%80%E4%B8%AA%E6%9B%B4%E5%B0%8F%E6%9B%B4%E5%BF%AB%E7%9A%84-golang-hashmap/'>
+
+<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="【译】SwissMap：一个更小、更快的 Golang HashMap">
+<meta property='og:description' content="SwissMap是一个新开源的Golang HashMap，更快、更省内存，适用于高性能需求。它解决了Golang内置Map的局限性，提高了查找速度和内存效率。">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/%E8%AF%91swissmap%E4%B8%80%E4%B8%AA%E6%9B%B4%E5%B0%8F%E6%9B%B4%E5%BF%AB%E7%9A%84-golang-hashmap/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:tag' content='Swissmap' /><meta property='article:published_time' content='2024-08-07T09:41:37&#43;08:00'/><meta property='article:modified_time' content='2024-08-07T09:41:35&#43;08:00'/>
+<meta name="twitter:site" content="@piaopiaopig">
+    <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="【译】SwissMap：一个更小、更快的 Golang HashMap">
+<meta name="twitter:description" content="SwissMap是一个新开源的Golang HashMap，更快、更省内存，适用于高性能需求。它解决了Golang内置Map的局限性，提高了查找速度和内存效率。">
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="切换菜单">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/zh-cn/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/zh-cn">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/zh-cn/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>主页</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/%E5%85%B3%E4%BA%8E/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>关于</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>归档</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>搜索</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" >English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" selected>中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>暗色模式</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">目录</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#动机">动机</a></li>
+    <li><a href="#swisstable-设计">SwissTable 设计</a></li>
+    <li><a href="#将-swisstable-移植到-golang">将 SwissTable 移植到 Golang</a></li>
+    <li><a href="#尝试一下-swissmap">尝试一下 SwissMap</a></li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="main-article">
+    <header class="article-header">
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/zh-cn/categories/tech/" style="background-color: #2a9d8f; color: #fff;">
+                技术
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/zh-cn/p/%E8%AF%91swissmap%E4%B8%80%E4%B8%AA%E6%9B%B4%E5%B0%8F%E6%9B%B4%E5%BF%AB%E7%9A%84-golang-hashmap/">【译】SwissMap：一个更小、更快的 Golang HashMap</a>
+        </h2>
+    
+        
+        <h3 class="article-subtitle">
+            SwissMap是一个新开源的Golang HashMap，更快、更省内存，适用于高性能需求。它解决了Golang内置Map的局限性，提高了查找速度和内存效率。
+        </h3>
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Aug 07, 2024</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    阅读时长: 3 分钟
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <p><img src="https://images.unsplash.com/photo-1685633224791-0ff57690a701?ixid=M3wzNjAwOTd8MHwxfHNlYXJjaHwxMnx8cHJvZ3JhbXxlbnwwfDB8fHwxNzM1NjI2NjgxfDA&amp;ixlib=rb-4.0.3"
+	
+	
+	
+	loading="lazy"
+	
+		alt="a man sitting at a desk using a laptop computer"
+	
+	
+></p>
+<div style="text-align: center;">
+      <a href="https://unsplash.com/photos/a-man-sitting-at-a-desk-using-a-laptop-computer-xEXDWdwEKow">Backlink</a> | |Photo by <a href="https://unsplash.com/@weareambitious?utm_source=Obsidian%20Image%20Inserter%20Plugin&utm_medium=referral">Ambitious Studio* | Rick Barrett</a> on <a href="https://unsplash.com/?utm_source=Obsidian%20Image%20Inserter%20Plugin&utm_medium=referral">Unsplash</a>
+      </div>
+<p>原文链接：https://www.dolthub.com/blog/2023-03-28-swiss-map/</p>
+<p>这篇文章介绍<code>SwissMap</code>，这是一个基于 SwissTable 的新<code> Golang HashTable</code>，比 Golang 内置的Map更快，更节约内存。我们将介绍这个新软件包的动机、设计和实现。并为您提供一些尝试它的理由。</p>
+<p>在 DoltHub，我们热爱 Golang，并已将其用于构建 DoltDB，这是第一个也是唯一一个可以进行分支、差异和合并的 SQL 数据库。通过构建 Dolt 的经验，我们在语言上获得了一些专业知识。我们发现了很多我们喜欢的功能，也遇到了一些比较尖锐的问题。Go 语言的一个重要的特点是简洁性。它暴露最小的接口，将复杂性藏在<code>Runtime</code>中（简洁不等于简单）。Golang 内置的 map 是其的一个很好的例子：内置在runtime 中，使用专门的接口进行读写。对于大多数用例，map 表现出色，但其不透明的实现使其很难扩展。在没有替代方案的情况下，我们决定自行编写HashTable。</p>
+<!-- more --> 
+<h2 id="动机">动机
+</h2><p>HashTable在 Dolt的代码库中被广泛使用，但在处理数据持久性和检索的底层堆栈中尤为重要。Dolt 中负责数据持久性的抽象被称为<code> ChunkStore</code>。 <code>ChunkStore</code>许多的实现，但它们共享一组普通的语义：使用 [20]byte 内容可寻址哈希来存储和获取名为“chunks”的可变长度字节缓冲区。Dolt 的表索引存储在<code>Prolly Trees</code>中，这是一种由这些可变大小块组成的基于树的数据结构。Prolly 树中的较高节点通过它们的哈希引用子节点。为了反解这个哈希地址，<code>ChunkStore </code>必须使用“块索引”将哈希地址映射到磁盘上的物理位置。相比之下，传统的 B 树索引使用固定大小的数据页，父节点直接通过它们在索引文件中的物理位置引用子节点。</p>
+<p>Dolt 中的大型 Prolly Tree 索引可以达到 4 至 5 个层级。遍历每个级别需要使用块索引来解析父节点和子节点之间的引用。为了与传统的 B 树索引竞争，块索引必须具有非常低的延迟。这个块索引的原始设计是一组静态的、排序的数组。查询索引涉及对每个数组进行二进制搜索，直到找到所需的地址为止。这种设计的好处在于它的紧凑性。块地址本身是 20 个字节，并且伴随着一个 uint64 文件偏移和一个 uint32 块长度。这种查找信息比传统的 B-Tree 索引存储的 8 字节文件偏移明显更臃肿。将查找结果存储在静态数组中最大限度地减小了块索引的内存占用。其缺点是查询索引的渐近复杂度为 m log(n)，其中 m 是数组的数量，n 是它们的平均大小。</p>
+<p>在设计我们的新 ChunkStore 实现 Chunk Journal 时，我们决定用HashTable替换基于数组的块索引。基于HashTable的索引将支持常数时间的哈希地址查找，从而减少 ChunkStore 的延迟。这种折衷方案是HashTable使用更多内存。实际上，使用多少内存取决于您使用的HashTable类型。我们的第一个实现使用了 Golang 的内置HashTable map，其&quot;最大负载因子&quot;为 6.5/8。这意味着在最佳情况下，map 使用的内存比基于数组的块索引多 23%。然而，平均情况要糟糕得多。那么，如何在不超出内存预算的情况下实现常数时间的块查找呢？这就是 SwissMap 的作用。</p>
+<h2 id="swisstable-设计">SwissTable 设计
+</h2><p>SwissMap 基于 Google 的开源 C++库 Abseil 中的&quot;SwissTable&quot;HashTable家族。这些HashTable被设计为 C++标准库中 <code>std::unordered_map</code> 的更快速、更小型的替代品。与 <code>std::unordered_map</code> 相比，它们具有更密集、更友好的缓存内存布局，并利用 SSE 指令加速键值查找。该设计被证明非常有效，目前已被其他语言采用。Rust 的 SwissTable 移植版 Hashbrown 已经被纳入 Rust 标准库，在 Rust 1.36 中推出。甚至在 Golang 社区内，正在进行采纳 SwissTable 设计作为运行时映射实现的努力。SwissTable 设计非常适用于我们的分块索引用例：速度快，并支持更高的最大负载因子 14/16。</p>
+<p>内置地图和 SwissMap 之间的主要设计差异在于它们的哈希方案。内置地图使用了一种“开放哈希”方案，其中具有冲突哈希的键值对被收集到单个“桶”中。要在地图中查找一个值，首先基于键的哈希选择一个桶，然后遍历桶中的每个键值对，直到找到匹配的键。</p>
+<p>![[Pasted image 20240807102716.png]]<br>
+内置地图中的关键优化是使用“额外散列位”，这允许在遍历存储桶的插槽时快速进行相等性检查。在直接将查询键与候选键进行比较之前，查找算法首先比较每个键的 8 位散列（与存储桶散列独立）以查看是否可能存在正匹配。这种快速预检具有 1/256 的误报率，并且极大加速了通过散列表存储桶进行搜索。要了解有关 Golang 内置地图的更多设计细节，请查看 Keith Randall 在 2016 年 GopherCon 大会上的演讲“地图实现内部”。</p>
+<p>SwissTable 使用一种名为“closed-hashing”的不同散列方案。与将元素收集到桶中不同，散列表中的每个键-值对被分配其自己的“槽位”。此槽位的位置由探测算法决定，其起始点由键的哈希决定。最简单的例子是线性探测搜索，它从槽位 hash(key) mod size 开始，并在找到所需键或到达空槽位时停止。这种探测方法用于查找现有键和为新键找到插入位置。与内置的 Golang map 类似，SwissTable 使用“短哈希”来加速探测期间的相等性检查。但与内置的 map 不同，它的哈希元数据与键-值数据分开存储。</p>
+<p>![[Pasted image 20240807095909.png]]</p>
+<p>SwissTable 的分段内存布局是其性能的关键驱动因素。在表中探测序列只访问元数据数组，直到找到短哈希匹配为止。这种访问模式在探测过程中最大化了缓存局部性。一旦找到元数据匹配，相应的键几乎总是匹配的。拥有专用的元数据数组意味着我们可以使用 SSE 指令并行比较 16 个短哈希！使用 SSE 指令不仅更快，还是 SwissTable 支持最大负载因子 14/16 的原因。观察表明，“负面”探测（搜索表中不存在的键）仅在遇到空槽时终止。表中空槽越少，平均探测序列找到它们所需的时间就越长。为了保持HashTable的 O（1）访问时间，平均探测序列的长度必须受到一个小的恒定因子的限制。有效使用 SSE 指令允许我们将平均探测序列的长度除以 16。经验测量表明，即使在最大负载时，平均探测序列执行的 16 路比较也不到两次！ 如果您对了解 SwissTable 设计（更多）感兴趣，请查看 Matt Kulukundis 在 2017 年 CppCon 大会上的演讲，“<a class="link" href="https://www.youtube.com/watch?t=1449&amp;v=ncHmEUmJZf4&amp;feature=youtu.be"  target="_blank" rel="noopener"
+    >逐步设计一个快速、高效、友好缓存的HashTable</a>”。</p>
+<h2 id="将-swisstable-移植到-golang">将 SwissTable 移植到 Golang
+</h2><p>有了设计方案，就是该动手实施了。第一步是编写 find() 算法。正如马特·库卢昆迪斯在他的讲座中指出的那样，find() 是 SwissTable 中所有核心方法的基础：Get()、Has()、Put() 和 Delete() 的实现都从“查找”特定槽开始。您可以在此处阅读实际实现，但为简单起见，我们将查看伪代码版本。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">Map</span><span class="p">)</span> <span class="nf">find</span><span class="p">(</span><span class="nx">key</span><span class="p">)</span> <span class="p">(</span><span class="nx">slot</span> <span class="kt">int</span><span class="p">,</span> <span class="nx">ok</span> <span class="kt">bool</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">h1</span><span class="p">,</span> <span class="nx">h2</span> <span class="o">:=</span> <span class="nf">hashOf</span><span class="p">(</span><span class="nx">key</span><span class="p">)</span>            <span class="c1">// high and low hash bits
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">s</span> <span class="o">:=</span> <span class="nf">modulus</span><span class="p">(</span><span class="nx">h1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="nx">m</span><span class="p">.</span><span class="nx">keys</span><span class="p">)</span><span class="o">/</span><span class="mi">16</span><span class="p">)</span> <span class="c1">// pick probe start
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">for</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="c1">// SSE probe for &#34;short hash&#34; matches
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>        <span class="nx">matches</span> <span class="o">:=</span> <span class="nf">matchH2</span><span class="p">(</span><span class="nx">m</span><span class="p">.</span><span class="nx">metadata</span><span class="p">[</span><span class="nx">s</span><span class="p">:</span><span class="nx">s</span><span class="o">+</span><span class="mi">16</span><span class="p">],</span> <span class="nx">h2</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="k">for</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">idx</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">matches</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="nx">m</span><span class="p">.</span><span class="nx">keys</span><span class="p">[</span><span class="nx">idx</span><span class="p">]</span> <span class="o">==</span> <span class="nx">key</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                <span class="k">return</span> <span class="nx">idx</span><span class="p">,</span> <span class="kc">true</span> <span class="c1">// found |key|
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>            <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="c1">// SSE probe for empty slots
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>        <span class="nx">matches</span> <span class="p">=</span> <span class="nf">matchEmpty</span><span class="p">(</span><span class="nx">m</span><span class="p">.</span><span class="nx">metadata</span><span class="p">[</span><span class="nx">s</span><span class="p">:</span><span class="nx">s</span><span class="o">+</span><span class="mi">16</span><span class="p">])</span>
+</span></span><span class="line"><span class="cl">        <span class="k">for</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">idx</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">matches</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">            <span class="k">return</span> <span class="nx">idx</span><span class="p">,</span> <span class="kc">false</span> <span class="c1">// found empty slot
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>        <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">s</span> <span class="o">+=</span> <span class="mi">16</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>搜索循环持续进行，直到达到两种退出条件之一。 对于调用 Get()、Has() 和 Delete() 的成功调用，当短哈希和键值都与查询键匹配时，会在第一个返回时终止。 对于 Put() 调用和未成功搜索的情况，会在找到空槽位时在第二个返回时终止。 在元数据数组中，空槽位由特殊的短哈希值编码。 matchEmpty 方法为此值执行 16 路 SSE 探测。</p>
+<p>Golang 对 SSE 指令的支持以及对 <a class="link" href="https://en.wikipedia.org/wiki/Single_instruction,_multiple_data"  target="_blank" rel="noopener"
+    >SIMD</a> 指令的支持都很有限。为了利用这些基本函数，SwissMap 使用优秀的 <a class="link" href="https://github.com/mmcloughlin/avo"  target="_blank" rel="noopener"
+    >Avo</a> 软件包生成具有相关 SSE 指令的汇编函数。您可以在<a class="link" href="https://github.com/dolthub/swiss/blob/main/simd/asm.go"  target="_blank" rel="noopener"
+    >这里</a>找到代码生成方法。</p>
+<p>块索引用例需要将哈希键映射到块查找数据的特定HashTable。但是，我们希望 SwissMap 是一个通用数据结构，可以在任何性能敏感的上下文中重复使用。使用泛型，我们可以定义一个HashTable，它和内置地图一样灵活</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">swiss</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Map</span><span class="p">[</span><span class="nx">K</span> <span class="nx">comparable</span><span class="p">,</span> <span class="nx">V</span> <span class="nx">any</span><span class="p">]</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">hash</span> <span class="nx">maphash</span><span class="p">.</span><span class="nx">Hasher</span><span class="p">[</span><span class="nx">K</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">    <span class="o">...</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>SwissMap 的哈希函数是 maphash，这是另一个 DoltHub 包，它使用 Golang 的运行时哈希程序，可以对任何可比较的数据类型进行哈希处理。在支持的平台上，运行时哈希程序将使用 AES 指令高效生成强哈希值。利用像 SSE 和 AES 这样的硬件优化使 SwissMap 能够将查找延迟最小化，甚至在处理更大的密钥集时胜过 Golang 的内置映射函数：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">goos: darwin
+</span></span><span class="line"><span class="cl">goarch: amd64
+</span></span><span class="line"><span class="cl">pkg: github.com/dolthub/swiss
+</span></span><span class="line"><span class="cl">cpu: Intel<span class="o">(</span>R<span class="o">)</span> Core<span class="o">(</span>TM<span class="o">)</span> i7-9750H CPU @ 2.60GHz
+</span></span><span class="line"><span class="cl">BenchmarkStringMaps
+</span></span><span class="line"><span class="cl"><span class="nv">num_keys</span><span class="o">=</span><span class="m">16</span>
+</span></span><span class="line"><span class="cl"><span class="nv">num_keys</span><span class="o">=</span><span class="m">16</span>     runtime_map-12         	112244895	        10.71 ns/op
+</span></span><span class="line"><span class="cl"><span class="nv">num_keys</span><span class="o">=</span><span class="m">16</span>     swiss.Map-12           	65813416	        16.50 ns/op
+</span></span><span class="line"><span class="cl"><span class="nv">num_keys</span><span class="o">=</span><span class="m">128</span>
+</span></span><span class="line"><span class="cl"><span class="nv">num_keys</span><span class="o">=</span><span class="m">128</span>    runtime_map-12        	94492519	        12.48 ns/op
+</span></span><span class="line"><span class="cl"><span class="nv">num_keys</span><span class="o">=</span><span class="m">128</span>    swiss.Map-12          	62943102	        16.09 ns/op
+</span></span><span class="line"><span class="cl"><span class="nv">num_keys</span><span class="o">=</span><span class="m">1024</span>
+</span></span><span class="line"><span class="cl"><span class="nv">num_keys</span><span class="o">=</span><span class="m">1024</span>   runtime_map-12       	63513327	        18.92 ns/op
+</span></span><span class="line"><span class="cl"><span class="nv">num_keys</span><span class="o">=</span><span class="m">1024</span>   swiss.Map-12         	70340458	        19.13 ns/op
+</span></span><span class="line"><span class="cl"><span class="nv">num_keys</span><span class="o">=</span><span class="m">8192</span>
+</span></span><span class="line"><span class="cl"><span class="nv">num_keys</span><span class="o">=</span><span class="m">8192</span>   runtime_map-12       	45350466	        24.77 ns/op
+</span></span><span class="line"><span class="cl"><span class="nv">num_keys</span><span class="o">=</span><span class="m">8192</span>   swiss.Map-12         	58187996	        21.29 ns/op
+</span></span><span class="line"><span class="cl"><span class="nv">num_keys</span><span class="o">=</span><span class="m">131072</span>
+</span></span><span class="line"><span class="cl"><span class="nv">num_keys</span><span class="o">=</span><span class="m">131072</span> runtime_map-12     	    35635282	        40.24 ns/op
+</span></span><span class="line"><span class="cl"><span class="nv">num_keys</span><span class="o">=</span><span class="m">131072</span> swiss.Map-12       	    36062179	        30.71 ns/op
+</span></span><span class="line"><span class="cl">PASS
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>最后，让我们来看看 SwissMap 的内存消耗。我们构建 SwissMap 的最初动机是为了使我们的块索引在最小化额外内存消耗的同时获得常数时间查找性能。SwissMap 支持比内置地图更高的最大负载因子（87.5% 对比 81.25%），但仅凭这一点并不能讲述整个故事。使用 Golang 的 pprof 分析器，我们可以测量每个地图的实际负载因子，针对一系列键集大小。测量代码可以在<a class="link" href="https://github.com/dolthub/swiss/blob/659bd3e40b4d6e5db4c95ace2908029cc47a51df/map_bench_test.go#L62"  target="_blank" rel="noopener"
+    >这里</a>找到。<br>
+![[Pasted image 20240807100333.png]]<br>
+在上面的图表中，我们可以看到瑞士地图（SwissMap）和内置地图之间内存消耗模式明显不同。为了比较，我们还包括了存储相同数据集的数组的内存消耗。内置地图的内存消耗遵循阶梯函数，因为它始终由两的幂次数个存储桶构建而成。这种情况的原因来自于经典的位运算优化模式。</p>
+<p>任何HashTable查找（开放或闭合哈希）都必须基于查询键的哈希选择探测序列的起始位置。将哈希值映射到桶或插槽是通过余数除法完成的。事实证明，余数除法操作符％在 CPU 周期中是相当昂贵的，但如果除数是 2 的幂，则可以用最低 n 位的超快速位掩码替换％操作。因此，许多HashTable被限制在 2 的幂大小。通常这会产生可忽略的内存开销，但在分配包含数百万元素的HashTable时，影响会很大！如上图所示，Golang 的内置映射平均使用的内存比 SwissTable 多 63％！</p>
+<p>为了避免余数除法的速度缓慢以及二次幂大小造成的内存膨胀，我们的 SwissMap 实现采用了一种不同的模映射，最初由 Daniel Lemire 提出。这个想法看似简单：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">fastModN</span><span class="p">(</span><span class="nx">x</span><span class="p">,</span> <span class="nx">n</span> <span class="kt">uint32</span><span class="p">)</span> <span class="kt">uint32</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nb">uint32</span><span class="p">((</span><span class="nb">uint64</span><span class="p">(</span><span class="nx">x</span><span class="p">)</span> <span class="o">*</span> <span class="nb">uint64</span><span class="p">(</span><span class="nx">n</span><span class="p">))</span> <span class="o">&gt;&gt;</span> <span class="mi">32</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>这种方法比经典的位掩码技术多出的操作很少，微基准测试只需四分之一纳秒。使用这种模数方法意味着我们受限于 uint32 的范围，但由于这个整数可以索引 16 个元素的存储桶，SwissMap 可以容纳高达 2 ^ 36 个元素。对于大多数用例来说，这已经足够了，并且可以节省内存，非常值得！</p>
+<h2 id="尝试一下-swissmap">尝试一下 SwissMap
+</h2><p>希望这是一次关于HashTable设计和高性能 Golang 的深入了解。SwissMap 已经证明是我们分块索引问题的有效解决方案，但我们希望它也能成为其他性能敏感用例的通用包。虽然它并不适合每种情况，但我们认为在关注大型HashTable的内存利用率时，它是有用的。如果您对 SwissMap 有任何反馈，请随时在存储库中创建一个问题。或者，如果您想直接与我们交流，请加入我们的 <a class="link" href="https://discord.com/invite/gqr7K4VNKe"  target="_blank" rel="noopener"
+    >Discord</a>！</p>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/zh-cn/tags/golang/">Golang</a>
+        
+            <a href="/zh-cn/tags/swissmap/">Swissmap</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            最后更新于 Aug 07, 2024 09:41 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+<aside class="related-content--wrapper">
+    <h2 class="section-title">相关文章</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/go-1.24-%E6%96%B0%E7%9A%84%E5%AE%98%E6%96%B9%E5%BA%93-synctest/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/12/260aeb6207be4b765d34328515c144dc.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/12/260aeb6207be4b765d34328515c144dc.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 1.24: 新的官方库 synctest</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/go1.24-%E6%96%B0%E7%9A%84%E6%A0%87%E5%87%86%E5%BA%93-os.root/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">go1.24: 新的标准库 os.Root</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/%E6%B7%B1%E5%85%A5%E6%8E%A2%E8%AE%A8-bigcache-%E7%9A%84%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%E6%89%8B%E6%AE%B5/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/12/d1288ea91074f2a22a8ac4fec04d8b90.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/12/d1288ea91074f2a22a8ac4fec04d8b90.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">深入探讨 BigCache 的性能优化手段</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8B-ep9-%E4%B8%A4%E4%B8%AA%E6%9C%89%E7%94%A8%E7%9A%84-golang-%E6%97%A0%E9%94%81%E7%BC%96%E7%A8%8B%E6%8A%80%E5%B7%A7/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 高性能编程 EP9: 两个有用的 Golang 无锁编程技巧</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8B-ep8-%E5%A6%82%E4%BD%95%E9%80%9A%E8%BF%87%E4%BC%98%E5%8C%96gc%E6%9D%A5%E6%8F%90%E9%AB%98golang%E4%BB%A3%E7%A0%81%E7%9A%84%E6%80%A7%E8%83%BD/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/08/42af44f7ae36f49965e3ad6452fca825.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/08/42af44f7ae36f49965e3ad6452fca825.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 高性能编程 EP8: 如何通过优化GC来提高Golang代码的性能</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+
+    
+        
+    <script src="//cdn.jsdelivr.net/npm/twikoo@1.6.21/dist/twikoo.all.min.js"></script>
+<div id="tcomment"></div>
+<style>
+    .twikoo {
+        background-color: var(--card-background);
+        border-radius: var(--card-border-radius);
+        box-shadow: var(--shadow-l1);
+        padding: var(--card-padding);
+    }
+    :root[data-scheme="dark"] {
+        --twikoo-body-text-color-main: rgba(255, 255, 255, 0.9);
+        --twikoo-body-text-color: rgba(255, 255, 255, 0.7);
+    }
+    .twikoo .el-input-group__prepend,
+    .twikoo .tk-action-icon,
+    .twikoo .tk-submit-action-icon,
+    .twikoo .tk-time,
+    .twikoo .tk-comments-no,
+    .twikoo .tk-comments-count {
+        color: var(--twikoo-body-text-color);
+    }
+    .twikoo .el-input__inner,
+    .twikoo .el-textarea__inner,
+    .twikoo .tk-preview-container,
+    .twikoo .tk-content,
+    .twikoo .tk-nick,
+    .twikoo .tk-send {
+        color: var(--twikoo-body-text-color-main);
+    }
+    .twikoo .el-button{
+        color: var(--twikoo-body-text-color)!important;
+    }
+    .twikoo .el-input__count {
+        color: var(--twikoo-body-text-color) !important;
+    }
+    .OwO .OwO-body {
+        background-color: var(--body-background) !important;
+        color: var(--body-text-color) !important;
+    }
+</style><script>
+    twikoo.init({
+        envId: 'https:\/\/twikoo.yixiao9206.cn',
+        el: '#tcomment',lang: 'en',})
+</script>
+
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2024 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+    </section>
+    <script src="/js/adblock-detection.js" defer></script>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>

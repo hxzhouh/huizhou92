@@ -7,13 +7,13 @@
 
 <link rel='canonical' href='https://huizhou92.com/zh-cn/p/%E8%A7%A3%E6%9E%90go-varint-%E7%9A%84%E4%BD%BF%E7%94%A8%E4%B8%8E%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/'>
 
-<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="解析Go: varint 的使用与实现原理">
+<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="解析Go: varint 的使用与实现原理">
 <meta property='og:description' content="最近发现 Golang 标准库竟然自带了 varint 的实现，代码位置在\u00a0encoding/binary/varint.go，这个跟protobuf里面的varint实现基本是一致的。刚好借助 golang 标准库的 varint 源码，我们来系统地学习和梳理下 varint。 熟悉 protobuf 的人肯定对 varint 不陌生，protobuf 里面除了带 fix (如 fixed32、fixed64) 之外的整数类型, 都是 varint 编码。 varint 的出现主要是为了解决两个问题： 空间效率：以 uint64 类型为例，可以表示的最大值为 18446744073709551615。然而在实际业务场景中，我们通常处理的整数值远小于 uint64 的最大值。假设在我们的业务中，需要处理的整数值仅为 1，但在网络传输过程中，我们却需要使用 8 个字节来表示这个值。这就导致了大量的空间浪费，因为大部分字节并没有实际存储有效的信息。varint 编码通过使用可变长度的字节序列来表示整数，使得小的整数可以用更少的字节表示，提高空间效率。 兼容性：varint 使得我们可以在不改变编码 / 解码逻辑的情况下，处理不同大小的整数。这意味着我们可以在不破坏向后兼容性的情况下，将一个字段从较小的整数类型（如 uint32）升级到较大的整数类型（如 uint64） 本文将通过分析 Golang 标准库自带的 varint 源码实现，介绍 varint 的设计原理以及Golang标准库是如何解决 varint 在编码负数时遇到的问题。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium.">
 <meta property='og:url' content='https://huizhou92.com/zh-cn/p/%E8%A7%A3%E6%9E%90go-varint-%E7%9A%84%E4%BD%BF%E7%94%A8%E4%B8%8E%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/'>
 <meta property='og:site_name' content='huizhou92&#39;s Blog'>
 <meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='go' /><meta property='article:published_time' content='2024-09-06T15:33:15&#43;08:00'/><meta property='article:modified_time' content='2024-09-06T15:33:13&#43;08:00'/>
-<meta name="twitter:site" content="@https://x.com/piaopiaopig">
-    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="解析Go: varint 的使用与实现原理">
+<meta name="twitter:site" content="@piaopiaopig">
+    <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="解析Go: varint 的使用与实现原理">
 <meta name="twitter:description" content="最近发现 Golang 标准库竟然自带了 varint 的实现，代码位置在\u00a0encoding/binary/varint.go，这个跟protobuf里面的varint实现基本是一致的。刚好借助 golang 标准库的 varint 源码，我们来系统地学习和梳理下 varint。 熟悉 protobuf 的人肯定对 varint 不陌生，protobuf 里面除了带 fix (如 fixed32、fixed64) 之外的整数类型, 都是 varint 编码。 varint 的出现主要是为了解决两个问题： 空间效率：以 uint64 类型为例，可以表示的最大值为 18446744073709551615。然而在实际业务场景中，我们通常处理的整数值远小于 uint64 的最大值。假设在我们的业务中，需要处理的整数值仅为 1，但在网络传输过程中，我们却需要使用 8 个字节来表示这个值。这就导致了大量的空间浪费，因为大部分字节并没有实际存储有效的信息。varint 编码通过使用可变长度的字节序列来表示整数，使得小的整数可以用更少的字节表示，提高空间效率。 兼容性：varint 使得我们可以在不改变编码 / 解码逻辑的情况下，处理不同大小的整数。这意味着我们可以在不破坏向后兼容性的情况下，将一个字段从较小的整数类型（如 uint32）升级到较大的整数类型（如 uint64） 本文将通过分析 Golang 标准库自带的 varint 源码实现，介绍 varint 的设计原理以及Golang标准库是如何解决 varint 在编码负数时遇到的问题。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium.">
     <link rel="shortcut icon" href="/favicon.ico" />
 
@@ -43,8 +43,6 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
      crossorigin="anonymous"></script>
 
 <script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
-
-<link rel="stylesheet" href="/css/extended/custom_css.css">
     </head>
     <body class="
     article-page

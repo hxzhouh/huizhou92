@@ -7,14 +7,14 @@
 
 <link rel='canonical' href='https://huizhou92.com/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8Bep3-%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90/'>
 
-<link rel="stylesheet" href="/scss/style.min.0304c6baf04e01a8fe70693791cb744d56a3578a3120a8796cefc66825aa39c7.css"><meta property='og:title' content="go 高性能编程EP3: 内存对齐">
+<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="go 高性能编程EP3: 内存对齐">
 <meta property='og:description' content="本文写作所有的例子以 macbookpro M1 为例，该CPU为64位架构 本文是Go语言高性能编程第三篇，分析了为什么需要内存对齐，Go语言内存对齐的规则，以及实际例子中内存对齐的使用，最后分享了两个工具，帮助我们在开发过程中发现内存对齐问题。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much. 什么是内存对齐？ 在程序员眼里，内存可能就是一个巨大的数组，我们可以在内存中写一个int16 ,占用两个字节。也可以写一个int32，占用四个字节。 比如 1 2 3 4 5 type T1 struct { a int8 b int64 c int16 } 这个 struce 不熟悉Go语言的人可能认为是下面这种布局。 总共占用11字节空间。 Figure 1: Memory layout as understood by some people 一个挨着一个，很紧凑，很完美。 但是实际上并不是这样的。如果我们打印 T1 的变量地址，会发现，他们大概长这样。总共占用 24字节空间。 Figure 2: T1 的实际内存布局">
 <meta property='og:url' content='https://huizhou92.com/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8Bep3-%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90/'>
 <meta property='og:site_name' content='huizhou92&#39;s Blog'>
 <meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='go' /><meta property='article:published_time' content='2024-07-03T15:48:59&#43;08:00'/><meta property='article:modified_time' content='2024-07-03T15:48:54&#43;08:00'/><meta property='og:image' content='https://images.hxzhouh.com/blog-images/2024/07/b3eca51256266ff32f8a27c85544e1c8.jpg' />
-<meta name="twitter:site" content="@https://x.com/piaopiaopig">
-    <meta name="twitter:creator" content="@https://x.com/piaopiaopig"><meta name="twitter:title" content="go 高性能编程EP3: 内存对齐">
-<meta name="twitter:description" content="本文写作所有的例子以 macbookpro M1 为例，该CPU为64位架构 本文是Go语言高性能编程第三篇，分析了为什么需要内存对齐，Go语言内存对齐的规则，以及实际例子中内存对齐的使用，最后分享了两个工具，帮助我们在开发过程中发现内存对齐问题。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much. 什么是内存对齐？ 在程序员眼里，内存可能就是一个巨大的数组，我们可以在内存中写一个int16 ,占用两个字节。也可以写一个int32，占用四个字节。 比如 1 2 3 4 5 type T1 struct { a int8 b int64 c int16 } 这个 struce 不熟悉Go语言的人可能认为是下面这种布局。 总共占用11字节空间。 Figure 1: Memory layout as understood by some people 一个挨着一个，很紧凑，很完美。 但是实际上并不是这样的。如果我们打印 T1 的变量地址，会发现，他们大概长这样。总共占用 24字节空间。 Figure 2: T1 的实际内存布局"><meta name="twitter:card" content="summary">
+<meta name="twitter:site" content="@piaopiaopig">
+    <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="go 高性能编程EP3: 内存对齐">
+<meta name="twitter:description" content="本文写作所有的例子以 macbookpro M1 为例，该CPU为64位架构 本文是Go语言高性能编程第三篇，分析了为什么需要内存对齐，Go语言内存对齐的规则，以及实际例子中内存对齐的使用，最后分享了两个工具，帮助我们在开发过程中发现内存对齐问题。 This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much. 什么是内存对齐？ 在程序员眼里，内存可能就是一个巨大的数组，我们可以在内存中写一个int16 ,占用两个字节。也可以写一个int32，占用四个字节。 比如 1 2 3 4 5 type T1 struct { a int8 b int64 c int16 } 这个 struce 不熟悉Go语言的人可能认为是下面这种布局。 总共占用11字节空间。 Figure 1: Memory layout as understood by some people 一个挨着一个，很紧凑，很完美。 但是实际上并不是这样的。如果我们打印 T1 的变量地址，会发现，他们大概长这样。总共占用 24字节空间。 Figure 2: T1 的实际内存布局"><meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:image" content='https://images.hxzhouh.com/blog-images/2024/07/b3eca51256266ff32f8a27c85544e1c8.jpg' />
     <link rel="shortcut icon" href="/favicon.ico" />
 
@@ -44,8 +44,6 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
      crossorigin="anonymous"></script>
 
 <script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
-
-<link rel="stylesheet" href="/css/extended/custom_css.css">
     </head>
     <body class="
     article-page
