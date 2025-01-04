@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Inside Go&rsquo;s SwissMap: A High-Performance Hash Map Design Go’s built-in map type is a cornerstone of its programming model, widely used for its simplicity and efficiency. But have you ever wondered about the magic behind its performance? The secret lies in its design, inspired by Abseil’s &ldquo;Swiss Table&rdquo; hash map—a sophisticated approach tailored to Go’s unique requirements. Let’s dive into the internals of swissmap and unravel how it achieves high performance while adhering to Go’s iteration semantics.">
+<title></title>
+
+<link rel='canonical' href='https://huizhou92.com/p/'>
+
+<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="">
+<meta property='og:description' content="Inside Go&rsquo;s SwissMap: A High-Performance Hash Map Design Go’s built-in map type is a cornerstone of its programming model, widely used for its simplicity and efficiency. But have you ever wondered about the magic behind its performance? The secret lies in its design, inspired by Abseil’s &ldquo;Swiss Table&rdquo; hash map—a sophisticated approach tailored to Go’s unique requirements. Let’s dive into the internals of swissmap and unravel how it achieves high performance while adhering to Go’s iteration semantics.">
+<meta property='og:url' content='https://huizhou92.com/p/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' />
+<meta name="twitter:site" content="@piaopiaopig">
+    <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="">
+<meta name="twitter:description" content="Inside Go&rsquo;s SwissMap: A High-Performance Hash Map Design Go’s built-in map type is a cornerstone of its programming model, widely used for its simplicity and efficiency. But have you ever wondered about the magic behind its performance? The secret lies in its design, inspired by Abseil’s &ldquo;Swiss Table&rdquo; hash map—a sophisticated approach tailored to Go’s unique requirements. Let’s dive into the internals of swissmap and unravel how it achieves high performance while adhering to Go’s iteration semantics.">
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="Toggle Menu">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>Home</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/about/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>About</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>Archives</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>Search</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" selected>English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" >中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>Dark Mode</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">Table of contents</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li>
+      <ol>
+        <li><a href="#core-concepts-and-terminology">Core Concepts and Terminology</a></li>
+        <li><a href="#lookup-efficient-and-parallel">Lookup: Efficient and Parallel</a></li>
+        <li><a href="#insertion-prioritizing-efficiency">Insertion: Prioritizing Efficiency</a></li>
+        <li><a href="#deletion-handling-tombstones">Deletion: Handling Tombstones</a></li>
+        <li><a href="#growth-dynamic-and-incremental">Growth: Dynamic and Incremental</a></li>
+        <li><a href="#iteration-complex-but-consistent">Iteration: Complex but Consistent</a></li>
+        <li><a href="#key-advantages-of-swissmap">Key Advantages of SwissMap</a></li>
+        <li><a href="#conclusion">Conclusion</a></li>
+      </ol>
+    </li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="main-article">
+    <header class="article-header">
+
+    <div class="article-details">
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/p/"></a>
+        </h2>
+    
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    5 minute read
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <p><strong>Inside Go&rsquo;s SwissMap: A High-Performance Hash Map Design</strong></p>
+<p>Go’s built-in <code>map</code> type is a cornerstone of its programming model, widely used for its simplicity and efficiency. But have you ever wondered about the magic behind its performance? The secret lies in its design, inspired by Abseil’s &ldquo;Swiss Table&rdquo; hash map—a sophisticated approach tailored to Go’s unique requirements. Let’s dive into the internals of <code>swissmap</code> and unravel how it achieves high performance while adhering to Go’s iteration semantics.</p>
+<h3 id="core-concepts-and-terminology">Core Concepts and Terminology
+</h3><p>To understand <code>swissmap</code>, let’s define some key terms:</p>
+<ul>
+<li><strong>Slot</strong>: A storage unit for a single key-value pair.</li>
+<li><strong>Group</strong>: A cluster of 8 slots and a control word (a single 8-byte word).</li>
+<li><strong>Control Word</strong>: Tracks the state of each slot (empty, deleted, or used) and stores the lower 7 bits of the key’s hash (H2).</li>
+<li><strong>H1 and H2</strong>: H1 represents the upper 57 bits of a hash, used for group selection; H2 represents the lower 7 bits, used for slot matching.</li>
+<li><strong>Table</strong>: A complete hash table consisting of multiple groups and metadata.</li>
+<li><strong>Map</strong>: The top-level data structure that manages one or more tables.</li>
+<li><strong>Directory</strong>: An array of tables that the map uses to manage hash space.</li>
+</ul>
+<hr>
+<h3 id="lookup-efficient-and-parallel">Lookup: Efficient and Parallel
+</h3><p><code>swissmap</code> optimizes key lookups with a two-step process:</p>
+<ol>
+<li>
+<p><strong>Initial Group Selection</strong>:</p>
+<ul>
+<li>H1 determines the initial group to probe.</li>
+</ul>
+</li>
+<li>
+<p><strong>Parallel Slot Matching</strong>:</p>
+<ul>
+<li>The control word allows simultaneous comparison of H2 values across all 8 slots in a group.</li>
+<li>If a match is found, the key undergoes a secondary comparison to confirm equality.</li>
+</ul>
+</li>
+</ol>
+<p>Here’s a snippet from the source code that demonstrates how control words and groups are used during lookups:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">table</span><span class="p">)</span> <span class="nf">lookup</span><span class="p">(</span><span class="nx">key</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">hash</span> <span class="kt">uintptr</span><span class="p">)</span> <span class="p">(</span><span class="nx">value</span> <span class="nx">any</span><span class="p">,</span> <span class="nx">ok</span> <span class="kt">bool</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">h1</span> <span class="o">:=</span> <span class="nx">hash</span> <span class="o">&gt;&gt;</span> <span class="mi">7</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">h2</span> <span class="o">:=</span> <span class="nb">byte</span><span class="p">(</span><span class="nx">hash</span> <span class="o">&amp;</span> <span class="mh">0x7F</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nx">probeLimit</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">group</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">t</span><span class="p">.</span><span class="nx">groups</span><span class="p">[</span><span class="nx">h1</span> <span class="o">&amp;</span> <span class="nx">t</span><span class="p">.</span><span class="nx">groupMask</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="nx">idx</span> <span class="o">:=</span> <span class="nx">group</span><span class="p">.</span><span class="nf">matchH2</span><span class="p">(</span><span class="nx">h2</span><span class="p">);</span> <span class="nx">idx</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="nx">group</span><span class="p">.</span><span class="nx">keys</span><span class="p">[</span><span class="nx">idx</span><span class="p">]</span> <span class="o">==</span> <span class="nx">key</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                <span class="k">return</span> <span class="nx">group</span><span class="p">.</span><span class="nx">values</span><span class="p">[</span><span class="nx">idx</span><span class="p">],</span> <span class="kc">true</span>
+</span></span><span class="line"><span class="cl">            <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">h1</span><span class="o">++</span> <span class="c1">// Quadratic probing
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="kc">false</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>When no match is found, <code>swissmap</code> uses <strong>quadratic probing</strong> to continue the search. This ensures that collisions are resolved efficiently without degrading performance.</p>
+<hr>
+<h3 id="insertion-prioritizing-efficiency">Insertion: Prioritizing Efficiency
+</h3><p>During insertion:</p>
+<ul>
+<li>If an empty slot exists, the key-value pair is placed there.</li>
+<li>If a slot is marked as deleted (a tombstone), it gets reused.</li>
+<li>If the table becomes too crowded, the map triggers <strong>growth</strong> to maintain performance.</li>
+</ul>
+<p>The following code snippet illustrates how tombstones are handled during insertion:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">table</span><span class="p">)</span> <span class="nf">insert</span><span class="p">(</span><span class="nx">key</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">value</span> <span class="nx">any</span><span class="p">,</span> <span class="nx">hash</span> <span class="kt">uintptr</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">h1</span> <span class="o">:=</span> <span class="nx">hash</span> <span class="o">&gt;&gt;</span> <span class="mi">7</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">h2</span> <span class="o">:=</span> <span class="nb">byte</span><span class="p">(</span><span class="nx">hash</span> <span class="o">&amp;</span> <span class="mh">0x7F</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nx">probeLimit</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">group</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">t</span><span class="p">.</span><span class="nx">groups</span><span class="p">[</span><span class="nx">h1</span> <span class="o">&amp;</span> <span class="nx">t</span><span class="p">.</span><span class="nx">groupMask</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="nx">idx</span> <span class="o">:=</span> <span class="nx">group</span><span class="p">.</span><span class="nf">findEmptyOrDeleted</span><span class="p">();</span> <span class="nx">idx</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">            <span class="nx">group</span><span class="p">.</span><span class="nx">keys</span><span class="p">[</span><span class="nx">idx</span><span class="p">]</span> <span class="p">=</span> <span class="nx">key</span>
+</span></span><span class="line"><span class="cl">            <span class="nx">group</span><span class="p">.</span><span class="nx">values</span><span class="p">[</span><span class="nx">idx</span><span class="p">]</span> <span class="p">=</span> <span class="nx">value</span>
+</span></span><span class="line"><span class="cl">            <span class="nx">group</span><span class="p">.</span><span class="nf">setH2</span><span class="p">(</span><span class="nx">idx</span><span class="p">,</span> <span class="nx">h2</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">            <span class="k">return</span>
+</span></span><span class="line"><span class="cl">        <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">h1</span><span class="o">++</span> <span class="c1">// Quadratic probing
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">t</span><span class="p">.</span><span class="nf">grow</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">t</span><span class="p">.</span><span class="nf">insert</span><span class="p">(</span><span class="nx">key</span><span class="p">,</span> <span class="nx">value</span><span class="p">,</span> <span class="nx">hash</span><span class="p">)</span> <span class="c1">// Retry insertion after growth
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><hr>
+<h3 id="deletion-handling-tombstones">Deletion: Handling Tombstones
+</h3><p>Deleting an entry is more complex than it appears. To ensure the integrity of the probe sequence:</p>
+<ul>
+<li>Slots are marked as “deleted” (tombstones) rather than emptied if the group is completely full.</li>
+<li>If a group has other empty slots, the deleted slot can be cleared.</li>
+<li>Tombstones are fully cleaned up only during table growth.</li>
+</ul>
+<p>Here’s an example of how deletion is implemented:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">table</span><span class="p">)</span> <span class="nb">delete</span><span class="p">(</span><span class="nx">key</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">hash</span> <span class="kt">uintptr</span><span class="p">)</span> <span class="kt">bool</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">h1</span> <span class="o">:=</span> <span class="nx">hash</span> <span class="o">&gt;&gt;</span> <span class="mi">7</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">h2</span> <span class="o">:=</span> <span class="nb">byte</span><span class="p">(</span><span class="nx">hash</span> <span class="o">&amp;</span> <span class="mh">0x7F</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nx">probeLimit</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">group</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">t</span><span class="p">.</span><span class="nx">groups</span><span class="p">[</span><span class="nx">h1</span> <span class="o">&amp;</span> <span class="nx">t</span><span class="p">.</span><span class="nx">groupMask</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="nx">idx</span> <span class="o">:=</span> <span class="nx">group</span><span class="p">.</span><span class="nf">matchH2</span><span class="p">(</span><span class="nx">h2</span><span class="p">);</span> <span class="nx">idx</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="nx">group</span><span class="p">.</span><span class="nx">keys</span><span class="p">[</span><span class="nx">idx</span><span class="p">]</span> <span class="o">==</span> <span class="nx">key</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                <span class="nx">group</span><span class="p">.</span><span class="nx">keys</span><span class="p">[</span><span class="nx">idx</span><span class="p">]</span> <span class="p">=</span> <span class="s">&#34;&#34;</span>
+</span></span><span class="line"><span class="cl">                <span class="nx">group</span><span class="p">.</span><span class="nf">setDeleted</span><span class="p">(</span><span class="nx">idx</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">                <span class="k">return</span> <span class="kc">true</span>
+</span></span><span class="line"><span class="cl">            <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">h1</span><span class="o">++</span> <span class="c1">// Quadratic probing
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="kc">false</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><hr>
+<h3 id="growth-dynamic-and-incremental">Growth: Dynamic and Incremental
+</h3><p>As the number of entries increases, <code>swissmap</code> grows to maintain efficiency:</p>
+<ol>
+<li>
+<p><strong>Threshold-Based Growth</strong>:</p>
+<ul>
+<li>If the load factor exceeds a predefined limit, the table grows.</li>
+</ul>
+</li>
+<li>
+<p><strong>Scaling Strategy</strong>:</p>
+<ul>
+<li>For smaller tables, growth involves replacing the table with one of double the capacity.</li>
+<li>For larger tables, the map splits into multiple smaller tables, each handling a subset of the hash space.</li>
+</ul>
+</li>
+<li>
+<p><strong>Extendible Hashing</strong>:</p>
+<ul>
+<li>High-order hash bits are used to index into a <strong>directory</strong> of tables.</li>
+<li>As new tables are added, the directory may also need to grow.</li>
+</ul>
+</li>
+</ol>
+<p>The growth process is illustrated in the following snippet:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">table</span><span class="p">)</span> <span class="nf">grow</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">newTable</span> <span class="o">:=</span> <span class="nf">allocateTable</span><span class="p">(</span><span class="nx">t</span><span class="p">.</span><span class="nx">capacity</span> <span class="o">*</span> <span class="mi">2</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">group</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">t</span><span class="p">.</span><span class="nx">groups</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nx">groupSize</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="nx">group</span><span class="p">.</span><span class="nf">isOccupied</span><span class="p">(</span><span class="nx">i</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                <span class="nx">newTable</span><span class="p">.</span><span class="nf">insert</span><span class="p">(</span><span class="nx">group</span><span class="p">.</span><span class="nx">keys</span><span class="p">[</span><span class="nx">i</span><span class="p">],</span> <span class="nx">group</span><span class="p">.</span><span class="nx">values</span><span class="p">[</span><span class="nx">i</span><span class="p">],</span> <span class="nf">hash</span><span class="p">(</span><span class="nx">group</span><span class="p">.</span><span class="nx">keys</span><span class="p">[</span><span class="nx">i</span><span class="p">]))</span>
+</span></span><span class="line"><span class="cl">            <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="o">*</span><span class="nx">t</span> <span class="p">=</span> <span class="o">*</span><span class="nx">newTable</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><hr>
+<h3 id="iteration-complex-but-consistent">Iteration: Complex but Consistent
+</h3><p>Go’s iteration semantics make iterating over maps more challenging:</p>
+<ol>
+<li>
+<p><strong>Requirements</strong>:</p>
+<ul>
+<li>Modifications during iteration must not cause duplicate entries.</li>
+<li>New entries may appear in the iteration.</li>
+<li>Deleted entries must not appear.</li>
+<li>Iteration order is unspecified but randomized.</li>
+</ul>
+</li>
+<li>
+<p><strong>Handling Growth During Iteration</strong>:</p>
+<ul>
+<li>Iteration continues over the original table, even if it’s replaced during growth.</li>
+<li>New entries in replacement tables are skipped.</li>
+<li>Deleted or modified entries are validated against the new table.</li>
+</ul>
+</li>
+</ol>
+<p>Here’s an example of how iteration is implemented:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">it</span> <span class="o">*</span><span class="nx">iterator</span><span class="p">)</span> <span class="nf">next</span><span class="p">()</span> <span class="p">(</span><span class="nx">key</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">value</span> <span class="nx">any</span><span class="p">,</span> <span class="nx">ok</span> <span class="kt">bool</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">it</span><span class="p">.</span><span class="nx">groupIndex</span> <span class="p">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="nx">it</span><span class="p">.</span><span class="nx">table</span><span class="p">.</span><span class="nx">groups</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">group</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">it</span><span class="p">.</span><span class="nx">table</span><span class="p">.</span><span class="nx">groups</span><span class="p">[</span><span class="nx">it</span><span class="p">.</span><span class="nx">groupIndex</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">        <span class="k">for</span> <span class="nx">it</span><span class="p">.</span><span class="nx">slotIndex</span> <span class="p">&lt;</span> <span class="nx">groupSize</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="nx">group</span><span class="p">.</span><span class="nf">isOccupied</span><span class="p">(</span><span class="nx">it</span><span class="p">.</span><span class="nx">slotIndex</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                <span class="nx">key</span> <span class="p">=</span> <span class="nx">group</span><span class="p">.</span><span class="nx">keys</span><span class="p">[</span><span class="nx">it</span><span class="p">.</span><span class="nx">slotIndex</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">                <span class="nx">value</span> <span class="p">=</span> <span class="nx">group</span><span class="p">.</span><span class="nx">values</span><span class="p">[</span><span class="nx">it</span><span class="p">.</span><span class="nx">slotIndex</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">                <span class="nx">it</span><span class="p">.</span><span class="nx">slotIndex</span><span class="o">++</span>
+</span></span><span class="line"><span class="cl">                <span class="k">return</span> <span class="nx">key</span><span class="p">,</span> <span class="nx">value</span><span class="p">,</span> <span class="kc">true</span>
+</span></span><span class="line"><span class="cl">            <span class="p">}</span>
+</span></span><span class="line"><span class="cl">            <span class="nx">it</span><span class="p">.</span><span class="nx">slotIndex</span><span class="o">++</span>
+</span></span><span class="line"><span class="cl">        <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">it</span><span class="p">.</span><span class="nx">groupIndex</span><span class="o">++</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">it</span><span class="p">.</span><span class="nx">slotIndex</span> <span class="p">=</span> <span class="mi">0</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="s">&#34;&#34;</span><span class="p">,</span> <span class="kc">nil</span><span class="p">,</span> <span class="kc">false</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><hr>
+<h3 id="key-advantages-of-swissmap">Key Advantages of SwissMap
+</h3><ol>
+<li>
+<p><strong>Parallelism</strong>:</p>
+<ul>
+<li>By leveraging the control word, <code>swissmap</code> performs multiple slot checks in parallel, significantly speeding up lookups.</li>
+</ul>
+</li>
+<li>
+<p><strong>Dynamic Scalability</strong>:</p>
+<ul>
+<li>Incremental growth strategies and extendible hashing ensure smooth scaling even under heavy loads.</li>
+</ul>
+</li>
+<li>
+<p><strong>Flexibility</strong>:</p>
+<ul>
+<li>Support for tombstones and randomized iteration order makes <code>swissmap</code> adaptable to various use cases.</li>
+</ul>
+</li>
+</ol>
+<hr>
+<h3 id="conclusion">Conclusion
+</h3><p><code>swissmap</code> exemplifies a perfect blend of performance and complexity, making it an ideal choice for Go’s <code>map</code> implementation. With its parallel lookups, efficient memory management, and adherence to Go’s iteration semantics, <code>swissmap</code> is a marvel of modern hash table design. Next time you use a <code>map</code> in Go, you’ll know the engineering brilliance powering it!</p>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    </footer>
+
+
+    
+</article>
+
+    
+
+    
+
+
+    
+        
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2025 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        Built with <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> <br />
+        Theme <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> designed by <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a>
+    </section>
+    <script src="/js/adblock-detection.js" defer></script>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>
