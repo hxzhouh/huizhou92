@@ -2,20 +2,20 @@
 <html lang="zh-cn" dir="ltr">
     <head><meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
-<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="探索encoding/json/v2中的空值处理改进，提升Go语言的灵活性与兼容性">
-<title>Go 提案: JSON v2 来了</title>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Golang 1.24 introduces `runtime.AddCleanup`, improving upon `runtime.SetFinalizer` by allowing multiple cleanup functions and better handling of object references, thus preventing memory leaks and enabling timely cleanup. #Golang #Go1_24">
+<title>Golang 1.24: runtime.AddCleanup 改进 runtime.SetFinalizer 的一些问题</title>
 
-<link rel='canonical' href='https://huizhou92.com/zh-cn/p/go-%E6%8F%90%E6%A1%88-json-v2-%E6%9D%A5%E4%BA%86/'>
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/golang-1.24-runtime.addcleanup-%E6%94%B9%E8%BF%9B-runtime.setfinalizer-%E7%9A%84%E4%B8%80%E4%BA%9B%E9%97%AE%E9%A2%98/'>
 
-<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="Go 提案: JSON v2 来了">
-<meta property='og:description' content="探索encoding/json/v2中的空值处理改进，提升Go语言的灵活性与兼容性">
-<meta property='og:url' content='https://huizhou92.com/zh-cn/p/go-%E6%8F%90%E6%A1%88-json-v2-%E6%9D%A5%E4%BA%86/'>
+<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="Golang 1.24: runtime.AddCleanup 改进 runtime.SetFinalizer 的一些问题">
+<meta property='og:description' content="Golang 1.24 introduces `runtime.AddCleanup`, improving upon `runtime.SetFinalizer` by allowing multiple cleanup functions and better handling of object references, thus preventing memory leaks and enabling timely cleanup. #Golang #Go1_24">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/golang-1.24-runtime.addcleanup-%E6%94%B9%E8%BF%9B-runtime.setfinalizer-%E7%9A%84%E4%B8%80%E4%BA%9B%E9%97%AE%E9%A2%98/'>
 <meta property='og:site_name' content='huizhou92&#39;s Blog'>
-<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='go' /><meta property='article:tag' content='JSON' /><meta property='article:tag' content='go1_24' /><meta property='article:published_time' content='2024-09-15T10:05:57&#43;08:00'/><meta property='article:modified_time' content='2024-09-15T10:05:55&#43;08:00'/><meta property='og:image' content='https://images.hxzhouh.com/blog-images/2024/09/5cfcc61c5e45994e3e35ceb82bfa6bc8.png' />
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='go1_24' /><meta property='article:tag' content='golang' /><meta property='article:published_time' content='2024-12-17T09:56:00&#43;08:00'/><meta property='article:modified_time' content='2024-12-17T09:55:37&#43;08:00'/><meta property='og:image' content='https://images.hxzhouh.com/blog-images/2024/12/53b24938b44977786f01d0db8768c34e.png' />
 <meta name="twitter:site" content="@piaopiaopig">
-    <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="Go 提案: JSON v2 来了">
-<meta name="twitter:description" content="探索encoding/json/v2中的空值处理改进，提升Go语言的灵活性与兼容性"><meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:image" content='https://images.hxzhouh.com/blog-images/2024/09/5cfcc61c5e45994e3e35ceb82bfa6bc8.png' />
+    <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="Golang 1.24: runtime.AddCleanup 改进 runtime.SetFinalizer 的一些问题">
+<meta name="twitter:description" content="Golang 1.24 introduces `runtime.AddCleanup`, improving upon `runtime.SetFinalizer` by allowing multiple cleanup functions and better handling of object references, thus preventing memory leaks and enabling timely cleanup. #Golang #Go1_24"><meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content='https://images.hxzhouh.com/blog-images/2024/12/53b24938b44977786f01d0db8768c34e.png' />
     <link rel="shortcut icon" href="/favicon.ico" />
 
   
@@ -329,10 +329,12 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
         <div class="widget--toc">
             <nav id="TableOfContents">
   <ol>
-    <li><a href="#背景">背景</a></li>
-    <li><a href="#omitempty">Omitempty</a></li>
-    <li><a href="#omitzero标签">Omitzero标签</a></li>
-    <li><a href="#结论">结论</a></li>
+    <li>
+      <ol>
+        <li><a href="#需要注意的几个问题">需要注意的几个问题</a></li>
+        <li><a href="#参考资料">参考资料</a></li>
+      </ol>
+    </li>
   </ol>
 </nav>
         </div>
@@ -357,9 +359,9 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
     <article class="has-image main-article">
     <header class="article-header">
         <div class="article-image">
-            <a href="/zh-cn/p/go-%E6%8F%90%E6%A1%88-json-v2-%E6%9D%A5%E4%BA%86/">
+            <a href="/zh-cn/p/golang-1.24-runtime.addcleanup-%E6%94%B9%E8%BF%9B-runtime.setfinalizer-%E7%9A%84%E4%B8%80%E4%BA%9B%E9%97%AE%E9%A2%98/">
                 
-                    <img src="https://images.hxzhouh.com/blog-images/2024/09/5cfcc61c5e45994e3e35ceb82bfa6bc8.png" loading="lazy" alt="Featured image of post Go 提案: JSON v2 来了" />
+                    <img src="https://images.hxzhouh.com/blog-images/2024/12/53b24938b44977786f01d0db8768c34e.png" loading="lazy" alt="Featured image of post Golang 1.24: runtime.AddCleanup 改进 runtime.SetFinalizer 的一些问题" />
                 
             </a>
         </div>
@@ -378,12 +380,12 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 
     <div class="article-title-wrapper">
         <h2 class="article-title">
-            <a href="/zh-cn/p/go-%E6%8F%90%E6%A1%88-json-v2-%E6%9D%A5%E4%BA%86/">Go 提案: JSON v2 来了</a>
+            <a href="/zh-cn/p/golang-1.24-runtime.addcleanup-%E6%94%B9%E8%BF%9B-runtime.setfinalizer-%E7%9A%84%E4%B8%80%E4%BA%9B%E9%97%AE%E9%A2%98/">Golang 1.24: runtime.AddCleanup 改进 runtime.SetFinalizer 的一些问题</a>
         </h2>
     
         
         <h3 class="article-subtitle">
-            探索encoding/json/v2中的空值处理改进，提升Go语言的灵活性与兼容性
+            Golang 1.24 introduces `runtime.AddCleanup`, improving upon `runtime.SetFinalizer` by allowing multiple cleanup functions and better handling of object references, thus preventing memory leaks and enabling timely cleanup. #Golang #Go1_24
         </h3>
         
     </div>
@@ -404,7 +406,7 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
   <path d="M3 11h16" />
   <path d="M18 16.496v1.504l1 1" />
 </svg>
-                <time class="article-time--published">Sep 15, 2024</time>
+                <time class="article-time--published">Dec 17, 2024</time>
             </div>
         
 
@@ -461,7 +463,7 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 
             <div>
                 
-                    <a href="https://huizhou92.com/p/go-proposal-a-new-json-lib-ep1/" class="link">English</a>
+                    <a href="https://huizhou92.com/p/golang-1.24-runtime.addcleanup/" class="link">English</a>
                 
             </div>
         </footer>
@@ -473,30 +475,19 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
     <section class="article-content">
     
     
-    <h2 id="背景">背景
-</h2><p><code>JSON</code>是一种轻量级的数据交换格式，Go 语言的 <code>encoding/json</code> 包自诞生以来已有十年之久，它凭借其灵活的特性赢得了开发者的青睐。开发者可以通过结构体标签自定义字段的 JSON 表现形式，也可以让 Go 类型自定义其在 JSON 中的表现形式。然而，随着 Go 语言和 JSON 标准的发展，一些功能上的缺失和性能上的限制逐渐暴露出来。</p>
-<ol>
-<li><strong>功能缺失</strong>：比如，不能指定 <code>time.Time</code> 类型的自定义格式化，不能在序列化时省略特定的 Go 值等。</li>
-<li><strong>API 缺陷</strong>：比如，没有简单的方法来正确地从 <code>io.Reader</code> 中反序列化 JSON。</li>
-<li><strong>性能限制</strong>：标准<code>json</code>包的性能表现并不尽如人意，特别是在处理大量数据时。</li>
-<li><strong>行为缺陷</strong>：比如，对 JSON 语法的错误处理不够严格，大小写不敏感的反序列化等。</li>
-</ol>
-<p>就像<a class="link" href="" ><code>math/v2</code></a>一样的，Go 官方提出<a class="link" href="https://github.com/golang/go/discussions/63397"  target="_blank" rel="noopener"
-    ><code>encoding/json/v2</code></a> 来解决上面的那些问题，本文主要目标是分析enable/json中 关于空值的一些问题。以及它在 <a class="link" href="https://github.com/golang/go/discussions/63397"  target="_blank" rel="noopener"
-    ><code>encoding/json/v2</code></a>中是如何被解决的。本文不涉及 <a class="link" href="https://github.com/golang/go/discussions/63397"  target="_blank" rel="noopener"
-    ><code>encoding/json/v2</code></a> 中其他的修改</p>
-<!-- more-->
+    <p>以前，我写过一篇<a class="link" href="https://medium.com/plain-golang-tutorial/decrypt-go-runtime-setfinalizer-adf19cb5fdcb"  target="_blank" rel="noopener"
+    >文章</a>介绍<code>runtime.SetFinalizer</code> 这个函数，用于在对象被清理的时候调用，但是这个函数有一些问题，导致它的使用频率比较低。</p>
 <blockquote>
-<p>This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
-    >Medium</a>. Thank you very much.</p>
+<ul>
+<li>在 Go 中使用 <code>SetFinalizer</code> 方法时，必须确保传递给它的对象引用指向分配内存的起始位置（即分配内存块的第一个字节）。这要求程序员理解“分配”（allocation）的概念，而这个概念通常在 Go 语言的抽象层级中并未明确暴露。</li>
+<li>对象只能定义一个<code>SetFinalizer</code>。</li>
+<li>带有<code>SetFinalizer</code>的对象如果涉及到任何引用循环，将无法被释放，<code>SetFinalizer</code>也不会运行。</li>
+<li>带有<code>SetFinalizer</code>的对象至少需要两个 GC 循环才能被释放。<br>
+<a class="link" href="https://github.com/golang/go/issues/67535"  target="_blank" rel="noopener"
+    >https://github.com/golang/go/issues/67535</a></li>
+</ul>
 </blockquote>
-<h2 id="omitempty">Omitempty
-</h2><p>在<a class="link" href="https://pkg.go.dev/encoding/json"  target="_blank" rel="noopener"
-    ><code>encoding/json</code></a>包中，有这样关于<code>omitempty</code>的描述:</p>
-<blockquote>
-<p>The &ldquo;omitempty&rdquo; option specifies that the field should be omitted from the encoding if the field has an empty value, defined as false, 0, a nil pointer, a nil interface value, and any empty array, slice, map, or string.</p>
-</blockquote>
-<p>但是，这种预定义的”空”值判断逻辑并不能满足所有实际场景的需求。我们来看一个例子：</p>
+<p>对于第一条，我们可以用一个例子说明</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt"> 1
@@ -521,57 +512,111 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </span><span class="lnt">20
 </span><span class="lnt">21
 </span><span class="lnt">22
-</span><span class="lnt">23
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Post</span> <span class="kd">struct</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">Id</span>         <span class="kt">int64</span>           <span class="s">`json:&#34;id,omitempty&#34;`</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">CreateTime</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Time</span>       <span class="s">`json:&#34;create_time,omitempty&#34;`</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">TagList</span>    <span class="p">[]</span><span class="nx">Tag</span>           <span class="s">`json:&#34;tag_list,omitempty&#34;`</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">Name</span>       <span class="kt">string</span>          <span class="s">`json:&#34;name,omitempty&#34;`</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">Score</span>      <span class="kt">float64</span>         <span class="s">`json:&#34;score,omitempty&#34;`</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">Category</span>   <span class="nx">Category</span>        <span class="s">`json:&#34;category,omitempty&#34;`</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">LikePost</span>   <span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="nx">Post</span> <span class="s">`json:&#34;like,omitempty&#34;`</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>  
-</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Tag</span> <span class="kd">struct</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">ID</span>   <span class="kt">string</span> <span class="s">`json:&#34;id&#34;`</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">Name</span> <span class="kt">string</span> <span class="s">`json:&#34;name&#34;`</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>  
-</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Category</span> <span class="kd">struct</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">ID</span>   <span class="kt">float64</span> <span class="s">`json:&#34;id&#34;`</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">Name</span> <span class="kt">string</span>  <span class="s">`json:&#34;name&#34;`</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">b</span><span class="p">,</span> <span class="nx">_</span> <span class="o">:=</span> <span class="nx">json</span><span class="p">.</span><span class="nf">Marshal</span><span class="p">(</span><span class="nb">new</span><span class="p">(</span><span class="nx">Post</span><span class="p">))</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nb">string</span><span class="p">(</span><span class="nx">b</span><span class="p">))</span>  
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">main</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="p">(</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;fmt&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;runtime&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">MyStruct</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">Field</span> <span class="kt">int</span>
 </span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">obj</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">MyStruct</span><span class="p">{</span><span class="nx">Field</span><span class="p">:</span> <span class="mi">42</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">runtime</span><span class="p">.</span><span class="nf">SetFinalizer</span><span class="p">(</span><span class="nx">obj</span><span class="p">,</span> <span class="kd">func</span><span class="p">(</span><span class="nx">m</span> <span class="o">*</span><span class="nx">MyStruct</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Finalizer called for:&#34;</span><span class="p">,</span> <span class="nx">m</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="p">})</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="c1">// 错误示例：传递字段引用而非对象本身
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="c1">// runtime.SetFinalizer(&amp;obj.Field, func(m *int) {
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="c1">//     fmt.Println(&#34;Finalizer called for:&#34;, *m)
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="c1">// })
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="p">}</span>
 </span></span></code></pre></td></tr></table>
 </div>
-</div><p>输出结果为：</p>
+</div><p>基于上面的原因，在<code>Golang 1.24</code> 中添加了一个新的函数<code>runtime.AddCleanUp</code> 来替换 <code>runtime.SetFinalizer</code> 。</p>
+<p><strong>注意： <code>runtime.AddCleanup</code> 和 <code>runtime.SetFinalizer</code> 都不保证 清理函数一定会被执行。</strong></p>
+<p>AddCleanup的设计目标是解决<code>runtime.SetFinalizer</code>的诸多问题，特别是避免对象复活，从而允许对象的及时清理，并支持对象的循环清理。<br>
+AddCleanup函数的原型如下：</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-json" data-lang="json"><span class="line"><span class="cl"><span class="p">{</span><span class="nt">&#34;create_time&#34;</span><span class="p">:</span><span class="s2">&#34;0001-01-01T00:00:00Z&#34;</span><span class="p">,</span><span class="nt">&#34;category&#34;</span><span class="p">:{</span><span class="nt">&#34;id&#34;</span><span class="p">:</span><span class="mi">0</span><span class="p">,</span><span class="nt">&#34;name&#34;</span><span class="p">:</span><span class="s2">&#34;&#34;</span><span class="p">}}</span>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nx">AddCleanup</span><span class="p">[</span><span class="nx">T</span><span class="p">,</span> <span class="nx">S</span> <span class="nx">any</span><span class="p">](</span><span class="nx">ptr</span> <span class="o">*</span><span class="nx">T</span><span class="p">,</span> <span class="nx">cleanup</span> <span class="kd">func</span><span class="p">(</span><span class="nx">S</span><span class="p">),</span> <span class="nx">arg</span> <span class="nx">S</span><span class="p">)</span> <span class="nx">Cleanup</span>
 </span></span></code></pre></td></tr></table>
 </div>
-</div><p>虽然<code>Post</code> 各个字段都添加了<code>omitempty</code> 。但是结果并不像我们预期一样。</p>
-<ol>
-<li><code>omitempty</code> 不能处理空 <code>struct</code> ，比如  <code>Post.Category</code></li>
-<li><code>omitempty</code> 处理<code>time.Time</code> 的方式不是 我们理解的<code>UTC =0</code>，也就是<code>1970-01-01 00:00:00</code> ,而是 <code>0001-01-01T00:00:00Z</code> 。</li>
-</ol>
-<h2 id="omitzero标签">Omitzero标签
-</h2><p>在 <a class="link" href="https://github.com/golang/go/discussions/63397"  target="_blank" rel="noopener"
-    ><code>encoding/json/v2</code></a> 中，会添加一个新的标签  <code>omitzero</code>，添加了两个功能，来解决上面的两个问题。（目前这个功能还在开发中，不过可以通过<a class="link" href="https://github.com/go-json-experiment/json"  target="_blank" rel="noopener"
-    >go-json-experiment/json</a>提前体验新功能）</p>
-<ol>
-<li>更好的<code>time.Time</code> 处理。</li>
-<li>支持自定义<code>IsZero</code>函数。<br>
-比如下面下面的代码：</li>
-</ol>
+</div><p>基于此，可以写一个RAII(Resource Acquisition Is Initialization)的 Demo 。在<a class="link" href="https://medium.com/plain-golang-tutorial/go1-24-new-std-lib-weak-6e0a79a27902"  target="_blank" rel="noopener"
+    ><code>go weak</code></a>  的文章中，我们实现了一个固定长度的<code>cache</code>，改一下代码，添加一个<code>newElemWeak</code> 方法，当最旧的elem 被逐出的时候，会自动调用<code>delete</code> 将<code>key</code> 从<code>cache</code> 中删除。不需要我们手动管理。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">c</span> <span class="o">*</span><span class="nx">WeakCache</span><span class="p">)</span> <span class="nf">newElemWeak</span><span class="p">(</span><span class="nx">elem</span> <span class="o">*</span><span class="nx">list</span><span class="p">.</span><span class="nx">Element</span><span class="p">)</span> <span class="nx">weak</span><span class="p">.</span><span class="nx">Pointer</span><span class="p">[</span><span class="nx">list</span><span class="p">.</span><span class="nx">Element</span><span class="p">]</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">elemWeak</span> <span class="o">:=</span> <span class="nx">weak</span><span class="p">.</span><span class="nf">Make</span><span class="p">(</span><span class="nx">elem</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">runtime</span><span class="p">.</span><span class="nf">AddCleanup</span><span class="p">(</span><span class="nx">elem</span><span class="p">,</span> <span class="kd">func</span><span class="p">(</span><span class="nx">name</span> <span class="kt">string</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nb">delete</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">cache</span><span class="p">,</span> <span class="nx">name</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="p">},</span> <span class="nx">elem</span><span class="p">.</span><span class="nx">Value</span><span class="p">.(</span><span class="o">*</span><span class="nx">CacheItem</span><span class="p">).</span><span class="nx">key</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="nx">elemWeak</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><h3 id="需要注意的几个问题">需要注意的几个问题
+</h3><p><code>AddCleanup</code>对<code>ptr</code>的约束很少，支持为同一个指针附加多个清理函数。不过，如果<code>ptr</code>可以从<code>cleanup</code>或<code>arg</code>中可达，<code>ptr</code>将永远不会被回收(memory leak)，清理函数也永远不会运行，目前来看这种情况也不会panic。 或许以后会用 <code>GODEBUG=gccheckmark=1</code> 这种模式来检测？<br>
+比如<br>
+<a class="link" href="https://gist.github.com/hxzhouh/5bb1d55259dcb4dab87b37beaef9bea2"  target="_blank" rel="noopener"
+    >https://gist.github.com/hxzhouh/5bb1d55259dcb4dab87b37beaef9bea2</a><br>
+<script src="https://gist.github.com/hxzhouh/5bb1d55259dcb4dab87b37beaef9bea2.js"></script>
+</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">NewFileResource</span><span class="p">(</span><span class="nx">filename</span> <span class="kt">string</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">os</span><span class="p">.</span><span class="nx">File</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">file</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">os</span><span class="p">.</span><span class="nf">OpenFile</span><span class="p">(</span><span class="nx">filename</span><span class="p">,</span> <span class="nx">os</span><span class="p">.</span><span class="nx">O_RDWR</span><span class="p">|</span><span class="nx">os</span><span class="p">.</span><span class="nx">O_CREATE</span><span class="p">,</span> <span class="mo">0666</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">runtime</span><span class="p">.</span><span class="nf">AddCleanup</span><span class="p">(</span><span class="nx">file</span><span class="p">,</span> <span class="kd">func</span><span class="p">(</span><span class="nx">f</span> <span class="o">*</span><span class="nx">os</span><span class="p">.</span><span class="nx">File</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;close f&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">_</span> <span class="p">=</span> <span class="nx">f</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">	<span class="p">},</span> <span class="nx">file</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="nx">file</span><span class="p">,</span> <span class="kc">nil</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p><code>fmt.Println(&quot;close f&quot;)</code> 不会被打印，file 也不会被关闭。</p>
+<p><a class="link" href="https://go.dev/play/p/zpZ_oMnpJRv?v=gotip"  target="_blank" rel="noopener"
+    >Try It</a><br>
+当给一个<code>ptr</code>绑定多个<code>cleanup</code> 的时候，因为<code>cleanup</code> 是在一个独立的<code>goroutine</code> 中运行，所以它的运行顺序可能是不固定的。</p>
+<p>特别是，如果几个对象相互指向并且同时变成 unreachable，它们的清理函数都可以运行，并且可以以任何顺序运行。即使对象形成一个循环也是如此（<code>runtime.SetFinalizer</code> 在这种情况下会产生内存泄露）。<br>
+例如</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt"> 1
@@ -599,75 +644,57 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </span><span class="lnt">23
 </span><span class="lnt">24
 </span><span class="lnt">25
-</span><span class="lnt">26
-</span><span class="lnt">27
-</span><span class="lnt">28
-</span><span class="lnt">29
-</span><span class="lnt">30
-</span><span class="lnt">31
-</span><span class="lnt">32
-</span><span class="lnt">33
-</span><span class="lnt">34
-</span><span class="lnt">35
-</span><span class="lnt">36
-</span><span class="lnt">37
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">main</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="p">(</span>  
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;encoding/json&#34;</span>  
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;fmt&#34;</span>    <span class="nx">v2_json</span> <span class="s">&#34;github.com/go-json-experiment/json&#34;</span>  
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;math&#34;</span>    <span class="s">&#34;time&#34;</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Post</span> <span class="kd">struct</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">Id</span>         <span class="kt">int64</span>           <span class="s">`json:&#34;id,omitempty,omitzero&#34;`</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">CreateTime</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Time</span>       <span class="s">`json:&#34;create_time,omitempty,omitzero&#34;`</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">TagList</span>    <span class="p">[]</span><span class="nx">Tag</span>           <span class="s">`json:&#34;tag_list,omitempty&#34;`</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">Name</span>       <span class="kt">string</span>          <span class="s">`json:&#34;name,omitempty&#34;`</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">Score</span>      <span class="nx">ScoreType</span>       <span class="s">`json:&#34;score,omitempty,omitzero&#34;`</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">Category</span>   <span class="nx">Category</span>        <span class="s">`json:&#34;category,omitempty,omitzero&#34;`</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">LikePost</span>   <span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="nx">Post</span> <span class="s">`json:&#34;like,omitempty&#34;`</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>  
-</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">ScoreType</span> <span class="kt">float64</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">s</span> <span class="nx">ScoreType</span><span class="p">)</span> <span class="nf">IsZero</span><span class="p">()</span> <span class="kt">bool</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">s</span> <span class="p">&lt;</span> <span class="nx">math</span><span class="p">.</span><span class="nx">MinInt64</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Tag</span> <span class="kd">struct</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">ID</span>   <span class="kt">string</span> <span class="s">`json:&#34;id&#34;`</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">Name</span> <span class="kt">string</span> <span class="s">`json:&#34;name&#34;`</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>  
-</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Category</span> <span class="kd">struct</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">ID</span>   <span class="kt">float64</span> <span class="s">`json:&#34;id&#34;`</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">Name</span> <span class="kt">string</span>  <span class="s">`json:&#34;name&#34;`</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">v1String</span><span class="p">,</span> <span class="nx">_</span> <span class="o">:=</span> <span class="nx">json</span><span class="p">.</span><span class="nf">Marshal</span><span class="p">(</span><span class="nb">new</span><span class="p">(</span><span class="nx">Post</span><span class="p">))</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nb">string</span><span class="p">(</span><span class="nx">v1String</span><span class="p">))</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">v2String</span><span class="p">,</span> <span class="nx">_</span> <span class="o">:=</span> <span class="nx">v2_json</span><span class="p">.</span><span class="nf">Marshal</span><span class="p">(</span><span class="nb">new</span><span class="p">(</span><span class="nx">Post</span><span class="p">))</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nb">string</span><span class="p">(</span><span class="nx">v2String</span><span class="p">))</span>  
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">x</span> <span class="o">:=</span> <span class="nx">MyStruct</span><span class="p">{</span><span class="nx">Name</span><span class="p">:</span> <span class="s">&#34;X&#34;</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">y</span> <span class="o">:=</span> <span class="nx">MyStruct</span><span class="p">{</span><span class="nx">Name</span><span class="p">:</span> <span class="s">&#34;Y&#34;</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">x</span><span class="p">.</span><span class="nx">Other</span> <span class="p">=</span> <span class="o">&amp;</span><span class="nx">y</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">y</span><span class="p">.</span><span class="nx">Other</span> <span class="p">=</span> <span class="o">&amp;</span><span class="nx">x</span>
+</span></span><span class="line"><span class="cl">	<span class="c1">//runtime.SetFinalizer(&amp;x, func(x *MyStruct) {
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="c1">//	fmt.Printf(&#34;Finalizer for %s is called\n&#34;, x.Name)
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="c1">//})
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="c1">//runtime.SetFinalizer(&amp;y, func(y *MyStruct) {
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="c1">//	fmt.Printf(&#34;Finalizer for %s is called\n&#34;, y.Name)
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="c1">//})
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="nx">xName</span> <span class="o">:=</span> <span class="nx">x</span><span class="p">.</span><span class="nx">Name</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">runtime</span><span class="p">.</span><span class="nf">AddCleanup</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">x</span><span class="p">,</span> <span class="kd">func</span><span class="p">(</span><span class="nx">name</span> <span class="kt">string</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Cleanup for&#34;</span><span class="p">,</span> <span class="nx">x</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="p">},</span> <span class="nx">xName</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">yName</span> <span class="o">:=</span> <span class="nx">y</span><span class="p">.</span><span class="nx">Name</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">runtime</span><span class="p">.</span><span class="nf">AddCleanup</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">y</span><span class="p">,</span> <span class="kd">func</span><span class="p">(</span><span class="nx">name</span> <span class="kt">string</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Cleanup for&#34;</span><span class="p">,</span> <span class="nx">x</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="p">},</span> <span class="nx">yName</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">time</span><span class="p">.</span><span class="nf">Sleep</span><span class="p">(</span><span class="nx">time</span><span class="p">.</span><span class="nx">Millisecond</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">runtime</span><span class="p">.</span><span class="nf">GC</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">time</span><span class="p">.</span><span class="nf">Sleep</span><span class="p">(</span><span class="nx">time</span><span class="p">.</span><span class="nx">Millisecond</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">runtime</span><span class="p">.</span><span class="nf">GC</span><span class="p">()</span>
 </span></span><span class="line"><span class="cl"><span class="p">}</span>
 </span></span></code></pre></td></tr></table>
 </div>
-</div><p>跟<code>encoding/json</code> 相比 <code>encoding/json/v2</code> 解决了上面提到的问题。</p>
+</div><p><a class="link" href="https://gist.github.com/hxzhouh/ca402c723faa78726baba7e56bff573a"  target="_blank" rel="noopener"
+    >https://gist.github.com/hxzhouh/ca402c723faa78726baba7e56bff573a</a><br>
+<script src="https://gist.github.com/hxzhouh/ca402c723faa78726baba7e56bff573a.js"></script>
+</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
 </span><span class="lnt">2
+</span><span class="lnt">3
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-json" data-lang="json"><span class="line"><span class="cl"><span class="p">{</span><span class="nt">&#34;create_time&#34;</span><span class="p">:</span><span class="s2">&#34;0001-01-01T00:00:00Z&#34;</span><span class="p">,</span><span class="nt">&#34;category&#34;</span><span class="p">:{</span><span class="nt">&#34;id&#34;</span><span class="p">:</span><span class="mi">0</span><span class="p">,</span><span class="nt">&#34;name&#34;</span><span class="p">:</span><span class="s2">&#34;&#34;</span><span class="p">}}</span>
-</span></span><span class="line"><span class="cl"><span class="p">{</span><span class="nt">&#34;score&#34;</span><span class="p">:</span><span class="mi">0</span><span class="p">}</span>
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">➜  AddCleanUp git:<span class="o">(</span>main<span class="o">)</span> ✗ gotip run main.go
+</span></span><span class="line"><span class="cl">Cleanup <span class="k">for</span> Y
+</span></span><span class="line"><span class="cl">Cleanup <span class="k">for</span> X
 </span></span></code></pre></td></tr></table>
 </div>
-</div><h2 id="结论">结论
-</h2><p>通过引入<code>omitzero</code>标签，Go语言在解决JSON编码中”空”值处理的痛点上迈出了重要一步。这个方案不仅满足了开发者对更灵活的”空”值定义的需求，还保持了与现有系统的兼容性。目前该<code>omitzero</code>的落地时间尚未确定，最早也要等到<code>Go 1.24</code>版本。此外，encoding/xml等也会效仿json包，增加<code>omitzero</code>标签。<br>
-<a class="link" href="https://github.com/golang/go/discussions/63397"  target="_blank" rel="noopener"
-    ><code>encoding/json/v2</code></a> 还包括 性能等其他方面的更新， 有兴趣的Gopher 可以 提前了解这些改动，本博客也会一直关注这个proposal<br>
-Go语言开始走向成熟。</p>
+</div><p><code>SetFinalizer</code> 的会阻止 GC，但是 <code>AddCleanup</code> 能够正常执行</p>
+<h3 id="参考资料">参考资料
+</h3><ol>
+<li><a class="link" href="https://github.com/golang/go/issues/67535"  target="_blank" rel="noopener"
+    >https://github.com/golang/go/issues/67535</a></li>
+</ol>
 
 </section>
 
@@ -676,11 +703,9 @@ Go语言开始走向成熟。</p>
     
     <section class="article-tags">
         
-            <a href="/zh-cn/tags/go/">Go</a>
-        
-            <a href="/zh-cn/tags/json/">JSON</a>
-        
             <a href="/zh-cn/tags/go1_24/">Go1_24</a>
+        
+            <a href="/zh-cn/tags/golang/">Golang</a>
         
     </section>
 
@@ -707,7 +732,7 @@ Go语言开始走向成熟。</p>
 
 
         <span>
-            最后更新于 Sep 15, 2024 10:05 CST
+            最后更新于 Dec 17, 2024 09:55 CST
         </span>
     </section></footer>
 
@@ -735,25 +760,6 @@ Go语言开始走向成熟。</p>
             
                 
 <article class="has-image">
-    <a href="/zh-cn/p/go1.24-%E6%96%B0%E7%9A%84%E6%A0%87%E5%87%86%E5%BA%93-weak/">
-        
-        
-            <div class="article-image">
-                
-                    <img src="https://images.hxzhouh.com/blog-images/2024/12/edbf334955e117265be0194bba455ee3.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/12/edbf334955e117265be0194bba455ee3.png"/>
-                
-            </div>
-        
-
-        <div class="article-details">
-            <h2 class="article-title">go1.24: 新的标准库 weak</h2>
-        </div>
-    </a>
-</article>
-
-            
-                
-<article class="has-image">
     <a href="/zh-cn/p/go-1.24-%E6%96%B0%E7%9A%84%E5%AE%98%E6%96%B9%E5%BA%93-synctest/">
         
         
@@ -766,25 +772,6 @@ Go语言开始走向成熟。</p>
 
         <div class="article-details">
             <h2 class="article-title">Go 1.24: 新的官方库 synctest</h2>
-        </div>
-    </a>
-</article>
-
-            
-                
-<article class="has-image">
-    <a href="/zh-cn/p/golang-1.24-runtime.addcleanup-%E6%94%B9%E8%BF%9B-runtime.setfinalizer-%E7%9A%84%E4%B8%80%E4%BA%9B%E9%97%AE%E9%A2%98/">
-        
-        
-            <div class="article-image">
-                
-                    <img src="https://images.hxzhouh.com/blog-images/2024/12/53b24938b44977786f01d0db8768c34e.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/12/53b24938b44977786f01d0db8768c34e.png"/>
-                
-            </div>
-        
-
-        <div class="article-details">
-            <h2 class="article-title">Golang 1.24: runtime.AddCleanup 改进 runtime.SetFinalizer 的一些问题</h2>
         </div>
     </a>
 </article>
@@ -804,13 +791,51 @@ Go语言开始走向成熟。</p>
 
             
                 
+<article class="has-image">
+    <a href="/zh-cn/p/%E8%AF%91%E4%BA%8B%E5%AE%9E%E4%B8%8Ago-%E6%98%AF%E4%B8%80%E7%A7%8D%E8%AE%BE%E8%AE%A1%E8%89%AF%E5%A5%BD%E7%9A%84%E8%AF%AD%E8%A8%80/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2025/01/3e744d40ce824be7a086698de46c5324.webp" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2025/01/3e744d40ce824be7a086698de46c5324.webp"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">[译]事实上,Go 是一种设计良好的语言</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
 <article class="">
-    <a href="/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8B-ep9-%E4%B8%A4%E4%B8%AA%E6%9C%89%E7%94%A8%E7%9A%84-golang-%E6%97%A0%E9%94%81%E7%BC%96%E7%A8%8B%E6%8A%80%E5%B7%A7/">
+    <a href="/zh-cn/p/goroutine-%E7%9A%84%E7%8A%B6%E6%80%81-%E5%88%87%E6%8D%A2/">
         
         
 
         <div class="article-details">
-            <h2 class="article-title">Go 高性能编程 EP9: 两个有用的 Golang 无锁编程技巧</h2>
+            <h2 class="article-title">goroutine 的状态 切换</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/go1.24-%E6%96%B0%E7%9A%84%E6%A0%87%E5%87%86%E5%BA%93-weak/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/12/edbf334955e117265be0194bba455ee3.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/12/edbf334955e117265be0194bba455ee3.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">go1.24: 新的标准库 weak</h2>
         </div>
     </a>
 </article>

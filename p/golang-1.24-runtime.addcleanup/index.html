@@ -2,20 +2,20 @@
 <html lang="en" dir="ltr">
     <head><meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
-<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Go1.22 add frist v2 lib, math/rand/v2 more fast and more Standard">
-<title>Go1.22 add frist v2 lib, math/rand/v2 more fast and more Standard</title>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Previously, I wrote an article about the runtime.SetFinalizer that is used to be called when an object is cleaned up, but some issues with this function cause it to be used less frequently. https://github.com/golang/go/issues/67535 SetFinalizer\u00a0must always refer to the first word of an allocation. This means programmers must know what an &lsquo;allocation&rsquo; is, whereas that distinction isn&rsquo;t generally exposed in the language. There cannot be more than one finalizer on any object.">
+<title>Golang 1.24: runtime.AddCleanup</title>
 
-<link rel='canonical' href='https://huizhou92.com/p/go1.22-add-frist-v2-lib-math/rand/v2-more-fast-and-more-standard/'>
+<link rel='canonical' href='https://huizhou92.com/p/golang-1.24-runtime.addcleanup/'>
 
-<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="Go1.22 add frist v2 lib, math/rand/v2 more fast and more Standard">
-<meta property='og:description' content="Go1.22 add frist v2 lib, math/rand/v2 more fast and more Standard">
-<meta property='og:url' content='https://huizhou92.com/p/go1.22-add-frist-v2-lib-math/rand/v2-more-fast-and-more-standard/'>
+<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="Golang 1.24: runtime.AddCleanup">
+<meta property='og:description' content="Previously, I wrote an article about the runtime.SetFinalizer that is used to be called when an object is cleaned up, but some issues with this function cause it to be used less frequently. https://github.com/golang/go/issues/67535 SetFinalizer\u00a0must always refer to the first word of an allocation. This means programmers must know what an &lsquo;allocation&rsquo; is, whereas that distinction isn&rsquo;t generally exposed in the language. There cannot be more than one finalizer on any object.">
+<meta property='og:url' content='https://huizhou92.com/p/golang-1.24-runtime.addcleanup/'>
 <meta property='og:site_name' content='huizhou92&#39;s Blog'>
-<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:tag' content='golib' /><meta property='article:published_time' content='2024-01-13T20:50:00&#43;00:00'/><meta property='article:modified_time' content='2024-05-18T22:44:00&#43;00:00'/><meta property='og:image' content='https://images.yixiao9206.cn/blog-images/2024/06/891b8023b8e7e301c90a69bfd10bdcb0.png' />
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='go1_24' /><meta property='article:tag' content='golang' /><meta property='article:published_time' content='2024-12-17T18:37:49&#43;08:00'/><meta property='article:modified_time' content='2024-12-17T18:37:47&#43;08:00'/><meta property='og:image' content='https://images.hxzhouh.com/blog-images/2024/12/53b24938b44977786f01d0db8768c34e.png' />
 <meta name="twitter:site" content="@piaopiaopig">
-    <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="Go1.22 add frist v2 lib, math/rand/v2 more fast and more Standard">
-<meta name="twitter:description" content="Go1.22 add frist v2 lib, math/rand/v2 more fast and more Standard"><meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:image" content='https://images.yixiao9206.cn/blog-images/2024/06/891b8023b8e7e301c90a69bfd10bdcb0.png' />
+    <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="Golang 1.24: runtime.AddCleanup">
+<meta name="twitter:description" content="Previously, I wrote an article about the runtime.SetFinalizer that is used to be called when an object is cleaned up, but some issues with this function cause it to be used less frequently. https://github.com/golang/go/issues/67535 SetFinalizer\u00a0must always refer to the first word of an allocation. This means programmers must know what an &lsquo;allocation&rsquo; is, whereas that distinction isn&rsquo;t generally exposed in the language. There cannot be more than one finalizer on any object."><meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content='https://images.hxzhouh.com/blog-images/2024/12/53b24938b44977786f01d0db8768c34e.png' />
     <link rel="shortcut icon" href="/favicon.ico" />
 
   
@@ -329,18 +329,8 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
         <div class="widget--toc">
             <nav id="TableOfContents">
   <ol>
-    <li><a href="#reasons">Reasons</a></li>
-    <li><a href="#change-list">change list</a></li>
-    <li><a href="#example">example</a>
-      <ol>
-        <li><a href="#read-seed">Read &amp; Seed</a>
-          <ol>
-            <li><a href="#internal">internal</a></li>
-          </ol>
-        </li>
-      </ol>
-    </li>
-    <li><a href="#summary">Summary</a></li>
+    <li><a href="#a-few-things-to-keep-in-mind">A Few Things to Keep in Mind</a></li>
+    <li><a href="#references">References</a></li>
   </ol>
 </nav>
         </div>
@@ -365,9 +355,9 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
     <article class="has-image main-article">
     <header class="article-header">
         <div class="article-image">
-            <a href="/p/go1.22-add-frist-v2-lib-math/rand/v2-more-fast-and-more-standard/">
+            <a href="/p/golang-1.24-runtime.addcleanup/">
                 
-                    <img src="https://images.yixiao9206.cn/blog-images/2024/06/891b8023b8e7e301c90a69bfd10bdcb0.png" loading="lazy" alt="Featured image of post Go1.22 add frist v2 lib, math/rand/v2 more fast and more Standard" />
+                    <img src="https://images.hxzhouh.com/blog-images/2024/12/53b24938b44977786f01d0db8768c34e.png" loading="lazy" alt="Featured image of post Golang 1.24: runtime.AddCleanup" />
                 
             </a>
         </div>
@@ -386,13 +376,9 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 
     <div class="article-title-wrapper">
         <h2 class="article-title">
-            <a href="/p/go1.22-add-frist-v2-lib-math/rand/v2-more-fast-and-more-standard/">Go1.22 add frist v2 lib, math/rand/v2 more fast and more Standard</a>
+            <a href="/p/golang-1.24-runtime.addcleanup/">Golang 1.24: runtime.AddCleanup</a>
         </h2>
     
-        
-        <h3 class="article-subtitle">
-            Go1.22 add frist v2 lib, math/rand/v2 more fast and more Standard
-        </h3>
         
     </div>
 
@@ -412,7 +398,7 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
   <path d="M3 11h16" />
   <path d="M18 16.496v1.504l1 1" />
 </svg>
-                <time class="article-time--published">Jan 13, 2024</time>
+                <time class="article-time--published">Dec 17, 2024</time>
             </div>
         
 
@@ -427,7 +413,7 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 
 
                 <time class="article-time--reading">
-                    3 minute read
+                    2 minute read
                 </time>
             </div>
         
@@ -455,6 +441,25 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
     
 
     
+        <footer class="article-translations">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+            <div>
+                
+                    <a href="https://huizhou92.com/zh-cn/p/golang-1.24-runtime.addcleanup-%E6%94%B9%E8%BF%9B-runtime.setfinalizer-%E7%9A%84%E4%B8%80%E4%BA%9B%E9%97%AE%E9%A2%98/" class="link">中文</a>
+                
+            </div>
+        </footer>
+    
 </div>
 
 </header>
@@ -462,93 +467,73 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
     <section class="article-content">
     
     
-    <p>The inaugural v2 version of the standard library in Go hails from the esteemed <a class="link" href="https://images.yixiao9206.cn/blog-images/2024/06/17edb26c313e3d09e62e17d988045a6f."  target="_blank" rel="noopener"
-    >math/rand/v2</a> repository. It is set to make its grand debut with the official release of Go1.22, poised to serve as a reliable and production-ready resource.</p>
+    <p>Previously, I wrote an <a class="link" href="https://medium.com/plain-golang-tutorial/decrypt-go-runtime-setfinalizer-adf19cb5fdcb"  target="_blank" rel="noopener"
+    >article</a> about the <code>runtime.SetFinalizer</code> that is used to be called when an object is cleaned up, but some issues with this function cause it to be used less frequently.</p>
 <blockquote>
-<p>This article is first published in the medium MPP plan. If you are a medium user, please follow me in <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
-    >medium</a>. Thank you very much.</p>
-</blockquote>
-<h2 id="reasons">Reasons
-</h2><ol>
-<li>The original <code>math/rand</code> library in the standard package had numerous deficiencies and areas for improvement. These included outdated generators, slow algorithms (performance), and unfortunate conflicts with <code>crypto/rand.Read</code>, among other issues.</li>
-<li>There is a plan in place to upgrade the v2 versions of standard libraries. Starting with <code>math</code> allows for the accumulation of experience and resolving tooling ecosystem challenges (such as support from tools like gopls and goimports for v2 packages). Subsequent iterations can then address higher-risk packages, like <code>sync/v2</code> or <code>encoding/json/v2</code>.</li>
-<li>Go1 requires compatibility guarantees, making it impractical to directly modify the original library. The issues with <code>math/rand</code> are also more prominent and evident.</li>
-</ol>
-<h2 id="change-list">change list
-</h2><ul>
-<li>Removed <code>Rand.Read</code> and the top-level <code>Read</code> function.</li>
-<li>Removed <code>Source.Seed</code>, <code>Rand.Seed</code>, and the top-level <code>Seed</code> function (meaning that top-level functions like <code>Int</code> will always use random seeding).</li>
-<li>Removed <code>Source64</code>, as <code>Source</code> now provides the <code>Uint64</code> method, making the original methods unnecessary.</li>
-<li>Utilized a more direct implementation for <code>Float32</code> and <code>Float64</code>. For example, in the case of <code>Float64</code>, the original implementation used <code>float64(r.Int63()) / (1&lt;&lt;63)</code>. However, this had a problem of occasionally rounding to <code>1.0</code>, while <code>Float64</code> should never round. The improvement involves changing it to <code>float64(r.Int63n(1&lt;&lt;53)) / (1&lt;&lt;53)</code>, which avoids the rounding issue.</li>
-<li>Implemented <code>Rand.Perm</code> using <code>Rand.Shuffle</code>. This improves efficiency and ensures only one implementation.</li>
-<li>Renamed <code>Int31</code>, <code>Int31n</code>, <code>Int63</code>, and <code>Int64n</code> to <code>Int32</code>, <code>Int32n</code>, <code>Int64</code>, and <code>Int64n</code>, respectively. These names were unnecessary and confusing.</li>
-<li>Added <code>Uint32</code>, <code>Uint32n</code>, <code>Uint64</code>, <code>Uint64n</code>, <code>Uint</code>, and <code>Uintn</code> as top-level functions and methods on <code>Rand</code>.</li>
-<li>Utilized Lemire’s algorithm in <code>Intn</code>, <code>Uintn</code>, <code>Int32n</code>, <code>Uint32n</code>, <code>Int64n</code>, and <code>Uint64n</code>, resulting in improved performance.</li>
-<li>Introduced a new implementation of <code>Source</code> called PCG-DXSM, including related APIs like <code>NewPCG</code>.</li>
-<li>Removed the Mitchell &amp; Reeds LFSR generator and <code>NewSource</code>.</li>
+<p><a class="link" href="https://github.com/golang/go/issues/67535"  target="_blank" rel="noopener"
+    >https://github.com/golang/go/issues/67535</a></p>
+<ul>
+<li><code>SetFinalizer</code> must always refer to the first word of an allocation. This means programmers must know what an &lsquo;allocation&rsquo; is, whereas that distinction isn&rsquo;t generally exposed in the language.</li>
+<li>There cannot be more than one finalizer on any object.</li>
+<li>Objects with finalizers involved in any reference cycle will silently fail to be freed, and the finalizer will never run.</li>
+<li>Objects with finalizers require at least two GC cycles to be freed.</li>
 </ul>
-<h2 id="example">example
-</h2><h3 id="read-seed">Read &amp; Seed
-</h3><p>The functions <code>Read</code> and <code>Seed</code> have been removed. It is recommended to use <code>crypto/rand</code>&rsquo;s <code>Read</code> function instead.</p>
-<div class="highlight"><div class="chroma">
-<table class="lntable"><tr><td class="lntd">
-<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
-</span><span class="lnt"> 2
-</span><span class="lnt"> 3
-</span><span class="lnt"> 4
-</span><span class="lnt"> 5
-</span><span class="lnt"> 6
-</span><span class="lnt"> 7
-</span><span class="lnt"> 8
-</span><span class="lnt"> 9
-</span><span class="lnt">10
-</span><span class="lnt">11
-</span><span class="lnt">12
-</span><span class="lnt">13
-</span></code></pre></td>
-<td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">import</span> <span class="p">(</span>
-</span></span><span class="line"><span class="cl">  <span class="s">&#34;crypto/rand&#34;</span>
-</span></span><span class="line"><span class="cl">  <span class="s">&#34;fmt&#34;</span>
-</span></span><span class="line"><span class="cl"> <span class="p">)</span>
-</span></span><span class="line"><span class="cl"> <span class="err">​</span>
-</span></span><span class="line"><span class="cl"> <span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">  <span class="nx">b</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">([]</span><span class="kt">byte</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">  <span class="nx">_</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">rand</span><span class="p">.</span><span class="nf">Read</span><span class="p">(</span><span class="nx">b</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">  <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">   <span class="nb">panic</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">  <span class="p">}</span>
-</span></span><span class="line"><span class="cl">  <span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;hxzhouh: %v\n&#34;</span><span class="p">,</span> <span class="nx">b</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl"> <span class="p">}</span>
-</span></span></code></pre></td></tr></table>
-</div>
-</div><p>output：</p>
+</blockquote>
+<p>For the above reasons, a new function <code>runtime.AddCleanUp</code> has been added in <code>Golang 1.24</code> to replace <code>runtime.SetFinalizer</code>.</p>
+<p><strong>Neither <code>runtime.AddCleanup</code> nor <code>runtime.SetFinalizer</code> is guaranteed to execute.</strong></p>
+<p>The design goal of AddCleanup is to address many of the problems with <code>runtime.SetFinalizer</code>, in particular avoids object resurrection, thus allowing for the timely cleanup of objects, and supporting cyclic cleanup of objects.<br>
+API</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">hxzhouh: <span class="o">[</span><span class="m">48</span> <span class="m">71</span> 122<span class="o">]</span>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nx">AddCleanup</span><span class="p">[</span><span class="nx">T</span><span class="p">,</span> <span class="nx">S</span> <span class="nx">any</span><span class="p">](</span><span class="nx">ptr</span> <span class="o">*</span><span class="nx">T</span><span class="p">,</span> <span class="nx">cleanup</span> <span class="kd">func</span><span class="p">(</span><span class="nx">S</span><span class="p">),</span> <span class="nx">arg</span> <span class="nx">S</span><span class="p">)</span> <span class="nx">Cleanup</span>
 </span></span></code></pre></td></tr></table>
 </div>
-</div><p>For the <code>Seed</code> function, it is advised to call <code>New(NewSource(seed))</code> in order to reinitialize the random number generator.</p>
-<h4 id="internal">internal
-</h4><p>The functions <code>N</code>, <code>IntN</code>, and <code>UintN</code> now utilize a novel implementation algorithm. Interested individuals are encouraged to allocate extra time to examine it in detail: <a class="link" href="https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/"  target="_blank" rel="noopener"
-    >A fast alternative to the modulo reduction</a></p>
-<p>The functions <code>Intn</code>, <code>Int31</code>, <code>Int31n</code>, <code>Int63</code>, and <code>Int64n</code> have been renamed as follows: <code>IntN</code>, <code>Int32</code>, <code>Int32N</code>, <code>Int64</code>, and <code>Int64N</code>, respectively.</p>
-<p>Additionally, new functions <code>Uint32</code>, <code>Uint32N</code>, <code>Uint64</code>, <code>Uint64N</code>, <code>Uint</code>, and <code>UintN</code> have been introduced to generate random unsigned integers. They have also been added as corresponding functions within the <code>Rand</code> structure.</p>
-<p>The newly added function <code>N</code> generates random numbers of arbitrary integer types. This function is implemented using generics, and the following integer types are its type parameters:</p>
-<ul>
-<li><code>int</code></li>
-<li><code>int8</code></li>
-<li><code>int16</code></li>
-<li><code>int32</code></li>
-<li><code>int64</code></li>
-</ul>
-<h2 id="summary">Summary
-</h2><p>Today, we have shared and further described the new <code>math/rand/v2</code> library, highlighting key changes including performance optimization (algorithm rewrite), standardization, and additions of new random generators.<br>
-Given the substantial amount of information covered, we have selected and presented only the aspects that are essential for understanding and using the library. However, for those who are interested in delving deeper, it is recommended to refer to the full documentation of <a class="link" href="https://pkg.go.dev/math/rand/v2@master"  target="_blank" rel="noopener"
-    >https://pkg.go.dev/math/rand/v2@master</a></p>
+</div><p>Based on this, a Demo for RAII (Resource Acquisition Is Initialization) can be written. In the <a class="link" href="https://medium.com/plain-golang-tutorial/go1-24-new-std-lib-weak-6e0a79a27902"  target="_blank" rel="noopener"
+    ><code>go weak</code></a> article, we implemented a fixed-length <code>cache</code>, changed the code a bit, add a <code> newElemWeak</code> method that automatically calls <code>delete</code> to remove the <code>key</code> from the <code>cache</code> when the oldest <code>elem</code> is evicted. We don&rsquo;t need to manage it manually.</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">c</span> <span class="o">*</span><span class="nx">WeakCache</span><span class="p">)</span> <span class="nf">newElemWeak</span><span class="p">(</span><span class="nx">elem</span> <span class="o">*</span><span class="nx">list</span><span class="p">.</span><span class="nx">Element</span><span class="p">)</span> <span class="nx">weak</span><span class="p">.</span><span class="nx">Pointer</span><span class="p">[</span><span class="nx">list</span><span class="p">.</span><span class="nx">Element</span><span class="p">]</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">elemWeak</span> <span class="o">:=</span> <span class="nx">weak</span><span class="p">.</span><span class="nf">Make</span><span class="p">(</span><span class="nx">elem</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">runtime</span><span class="p">.</span><span class="nf">AddCleanup</span><span class="p">(</span><span class="nx">elem</span><span class="p">,</span> <span class="kd">func</span><span class="p">(</span><span class="nx">name</span> <span class="kt">string</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nb">delete</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">cache</span><span class="p">,</span> <span class="nx">name</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="p">},</span> <span class="nx">elem</span><span class="p">.</span><span class="nx">Value</span><span class="p">.(</span><span class="o">*</span><span class="nx">CacheItem</span><span class="p">).</span><span class="nx">key</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="nx">elemWeak</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><h2 id="a-few-things-to-keep-in-mind">A Few Things to Keep in Mind
+</h2><p><code>AddCleanup</code> places a few constraints on <code>ptr</code> and supports attaching multiple cleanup functions to the same pointer. However, if <code>ptr</code> is reachable from <code>cleanup</code> or <code>arg</code>, it will never be reclaimed (memory leak), and the cleanup function will never run. For the moment, this scenario doesn&rsquo;t pan out. However, a pattern like <code>GODEBUG=gccheckmark=1</code> may detect this in the future.<br>
+For example<br>
+<a class="link" href="https://gist.github.com/hxzhouh/5bb1d55259dcb4dab87b37beaef9bea2"  target="_blank" rel="noopener"
+    >https://gist.github.com/hxzhouh/5bb1d55259dcb4dab87b37beaef9bea2</a><br>
+<script src="https://gist.github.com/hxzhouh/5bb1d55259dcb4dab87b37beaef9bea2.js"></script>
+<br>
+<code>fmt.Println(&quot;close f&quot;)</code> will not be printed, and the file will not be closed.</p>
+<p>When binding multiple <code>cleanups</code> to a single <code>ptr</code>, its running order may be variable since cleanup runs in a separate <code>goroutine</code>.</p>
+<p>In particular, if several objects point to each other and become unreachable simultaneously, their cleanup functions can all be run and in any order. This is true even if the objects form a loop (<code>runtime.SetFinalizer</code> creates a memory leak in this case).<br>
+for example<br>
+<a class="link" href="https://gist.github.com/hxzhouh/ca402c723faa78726baba7e56bff573a"  target="_blank" rel="noopener"
+    >https://gist.github.com/hxzhouh/ca402c723faa78726baba7e56bff573a</a><br>
+<script src="https://gist.github.com/hxzhouh/ca402c723faa78726baba7e56bff573a.js"></script>
+</p>
+<h2 id="references">References
+</h2><ol>
+<li><a class="link" href="https://github.com/golang/go/issues/67535"  target="_blank" rel="noopener"
+    >https://github.com/golang/go/issues/67535</a></li>
+</ol>
+
 </section>
 
 
@@ -556,9 +541,9 @@ Given the substantial amount of information covered, we have selected and presen
     
     <section class="article-tags">
         
-            <a href="/tags/golang/">Golang</a>
+            <a href="/tags/go1_24/">Go1_24</a>
         
-            <a href="/tags/golib/">Golib</a>
+            <a href="/tags/golang/">Golang</a>
         
     </section>
 
@@ -585,7 +570,7 @@ Given the substantial amount of information covered, we have selected and presen
 
 
         <span>
-            Last updated on May 18, 2024 22:44 UTC
+            Last updated on Dec 17, 2024 18:37 CST
         </span>
     </section></footer>
 
@@ -613,6 +598,38 @@ Given the substantial amount of information covered, we have selected and presen
             
                 
 <article class="has-image">
+    <a href="/p/go-1.24-new-std-lib-synctest/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/12/260aeb6207be4b765d34328515c144dc.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/12/260aeb6207be4b765d34328515c144dc.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 1.24: New STD-lib synctest</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/p/go1.24-new-std-lib-os.root/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">GO1.24: New Std-Lib os.Root</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
     <a href="/p/htmx-first-experience/">
         
         
@@ -632,50 +649,18 @@ Given the substantial amount of information covered, we have selected and presen
             
                 
 <article class="has-image">
-    <a href="/p/go-1.24-new-std-lib-synctest/">
+    <a href="/p/go1.24-new-std-lib-weak/">
         
         
             <div class="article-image">
                 
-                    <img src="https://images.hxzhouh.com/blog-images/2024/12/260aeb6207be4b765d34328515c144dc.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/12/260aeb6207be4b765d34328515c144dc.png"/>
+                    <img src="https://images.hxzhouh.com/blog-images/2024/12/edbf334955e117265be0194bba455ee3.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/12/edbf334955e117265be0194bba455ee3.png"/>
                 
             </div>
         
 
         <div class="article-details">
-            <h2 class="article-title">Go 1.24: New STD-lib synctest</h2>
-        </div>
-    </a>
-</article>
-
-            
-                
-<article class="has-image">
-    <a href="/p/golang-1.24-runtime.addcleanup/">
-        
-        
-            <div class="article-image">
-                
-                    <img src="https://images.hxzhouh.com/blog-images/2024/12/53b24938b44977786f01d0db8768c34e.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/12/53b24938b44977786f01d0db8768c34e.png"/>
-                
-            </div>
-        
-
-        <div class="article-details">
-            <h2 class="article-title">Golang 1.24: runtime.AddCleanup</h2>
-        </div>
-    </a>
-</article>
-
-            
-                
-<article class="">
-    <a href="/p/go1.24-new-std-lib-os.root/">
-        
-        
-
-        <div class="article-details">
-            <h2 class="article-title">GO1.24: New Std-Lib os.Root</h2>
+            <h2 class="article-title">GO1.24: New Std-Lib weak</h2>
         </div>
     </a>
 </article>
