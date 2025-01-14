@@ -7,7 +7,241 @@
         <generator>Hugo -- gohugo.io</generator>
         <language>zh-cn</language>
         <copyright>Copyright © 2023 huizhou92</copyright>
-        <lastBuildDate>Sat, 11 Jan 2025 19:35:01 +0800</lastBuildDate><atom:link href="https://huizhou92.com/zh-cn/index.xml" rel="self" type="application/rss+xml" /><item>
+        <lastBuildDate>Tue, 14 Jan 2025 21:18:02 +0800</lastBuildDate><atom:link href="https://huizhou92.com/zh-cn/index.xml" rel="self" type="application/rss+xml" /><item>
+        <title>高效管理定时事件</title>
+        <link>https://huizhou92.com/zh-cn/p/%E9%AB%98%E6%95%88%E7%AE%A1%E7%90%86%E5%AE%9A%E6%97%B6%E4%BA%8B%E4%BB%B6/</link>
+        <pubDate>Tue, 14 Jan 2025 21:18:02 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/zh-cn/p/%E9%AB%98%E6%95%88%E7%AE%A1%E7%90%86%E5%AE%9A%E6%97%B6%E4%BA%8B%E4%BB%B6/</guid>
+        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2025/01/12ffa89f8829f9122cee1eb9daacc043.webp" alt="Featured image of post 高效管理定时事件" /&gt;&lt;h3 id=&#34;场景描述&#34;&gt;场景描述
+&lt;/h3&gt;&lt;p&gt;假设有这么一个场景： 假设100w个Uber司机，司机客户端每隔10分钟上报一次数据，如果十分钟没有上报数据，服务端会将这个司机设置为离线状态，不给他派单。&lt;br&gt;
+我们应该如何实现这个功能？&lt;br&gt;
+通常的情况下，我们会使用redis的zset等第三方组件来实现这个功能，但是如果不使用第三方组件呢？只使用内存呢？大概有这么几种方案：&lt;/p&gt;
+&lt;!-- more--&gt;
+&lt;h3 id=&#34;使用-timer&#34;&gt;使用 Timer
+&lt;/h3&gt;&lt;ol&gt;
+&lt;li&gt;用一个Map&amp;lt;uid, last_time&amp;gt;来记录每一个uid最近一次上报时间；&lt;/li&gt;
+&lt;li&gt;当某个用户uid存活上报时，实时更新这个Map；&lt;/li&gt;
+&lt;li&gt;启动一个timer，轮询扫描这个Map，看每个uid的last_time是否超过30s，如果超过则进行超时处理；&lt;/li&gt;
+&lt;/ol&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;14
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;15
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;16
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;17
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;var&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;userMap&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;sync&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Map&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;timeout&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;10&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;time&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Minute&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;checkTimeout&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;now&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;time&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Now&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;().&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Unix&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;userMap&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Range&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;key&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;value&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;any&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;bool&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;nx&#34;&gt;uid&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;key&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.(&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;nx&#34;&gt;lastTime&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;value&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.(&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;int64&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;k&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;now&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;-&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;lastTime&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;&amp;gt;&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;int64&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;timeout&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;			&lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Printf&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;User %s timed out. Last reported at %d\n&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;uid&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;lastTime&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;			&lt;span class=&#34;nx&#34;&gt;userMap&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Delete&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;uid&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; 
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;kc&#34;&gt;true&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;p&#34;&gt;})&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;&lt;strong&gt;缺点&lt;/strong&gt;：这种方式效率不高，因为需要定期轮询整个Map，时间复杂度较高。&lt;/p&gt;
+&lt;h2 id=&#34;使用gorutine-管理&#34;&gt;使用gorutine 管理
+&lt;/h2&gt;&lt;p&gt;另一种方案是为每个司机分配一个Goroutine来管理其心跳超时。&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;14
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nx&#34;&gt;timer&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;time&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;NewTimer&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;timeout&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;time&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Second&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;k&#34;&gt;select&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;k&#34;&gt;case&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;lt;-&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;heartbeat&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// 收到心跳信号
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;		&lt;span class=&#34;k&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;!&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;timer&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Stop&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;			&lt;span class=&#34;o&#34;&gt;&amp;lt;-&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;timer&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;C&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;nx&#34;&gt;timer&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Reset&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;timeout&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;time&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Second&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;k&#34;&gt;case&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;lt;-&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;timer&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;C&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// 超时
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;		&lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Printf&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;Driver %s timed out.\n&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;uid&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;k&#34;&gt;break&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nx&#34;&gt;userMap&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Delete&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;uid&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;&lt;strong&gt;缺点&lt;/strong&gt;：虽然不需要轮询，但每个Goroutine都有栈空间，当司机数量非常多时，内存消耗会很大。此外，Timer的创建和删除时间复杂度为O(log n)，效率有待提升。&lt;br&gt;
+前面铺垫了这么久，终于轮到我们的主角了，时间轮。&lt;/p&gt;
+&lt;h2 id=&#34;时间轮算法&#34;&gt;时间轮算法
+&lt;/h2&gt;&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/3dd09d201f36757e8aa9b8280ee35476.webp&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;时间轮算法示意图&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;时间轮是一个比较有趣的算法，他最早刊登在George Varghese和Tony Lauck的&lt;a class=&#34;link&#34; href=&#34;https://dl.acm.org/doi/pdf/10.1145/37499.37504&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;论文&lt;/a&gt;里。 时间轮算法的核心逻辑是：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;使用一个固定大小的数组表示时间轮，每个槽（slot）对应一个时间间隔。&lt;/li&gt;
+&lt;li&gt;每个slot中保存一个slice，用于存储当前时间段到期的任务，同时有一个Map&amp;lt;uid,slot&amp;gt; 记录uid对应的solt。&lt;/li&gt;
+&lt;li&gt;使用一个定时器定期(interval)推动时间轮向前走一格(position)，处理当前solt(position)的所有任务.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;所以我们可以使用时间轮算法来实现功能。我们可以将interval设置成1s, 时间轮的slots为600，司机上报数据的时候，将记录插入到position-1的slot里面。&lt;br&gt;
+一个简单的Demo:&lt;br&gt;
+&lt;a class=&#34;link&#34; href=&#34;https://gist.github.com/hxzhouh/5e2cedc633bae0a7cf27d9f5d47bef01&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;https://gist.github.com/hxzhouh/5e2cedc633bae0a7cf27d9f5d47bef01&lt;/a&gt;&lt;/p&gt;
+&lt;h4 id=&#34;优势&#34;&gt;优势
+&lt;/h4&gt;&lt;ul&gt;
+&lt;li&gt;时间轮算法添加任务只需要将任务append 到对应的slot里面，所以时间复杂度是O(1)&lt;/li&gt;
+&lt;li&gt;时间轮槽位固定，内存占用可控。&lt;/li&gt;
+&lt;li&gt;适合处理大量定时任务&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h4 id=&#34;劣势&#34;&gt;劣势
+&lt;/h4&gt;&lt;ul&gt;
+&lt;li&gt;时间轮的精度受限于interval 的大小。&lt;/li&gt;
+&lt;li&gt;如果任务分配不均匀的话，Delete Task 可能退化到 O(n)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;所以时间轮特别适合以下场景的任务：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;大量任务的快速插入&lt;/li&gt;
+&lt;li&gt;对时间精度要求不是特别高的场景&lt;/li&gt;
+&lt;li&gt;任务分布相对均匀的情况&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;时间轮的优化&#34;&gt;时间轮的优化
+&lt;/h3&gt;&lt;h4 id=&#34;简单时间轮&#34;&gt;简单时间轮
+&lt;/h4&gt;&lt;p&gt;将所有任务的换算为多少秒或毫秒(Interval)后到期，维护一个最大过期值(Interval)长度的数组。比如有10个任务，分别是1s，3s，100s 后到期，就建一个100长度的数组，数组的index就是每个任务的过期值(Interval)，当前时间作为第一个元素，那么第二个元素就是1s 后到期的任务，第三个是2s 后到期的任务，依次类推。当前时间随着时钟的前进(tick)，逐步发现过期的任务。&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;开始调度一个任务(start_timer): 来一个新的调度任务时，换算任务的到期时间为到期值(Interval)，直接放入相应的数组元素内即可，时间复杂度是O(1)。&lt;/li&gt;
+&lt;li&gt;时钟走一格，需要做的操作(per_tick_bookkeeping)：时钟走一格直接拿出这一格内的任务执行即可，时间复杂度是O(1)。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;hash有序时间轮-demo中使用的就是这种方式的变种&#34;&gt;Hash有序时间轮 （Demo中使用的就是这种方式的变种）
+&lt;/h2&gt;&lt;p&gt;简单时间轮虽然很完美，所有的操作时间复杂度都是O(1)，但是当任务最大到期时间值非常大时，比如100w，构建这样一个数组是非常耗费内存的。可以改进一下，仍然使用时间轮，但是是用hash的方式将所有任务放到一定大小的数组内。 这个数组长度可以想象为时间轮的格子数量，轮盘大小(W)。&lt;br&gt;
+hash的数值仍然是每个任务的到期值(Interval)，最简单的是轮盘大小(W)取值为2的幂次方，Interval哈希W后取余，余数作为轮盘数组的index，数组每个元素可能会有多个任务，把这些任务按照过期的绝对时间排序，这样就形成了一个链表，或者叫做时间轮上的一个桶。&lt;br&gt;
+但是Hash有序时间轮  还是有一个问题:&lt;br&gt;
+因为只使用了一个时间轮，处理每一格的定时任务列表的时间复杂度是 O(n)，如果定时任务数量很大，分摊到每一格的定时任务列表就会很长，这样的处理性能显然是让人无法接受的。&lt;/p&gt;
+&lt;h4 id=&#34;层级时间轮&#34;&gt;层级时间轮
+&lt;/h4&gt;&lt;p&gt;层级时间轮通过使用多个时间轮，并且对每个时间轮采用不同的 u，可以有效地解决简单时间轮及其变体实现的问题。&lt;br&gt;
+参考 Kafka 的 &lt;a class=&#34;link&#34; href=&#34;https://www.confluent.io/blog/apache-kafka-purgatory-hierarchical-timing-wheels/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Purgatory&lt;/a&gt; 中的层级时间轮实现：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;每一层时间轮的大小都固定为 n，第一层时间轮的时间单位为u，那么第二层时间轮（我们称之为第一层时间轮的溢出时间轮 Overflow Wheel）的时间单位就为 n*u，以此类推。&lt;/li&gt;
+&lt;li&gt;除了第一层时间轮是固定创建的，其他层的时间轮（均为溢出时间轮）都是按需创建的。&lt;/li&gt;
+&lt;li&gt;原先插入到高层时间轮（溢出时间轮）的定时任务，随着时间的流逝，会被降级重新插入到低层时间轮中。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;总结&#34;&gt;总结
+&lt;/h3&gt;&lt;p&gt;总结一下几种算法的性能。&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;算法&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;&lt;strong&gt;添加任务复杂度&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;&lt;strong&gt;删除任务复杂度&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;&lt;strong&gt;内存开销&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;&lt;strong&gt;适用场景&lt;/strong&gt;&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Single Timer&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;O(1)O(1)&lt;/td&gt;
+&lt;td&gt;O(1)O(1)&lt;/td&gt;
+&lt;td&gt;低&lt;/td&gt;
+&lt;td&gt;适用于任务数量少、精度要求高的场景。&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Multi Timer&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;O(log⁡n)O(\log n)&lt;/td&gt;
+&lt;td&gt;O(log⁡n)O(\log n)&lt;/td&gt;
+&lt;td&gt;中&lt;/td&gt;
+&lt;td&gt;适用于任务数量中等、任务间相互独立的场景，但内存开销较高。&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Simple Timing Wheel&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;O(1)O(1)&lt;/td&gt;
+&lt;td&gt;O(n)O(n)&lt;/td&gt;
+&lt;td&gt;高（大数组）&lt;/td&gt;
+&lt;td&gt;任务分布均匀、到期时间精度要求较低的场景。&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Hash Timing Wheel&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;O(1)O(1)&lt;/td&gt;
+&lt;td&gt;O(n)O(n)&lt;/td&gt;
+&lt;td&gt;中&lt;/td&gt;
+&lt;td&gt;任务数量较多、分布不均匀但对精度容忍较高的场景。&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Hierarchical Timing Wheel&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;O(1)O(1)&lt;/td&gt;
+&lt;td&gt;O(log⁡n)O(\log n)&lt;/td&gt;
+&lt;td&gt;低到中&lt;/td&gt;
+&lt;td&gt;适用于大规模任务、层级管理复杂任务、需要较长生命周期的任务调度场景（如 Kafka 和 Netty）。&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h3 id=&#34;参考资料&#34;&gt;参考资料
+&lt;/h3&gt;&lt;ol&gt;
+&lt;li&gt;真实世界中的时间轮
+&lt;ul&gt;
+&lt;li&gt;Netty4 的 &lt;a class=&#34;link&#34; href=&#34;https://netty.io/4.0/api/io/netty/util/HashedWheelTimer.html&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;HashedWheelTimer&lt;/a&gt;。&lt;/li&gt;
+&lt;li&gt;Kafka 的 &lt;a class=&#34;link&#34; href=&#34;https://www.confluent.io/blog/apache-kafka-purgatory-hierarchical-timing-wheels/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Purgatory&lt;/a&gt;。&lt;/li&gt;
+&lt;li&gt;go-zero 的&lt;a class=&#34;link&#34; href=&#34;https://github.com/zeromicro/go-zero/blob/12071d17b40f4b58ba541747cab9eda30955c18c/core/collection/timingwheel.go#L66&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;NewTimingWheel&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://paulcavallaro.com/blog/hashed-and-hierarchical-timing-wheels/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Hashed and Hierarchical Timing Wheels&lt;/a&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;hr&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/%E9%AB%98%E6%95%88%E7%AE%A1%E7%90%86%E5%AE%9A%E6%97%B6%E4%BA%8B%E4%BB%B6/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;本文长期连接&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;如果您觉得我的博客对你有帮助，请通过 &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RSS&lt;/a&gt;订阅我。&lt;/li&gt;
+&lt;li&gt;或者在&lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;X&lt;/a&gt;上关注我。&lt;/li&gt;
+&lt;li&gt;如果您有&lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt;账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+        </item>
+        <item>
         <title>Go 中的错误处理:新的?运算符</title>
         <link>https://huizhou92.com/zh-cn/p/streamlining-error-handling-in-go-exploring-the-new-proposal/</link>
         <pubDate>Sat, 11 Jan 2025 19:35:01 +0800</pubDate>
