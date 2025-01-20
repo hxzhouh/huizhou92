@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Hyrum's Law: when using APIs, consider implementation details as they affect stability & maintenance. Avoid anti-patterns for better code quality!">
+<title>Software Engineering: Hyrum&#39;s Law</title>
+
+<link rel='canonical' href='https://huizhou92.com/p/software-engineering-hyrums-law/'>
+
+<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="Software Engineering: Hyrum's Law">
+<meta property='og:description' content="Hyrum's Law: when using APIs, consider implementation details as they affect stability & maintenance. Avoid anti-patterns for better code quality!">
+<meta property='og:url' content='https://huizhou92.com/p/software-engineering-hyrums-law/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='Hyrum' /><meta property='article:tag' content='SoftwareEngineering' /><meta property='article:published_time' content='2025-01-08T11:55:37&#43;08:00'/><meta property='article:modified_time' content='2025-01-08T11:55:33&#43;08:00'/><meta property='og:image' content='https://images.hxzhouh.com/blog-images/2025/01/d84fece1bcb074ea83d61d4e2c43a8a2.webp' />
+<meta name="twitter:site" content="@piaopiaopig">
+    <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="Software Engineering: Hyrum's Law">
+<meta name="twitter:description" content="Hyrum's Law: when using APIs, consider implementation details as they affect stability & maintenance. Avoid anti-patterns for better code quality!"><meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content='https://images.hxzhouh.com/blog-images/2025/01/d84fece1bcb074ea83d61d4e2c43a8a2.webp' />
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="Toggle Menu">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>Home</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/about/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>About</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>Archives</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>Search</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" selected>English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" >中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>Dark Mode</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">Table of contents</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#what-is-hyrums-law">What is Hyrum&rsquo;s Law?</a></li>
+    <li><a href="#importance-of-hyrums-law">Importance of Hyrum&rsquo;s Law</a></li>
+    <li><a href="#a-case-study">A Case Study</a></li>
+    <li><a href="#practical-recommendations-for-hyrums-law">Practical Recommendations for Hyrum&rsquo;s Law</a></li>
+    <li><a href="#anti-patterns-related-to-hyrums-law">Anti-Patterns Related to Hyrum&rsquo;s Law</a></li>
+    <li><a href="#conclusion">Conclusion</a></li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="has-image main-article">
+    <header class="article-header">
+        <div class="article-image">
+            <a href="/p/software-engineering-hyrums-law/">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2025/01/d84fece1bcb074ea83d61d4e2c43a8a2.webp" loading="lazy" alt="Featured image of post Software Engineering: Hyrum&#39;s Law" />
+                
+            </a>
+        </div>
+    
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/categories/tech/" style="background-color: #2a9d8f; color: #ffff;">
+                tech
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/p/software-engineering-hyrums-law/">Software Engineering: Hyrum&#39;s Law</a>
+        </h2>
+    
+        
+        <h3 class="article-subtitle">
+            Hyrum&#39;s Law: when using APIs, consider implementation details as they affect stability &amp; maintenance. Avoid anti-patterns for better code quality!
+        </h3>
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Jan 08, 2025</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    5 minute read
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+        <footer class="article-translations">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+            <div>
+                
+                    <a href="https://huizhou92.com/zh-cn/p/%E8%BD%AF%E4%BB%B6%E5%B7%A5%E7%A8%8B%E6%B5%B7%E5%8B%92%E5%A7%86%E5%AE%9A%E5%BE%8B/" class="link">中文</a>
+                
+            </div>
+        </footer>
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <p>In software development, have you ever encountered a situation where you are developing a shopping cart feature that requires storing product information in a database when a user adds an item? You might have designed a straightforward function as follows:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">addToCart</span><span class="p">(</span><span class="nx">item</span> <span class="nx">Item</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="c1">// add to db
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="o">...</span><span class="p">.</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>In this method, you assume that the database storage operation will always succeed without considering potential errors such as connection failures, write errors, or incorrect data formats.</p>
+<p>If you assume that the operation will always succeed and do not account for error conditions, you may encounter issues highlighted by Hyrum&rsquo;s Law.</p>
+<h2 id="what-is-hyrums-law">What is Hyrum&rsquo;s Law?
+</h2><p>Hyrum&rsquo;s Law is a principle in software development that states:<br>
+<strong>“When you depend on an API, you also depend on its implementation details.”</strong></p>
+<p>In other words, even if an API is defined and documented, the various ways it can be implemented should be considered when using that API. You must consider the implementation details, not just the declared functionality.</p>
+<p>Hyrum&rsquo;s Law is named after Google engineer <a class="link" href="https://x.com/hyrumwright"  target="_blank" rel="noopener"
+    >Hyrum Wright</a>, who introduced the concept in a presentation.</p>
+<p>Hyrum Wright emphasized that developers should pay more attention to API implementation details, as these aspects can affect their code&rsquo;s future maintainability and stability.</p>
+<h2 id="importance-of-hyrums-law">Importance of Hyrum&rsquo;s Law
+</h2><p>Hyrum&rsquo;s Law serves several significant purposes:</p>
+<ol>
+<li>
+<p><strong>Awareness of Implementation Details:</strong> This reminds developers that it is crucial to understand an API&rsquo;s functionalities, implementation details, and limitations when using it. APIs are commonplace in software development, helping us quickly implement features and improve productivity.</p>
+</li>
+<li>
+<p><strong>Implications for Code Behavior:</strong> How APIs are implemented can significantly affect code behavior and may lead to unforeseen issues. Hyrum’s Law emphasizes the need to evaluate implementation details and stability carefully to prevent potential problems and enhance code maintainability and reliability.</p>
+</li>
+<li>
+<p><strong>Adaptation to Changes:</strong> The law also underscores software development&rsquo;s iterative and evolving nature. As software requirements and technical environments change, API implementations may also grow. Thus, staying abreast of these changes is vital for maintaining software quality and stability.</p>
+</li>
+</ol>
+<h2 id="a-case-study">A Case Study
+</h2><p>In Go&rsquo;s source code, there are echoes of Hyrum&rsquo;s Law.<br>
+<img src="https://images.hxzhouh.com/blog-images/2025/01/364f331ca65e0d92eb86d66a74167f81.webp"
+	
+	
+	
+	loading="lazy"
+	
+		alt=" Hyrum&rsquo;s Law in the Go Source Code"
+	
+	
+><br>
+For instance, in <code>./src/net/http/request.go:1199</code>:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">e</span> <span class="o">*</span><span class="nx">MaxBytesError</span><span class="p">)</span> <span class="nf">Error</span><span class="p">()</span> <span class="kt">string</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// Due to Hyrum&#39;s law, this text cannot be changed.  
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">return</span> <span class="s">&#34;http: request body too large&#34;</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>This raises the question: why is it a concern? Changing an error message might affect other users relying on that message.</p>
+<p>I have encountered similar issues where upstream database changes in <code>ErrCode</code> affected my business logic.</p>
+<h2 id="practical-recommendations-for-hyrums-law">Practical Recommendations for Hyrum&rsquo;s Law
+</h2><p>Here are some suggestions to effectively implement Hyrum’s Law in practice:</p>
+<ul>
+<li>
+<p><strong>Understand API Documentation:</strong> Before using an API, carefully read its documentation and specifications to understand its features, uses, limitations, and potential issues.</p>
+</li>
+<li>
+<p><strong>Write Robust Code:</strong> When utilizing APIs, ensure robust error handling and consider various error and exception scenarios to bolster code reliability and stability.</p>
+</li>
+<li>
+<p><strong>Use Stable API Versions:</strong> When multiple API versions are available, opt for stable versions and avoid deprecated or obsolete ones whenever possible.</p>
+</li>
+<li>
+<p><strong>Conduct Integration and Unit Tests:</strong> Write integration and unit tests to validate the API&rsquo;s correctness and stability and promptly address any emerging issues.</p>
+</li>
+<li>
+<p><strong>Be Aware of API Dependencies:</strong> Pay attention to API dependencies, avoiding unnecessary dependencies while ensuring that those you do use are reliable and stable.</p>
+</li>
+<li>
+<p><strong>Promptly Address API Changes:</strong> Stay informed about and adapt to changes in API implementations to maintain software quality and stability amidst evolving requirements.</p>
+</li>
+</ul>
+<p>In summary, adhering to these best practices can help you better apply Hyrum&rsquo;s Law, enhance the maintainability and stability of your code, and adapt to changes and innovations in the software development process.</p>
+<h2 id="anti-patterns-related-to-hyrums-law">Anti-Patterns Related to Hyrum&rsquo;s Law
+</h2><p>In addition to standard practices, here are some prevalent anti-patterns that detract from the principles of Hyrum’s Law:</p>
+<ul>
+<li>
+<p><strong>Direct Dependency on Implementation:</strong> Some developers may ignore API specifications and directly rely on its concrete implementations, leading to tight coupling and increased fragility and maintenance challenges.</p>
+</li>
+<li>
+<p><strong>Neglecting API Limitations:</strong> Failing to consider API limitations and exceptions can result in code uncertainty and unreliability, as developers might assume the API will always function correctly.</p>
+</li>
+<li>
+<p><strong>Direct Use of Low-Level Libraries:</strong> Bypassing API encapsulation by using low-level libraries or components can complicate code and hinder maintainability.</p>
+</li>
+<li>
+<p><strong>Ignoring API Version Changes:</strong> Developers who overlook API version changes may face compatibility issues and maintenance difficulties, risking disconnection from technological advancements.</p>
+</li>
+<li>
+<p><strong>Unreasonable Additions or Removals of Dependencies:</strong> Improperly managed dependencies can create confusion and complexity, hindering maintainability.</p>
+</li>
+</ul>
+<p>Avoiding these anti-patterns can ensure better alignment with Hyrum’s Law, ultimately leading to more maintainable and stable code.</p>
+<h2 id="conclusion">Conclusion
+</h2><p>Hyrum&rsquo;s Law is a vital principle that underscores the importance of focusing on a system&rsquo;s core functionalities and considering various dependencies and side effects present within complex systems.</p>
+<p>Assuming everything is functioning correctly without accounting for dependencies and side effects can result in unexpected issues that might lead to system failures or other significant problems.</p>
+<p>As developers, we must be mindful of the traps posed by Hyrum&rsquo;s Law and consider best practices to ensure the stability and reliability of our code.</p>
+<p>In conclusion, Hyrum&rsquo;s Law is of paramount importance. For developers, understanding this principle and applying it in practice will enhance code quality and reliability, subsequently providing users with better experiences.</p>
+<hr>
+<ul>
+<li><a class="link" href="https://huizhou92.com/p/software-engineering-hyrums-law/"  target="_blank" rel="noopener"
+    >Long Time Link</a></li>
+<li>If you find my blog helpful, please subscribe to me via <a class="link" href="https://huizhou92.com/index.xml"  target="_blank" rel="noopener"
+    >RSS</a></li>
+<li>Or follow me on <a class="link" href="https://x.com/@piaopiaopig"  target="_blank" rel="noopener"
+    >X</a></li>
+<li>If you have a <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >Medium</a> account, follow me there. My articles will be published there as soon as possible.</li>
+</ul>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/tags/hyrum/">Hyrum</a>
+        
+            <a href="/tags/softwareengineering/">SoftwareEngineering</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            Last updated on Jan 08, 2025 11:55 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+<aside class="related-content--wrapper">
+    <h2 class="section-title">Related content</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="">
+    <a href="/p/use-request-hedging-to-reduce-long-tail-requests/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Use Request Hedging To Reduce Long-Tail Requests</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/p/error-handling-in-go-the-new-operator/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Error Handling in Go: The New ? operator</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/p/htmx-first-experience/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2025/01/e6c9c9915295ea19685f460d4e7e13e5.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2025/01/e6c9c9915295ea19685f460d4e7e13e5.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">HTMX First Experience</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/p/from-uuid-to-uuidv7-and-beyond-the-evolution-of-unique-identifiers/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/12/60a7013668113f1c9bcb509dc1db2620.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/12/60a7013668113f1c9bcb509dc1db2620.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">From UUID to UUIDv7 and Beyond: The Evolution of Unique Identifiers</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/p/go-1.24-new-std-lib-synctest/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/12/260aeb6207be4b765d34328515c144dc.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/12/260aeb6207be4b765d34328515c144dc.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 1.24: New STD-lib synctest</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+
+    
+        
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2025 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        Built with <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> <br />
+        Theme <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> designed by <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a>
+    </section>
+    <script src="/js/adblock-detection.js" defer></script>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>

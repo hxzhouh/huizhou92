@@ -8,6 +8,135 @@
         <language>zh-cn</language>
         <copyright>Copyright © 2023 huizhou92</copyright>
         <lastBuildDate>Thu, 16 Jan 2025 14:44:41 +0800</lastBuildDate><atom:link href="https://huizhou92.com/zh-cn/post/index.xml" rel="self" type="application/rss+xml" /><item>
+        <title>使用对冲模式降低长尾请求</title>
+        <link>https://huizhou92.com/zh-cn/p/%E4%BD%BF%E7%94%A8%E5%AF%B9%E5%86%B2%E6%A8%A1%E5%BC%8F%E9%99%8D%E4%BD%8E%E9%95%BF%E5%B0%BE%E8%AF%B7%E6%B1%82/</link>
+        <pubDate>Thu, 16 Jan 2025 14:44:41 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/zh-cn/p/%E4%BD%BF%E7%94%A8%E5%AF%B9%E5%86%B2%E6%A8%A1%E5%BC%8F%E9%99%8D%E4%BD%8E%E9%95%BF%E5%B0%BE%E8%AF%B7%E6%B1%82/</guid>
+        <description>&lt;p&gt;对冲请求模式出现在论文&lt;a class=&#34;link&#34; href=&#34;https://research.google/pubs/pub40801/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;The Tail At Scale&lt;/a&gt;中，是Google 解决微服务长尾效应的一个办法.也是&lt;a class=&#34;link&#34; href=&#34;https://grpc.io/docs/guides/request-hedging/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;gRPC&lt;/a&gt;中两种重试模式之一。&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/bc5c635fafbf4cdf41447c0469eb67a7.svg&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;source: https://grpc.io/img/basic_hedge.svg&#34;
+	
+	
+&gt;&lt;br&gt;
+对冲请求客户端将同一个请求发送到不同的节点，一旦收到第一个结果，客户端就会取消剩余的未处理请求。&lt;br&gt;
+这种模式主要作用是为了实现可以预测的延迟。假设我们的服务的一个调用链路是20个节点，每个节点的P99是1s，从概率上讲，一定有 18.2% 的请求时间大于1s。&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/8a3dde08bd12375f9b9a8dc12ece10f6.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;通过对冲模式，我们每次都是从最快的节点那里得到结果，所以不会存在不可预测的长尾延迟(服务故障不在考虑范围之内)  。&lt;br&gt;
+在Golang中，我们可以使用context很方便的实现对冲请求，比如在下面的例子中：对于同一个后端服务，我们发起五次请求，只取最先返回的那次。&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;14
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;15
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;16
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;17
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;18
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;19
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;20
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;21
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;22
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;23
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;24
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;hedgedRequest&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;ch&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;make&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;chan&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// chan used to abort other requests
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;	&lt;span class=&#34;nx&#34;&gt;ctx&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;cancel&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;context&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;WithCancel&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;context&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Background&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;())&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;5&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;++&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;k&#34;&gt;go&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ctx&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;context&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Context&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;ch&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;chan&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;			&lt;span class=&#34;nx&#34;&gt;log&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;in goroutine: &amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;			&lt;span class=&#34;k&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;request&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ctx&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;#34;http://localhost:8090&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;				&lt;span class=&#34;nx&#34;&gt;ch&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;lt;-&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Sprintf&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;finsh [from %v]&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;				&lt;span class=&#34;nx&#34;&gt;log&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;completed goroutine: &amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;			&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;p&#34;&gt;}(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ctx&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;ch&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;k&#34;&gt;select&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;k&#34;&gt;case&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;s&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;lt;-&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ch&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;nf&#34;&gt;cancel&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;nx&#34;&gt;log&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;cancelled all inflight requests&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;s&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;k&#34;&gt;case&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;lt;-&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;time&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;After&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;5&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;time&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Second&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;):&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;nf&#34;&gt;cancel&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;#34;all requests timeout after 5 secs&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/057e494e9b15eb730d465905c66b75ad.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;完整的代码 请访问：https://go.dev/play/p/fY9Lj_M7ZYE&lt;br&gt;
+这样做的好处就是，我们可以规避服务的长尾延迟，使服务的之间的延迟控制在可控的范围内。不过直接这么实现会造成额外的多倍负载。需要仔细设计。&lt;/p&gt;
+&lt;h3 id=&#34;为什么会出现长尾延迟&#34;&gt;为什么会出现长尾延迟？
+&lt;/h3&gt;&lt;p&gt;出现长尾延迟的原因有很多，比如&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;现在混合部署已经成为主流，意味着一台物理机上有很多人跟你抢夺关键资源，所以可能会因为关键资源调度，导致长尾效应&lt;/li&gt;
+&lt;li&gt;GC，这个不需要过多解释，Golang的 &lt;code&gt;STW&lt;/code&gt;会放大长尾延迟&lt;/li&gt;
+&lt;li&gt;排队, 包括 消息队列、 网络等。&lt;/li&gt;
+&lt;li&gt;&amp;hellip;.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;有什么办法可以避免对冲请求模式造成的 请求放大嘛？&lt;a class=&#34;link&#34; href=&#34;https://pub.huizhou92.com/go-high-performance-programming-ep7-use-singleflight-to-merge-the-same-request-692bafe0940b&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Go High-Performance Programming EP7: Use singleflight To Merge The Same Request&lt;/a&gt; 中详细介绍了如何使用 &lt;code&gt;SingleFlight&lt;/code&gt; 来合并相同的请求。这个场景下面，使用&lt;code&gt;SingleFlight&lt;/code&gt; 能够一定程度的缓解重复请求。&lt;/p&gt;
+&lt;p&gt;还有一种做法是只发送一个请求, 到P95的时候，如果还没有收到返回，那么就立即向第二个节点发送请求。这样做的好处就是将重复请求缩小到5%。并且大大缩短了长尾请求。&lt;/p&gt;
+&lt;p&gt;在这篇&lt;a class=&#34;link&#34; href=&#34;https://research.google/pubs/pub40801/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;论文&lt;/a&gt;中，还有一些方法可以用来解决，长尾请求&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;服务分级 &amp;amp;&amp;amp; 优先级队列(Differentiating service classes and&lt;br&gt;
+higher-level queuing)&lt;/strong&gt;。差异化服务类别可以用来优先调度用户正在等待的请求，而不是非交互式请求。保持低级队列较短，以便更高级别的策略更快生效。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;减少队头阻塞&lt;/strong&gt; ，将耗费时间比较多的请求，转换成比较小的请求。Web性能优化的时候有时候也会使用这种方式。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;微分区(Micro-partition)&lt;/strong&gt; 以细粒度来调整负载便可以尽量降低负载不均导致的延迟影响。&lt;/li&gt;
+&lt;li&gt;对于性能比较差的机器，采用熔断。&lt;/li&gt;
+&lt;li&gt;&amp;hellip;&amp;hellip;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;你还有其他处理长尾请求的好方法吗？&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/%E4%BD%BF%E7%94%A8%E5%AF%B9%E5%86%B2%E6%A8%A1%E5%BC%8F%E9%99%8D%E4%BD%8E%E9%95%BF%E5%B0%BE%E8%AF%B7%E6%B1%82/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;本文长期连接&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;如果您觉得我的博客对你有帮助，请通过 &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RSS&lt;/a&gt;订阅我。&lt;/li&gt;
+&lt;li&gt;或者在&lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;X&lt;/a&gt;上关注我。&lt;/li&gt;
+&lt;li&gt;如果您有&lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt;账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+        </item>
+        <item>
         <title>高效管理定时事件</title>
         <link>https://huizhou92.com/zh-cn/p/%E9%AB%98%E6%95%88%E7%AE%A1%E7%90%86%E5%AE%9A%E6%97%B6%E4%BA%8B%E4%BB%B6/</link>
         <pubDate>Tue, 14 Jan 2025 21:18:02 +0800</pubDate>
@@ -521,6 +650,184 @@ In this example, using the &lt;code&gt;?&lt;/code&gt; operator would cause a c
 &lt;hr&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/%E8%AF%91%E4%BA%8B%E5%AE%9E%E4%B8%8Ago-%E6%98%AF%E4%B8%80%E7%A7%8D%E8%AE%BE%E8%AE%A1%E8%89%AF%E5%A5%BD%E7%9A%84%E8%AF%AD%E8%A8%80/&#34; &gt;本文长期连接&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;如果您觉得我的博客对你有帮助，请通过 &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RSS&lt;/a&gt;订阅我。&lt;/li&gt;
+&lt;li&gt;或者在&lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;X&lt;/a&gt;上关注我。&lt;/li&gt;
+&lt;li&gt;如果您有&lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt;账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+        </item>
+        <item>
+        <title>IT 巨头正在杀死他们的客户</title>
+        <link>https://huizhou92.com/zh-cn/p/it-%E5%B7%A8%E5%A4%B4%E6%AD%A3%E5%9C%A8%E6%9D%80%E6%AD%BB%E4%BB%96%E4%BB%AC%E7%9A%84%E5%AE%A2%E6%88%B7/</link>
+        <pubDate>Thu, 09 Jan 2025 16:01:05 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/zh-cn/p/it-%E5%B7%A8%E5%A4%B4%E6%AD%A3%E5%9C%A8%E6%9D%80%E6%AD%BB%E4%BB%96%E4%BB%AC%E7%9A%84%E5%AE%A2%E6%88%B7/</guid>
+        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2025/01/589319fe1c17cafde315ff3dab8b3f24.webp" alt="Featured image of post IT 巨头正在杀死他们的客户" /&gt;&lt;p&gt;近期，&lt;a class=&#34;link&#34; href=&#34;https://pod.geraspora.de/people/4ce5b01a9e3a1b18d700000a&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Dennis Schubert&lt;/a&gt;发布了一则帖子，称 “diaspora*” 项目的网络基础设施因为访问流量过大而陷入了性能瓶颈。令人震惊的是，他发现&lt;strong&gt;70% 的请求来自 IT 巨头公司的 LLM（大语言模型）爬虫&lt;/strong&gt;。这些爬虫无视 &lt;code&gt;robots.txt&lt;/code&gt; 文件，贪婪地抓取网站的所有可用数据，甚至是一些无关紧要的内容。&lt;/p&gt;
+&lt;!-- more--&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/3cbeeac63070c2d3d19c34cc21828f43.webp&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;Dennis 感到无比愤怒，因为 &lt;code&gt;ChatGPT&lt;/code&gt; 和 &lt;code&gt;Amazon&lt;/code&gt; 的爬虫竟然爬取了 Wiki 的&lt;strong&gt;全部编辑历史&lt;/strong&gt;，每一页的每次编辑都被记录下来。他质问：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;“他们到底要做什么？是想研究文本如何随时间变化吗？”&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;这种对数据的无底线掠夺，导致服务器负载极高，用户访问体验显著下降。Dennis 尝试了一些反制措施：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;更新 robots.txt&lt;/strong&gt;：无效，爬虫无视规则。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;限制访问速率&lt;/strong&gt;：失败，爬虫会快速更换 IP。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;屏蔽 User Agent&lt;/strong&gt;：没用，爬虫伪装成普通用户。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;最终 Dennis 感慨，这种行为已经接近于对整个互联网的&lt;strong&gt;DDoS 攻击&lt;/strong&gt;。&lt;/p&gt;
+&lt;h2 id=&#34;为什么-it-巨头需要爬我们的数据&#34;&gt;为什么 IT 巨头需要爬我们的数据？
+&lt;/h2&gt;&lt;p&gt;答案是：&lt;strong&gt;AI 数据饥荒&lt;/strong&gt;。&lt;br&gt;
+随着大模型的普及，用于训练 AI 的高质量语料已经见底。正如 OpenAI 工程师 James Betker 所言：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;“模型优劣的关键在于数据集的质量。它们正在以惊人的精度复刻数据集。”&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;为了在 AI 竞赛中领先，巨头们不惜一切代价获取更多数据。个人网站、自建 Wiki，这些原本属于小众的内容，正成为巨头们争相攫取的目标。&lt;/p&gt;
+&lt;h2 id=&#34;我们能够应对吗&#34;&gt;我们能够应对吗？
+&lt;/h2&gt;&lt;p&gt;IT 巨头拥有顶尖的爬虫和反爬虫技术团队，能够在抓取与用户体验之间找到平衡。但对于个人网站和小型项目来说，这无疑是一场不对等的战争。&lt;/p&gt;
+&lt;p&gt;Dennis 提出了以下两种反制策略：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;Tarpit 技术&lt;/strong&gt;：生成无意义的随机文本，诱导爬虫抓取无关内容。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;JavaScript 陷阱&lt;/strong&gt;：让 AI 爬虫加载 JavaScript 才能获得数据，而这些脚本可能暗含挖矿代码。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;尽管这些方法可能有效，但实现起来成本不菲。&lt;/p&gt;
+&lt;h2 id=&#34;没有链接的互联网&#34;&gt;没有链接的互联网
+&lt;/h2&gt;&lt;p&gt;巨头公司的终极目标是什么？&lt;br&gt;
+是将用户牢牢锁定在他们的生态系统中。通过 AI 提供“最优内容”，用户无需访问其他网站，甚至看不到其他链接。一切内容直接呈现，广告作为附加品，而创作者只能沦为巨头的数据供应商。&lt;/p&gt;
+&lt;p&gt;这种趋势正在瓦解互联网的开放性。&lt;br&gt;
+无论你如何优化 SEO 或产出优质内容，巨头的 AI 会优先抓取并整合，用户永远不会直接访问你的网站。最终，个人创作者将失去流量与收入，整个互联网变成巨头的“金矿”。&lt;/p&gt;
+&lt;h2 id=&#34;总结&#34;&gt;总结
+&lt;/h2&gt;&lt;p&gt;IT 巨头正在用技术手段，掠夺数据，榨取价值，逐步摧毁互联网的多样性与开放性。对于个人网站而言，我们几乎无力抗争，而这场改变已经不可逆。&lt;/p&gt;
+&lt;h2 id=&#34;引用资源&#34;&gt;引用资源：
+&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://pod.geraspora.de/posts/17342163&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Dennis Schubert 的帖子&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://nonint.com/2023/06/10/the-it-in-ai-models-is-the-dataset/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;The IT in AI Models is the Dataset&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://www.techspot.com/article/2908-the-zero-click-internet/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;TechSpot：The Zero-Click Internet&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/it-%E5%B7%A8%E5%A4%B4%E6%AD%A3%E5%9C%A8%E6%9D%80%E6%AD%BB%E4%BB%96%E4%BB%AC%E7%9A%84%E5%AE%A2%E6%88%B7/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;本文长期连接&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;如果您觉得我的博客对你有帮助，请通过 &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RSS&lt;/a&gt;订阅我。&lt;/li&gt;
+&lt;li&gt;或者在&lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;X&lt;/a&gt;上关注我。&lt;/li&gt;
+&lt;li&gt;如果您有&lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt;账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+        </item>
+        <item>
+        <title>软件工程：海勒姆定律</title>
+        <link>https://huizhou92.com/zh-cn/p/%E8%BD%AF%E4%BB%B6%E5%B7%A5%E7%A8%8B%E6%B5%B7%E5%8B%92%E5%A7%86%E5%AE%9A%E5%BE%8B/</link>
+        <pubDate>Wed, 08 Jan 2025 11:52:37 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/zh-cn/p/%E8%BD%AF%E4%BB%B6%E5%B7%A5%E7%A8%8B%E6%B5%B7%E5%8B%92%E5%A7%86%E5%AE%9A%E5%BE%8B/</guid>
+        <description>&lt;p&gt;在软件开发中，你是否遇到过这种情况：&lt;br&gt;
+你正在开发一个购物车的功能，需要在用户添加商品到购物车时，将商品的信息存储到数据库中。你设计了一个简单的方法，如下所示：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;addToCart&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;item&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;Item&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;c1&#34;&gt;// add to db
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;    &lt;span class=&#34;o&#34;&gt;...&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;在这个方法中，你假设了将商品信息存储到数据库的操作总是会成功，而没有考虑到可能会出现任何错误。然而，在实际情况中，可能会发生各种错误，例如数据库连接失败、写入失败、数据格式不正确等。&lt;/p&gt;
+&lt;!-- more--&gt;
+&lt;p&gt;如果你只是假设操作总是会成功，并且没有考虑到错误情况，那么你就会遇到海勒姆定律的问题。&lt;/p&gt;
+&lt;p&gt;什么是海勒姆定律呢？其有什么意义和启示呢，下面我们来具体看一下吧。&lt;/p&gt;
+&lt;h3 id=&#34;什么是海勒姆定律&#34;&gt;什么是海勒姆定律
+&lt;/h3&gt;&lt;p&gt;海勒姆定律（Hyrum&amp;rsquo;s Law）是一个软件开发中的概念，它指的是：&lt;br&gt;
+&lt;strong&gt;“当你依赖于一个 API 的时候，你实际上也依赖于这个 API 的实现细节。”&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;换句话说，即使一个 API 已经被定义和文档化了，但由于实现的方式可能存在多种选择，所以你在使用这个 API 的时候也要考虑到其实现的细节，而不仅仅是其所声明的功能。&lt;/p&gt;
+&lt;p&gt;海勒姆定律得名于 Google 工程师 &lt;a class=&#34;link&#34; href=&#34;https://x.com/hyrumwright&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Hyrum Wright&lt;/a&gt;，他在一次演讲中提出了这个概念。&lt;/p&gt;
+&lt;p&gt;Hyrum Wright强调了开发者应该更加注意 API 的实现细节，因为这些细节可能会影响到你的代码在未来的可维护性和稳定性。&lt;/p&gt;
+&lt;h4 id=&#34;海勒姆定的意义&#34;&gt;海勒姆定的意义
+&lt;/h4&gt;&lt;p&gt;海勒姆定律（Hyrum&amp;rsquo;s Law）是一条关于软件开发中 API 使用的规律。其意义在于以下3点：&lt;/p&gt;
+&lt;p&gt;海勒姆定律的意义在于提醒开发人员，当使用 API 时不仅要考虑其功能，还要了解其实现细节和限制。在软件开发过程中，API 是非常常见的工具，它们可以帮助我们快速实现功能，提高开发效率。&lt;/p&gt;
+&lt;p&gt;然而，API 的实现方式和细节可能会对代码的行为产生影响，甚至可能导致不可预料的问题。海勒姆定律强调了这一点，提醒开发人员在使用 API 时需要仔细评估其实现细节和稳定性，以避免出现潜在的问题，提高代码的可维护性和稳定性。&lt;/p&gt;
+&lt;p&gt;此外，海勒姆定律还强调了软件开发的迭代性和变化性。随着软件需求和技术环境的不断变化，API 的实现方式也可能随之发生变化。因此，及时了解并适应 API 的变化，对于保持软件的可维护性和稳定性也非常重要。&lt;/p&gt;
+&lt;h3 id=&#34;一个案例&#34;&gt;一个案例
+&lt;/h3&gt;&lt;p&gt;在Golang的源码中，其实也有Hyrum&amp;rsquo;s Law 的影子&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/364f331ca65e0d92eb86d66a74167f81.webp&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Go 源码中的 海姆勒定律&#34;
+	
+	
+&gt;&lt;br&gt;
+比如 ./src/net/http/request.go:1199&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;e&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;MaxBytesError&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;Error&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;c1&#34;&gt;// Due to Hyrum&amp;#39;s law, this text cannot be changed.  
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;    &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;#34;http: request body too large&amp;#34;&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;是不是有点奇怪？修改一个Error Message 可能会影响到其他用户。&lt;/p&gt;
+&lt;p&gt;我自己也遇到过类似问题，上游数据库修改了ErrCode导致我的业务失败。&lt;/p&gt;
+&lt;h3 id=&#34;海勒姆定律的实践建议&#34;&gt;海勒姆定律的实践建议
+&lt;/h3&gt;&lt;p&gt;以下是一些有助于在实践中落实海勒姆定律的建议：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;了解 API 的文档和规范。&lt;/strong&gt; 在使用 API 之前，应该先仔细阅读相关文档和规范，了解 API 的功能、用法、限制和可能的问题。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;编写健壮的代码。&lt;/strong&gt; 在使用 API 时，应该编写健壮的代码，考虑到各种可能的错误和异常情况，以保证代码的可靠性和稳定性。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;使用稳定的 API 版本。&lt;/strong&gt; 如果有多个版本的 API 可以选择，应该尽量选择稳定的版本，并尽量避免使用过时或废弃的版本。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;进行集成和单元测试。&lt;/strong&gt; 在使用 API 时，应该编写集成测试和单元测试，验证 API 的正确性和稳定性，并及时修复可能出现的问题。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;注意 API 的依赖关系。&lt;/strong&gt; 在使用 API 时，应该注意其依赖关系，避免引入不必要的依赖，同时也要确保其依赖的组件或库是可靠的和稳定的。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;及时处理 API 的变更。&lt;/strong&gt; 随着软件需求和技术环境的变化，API 的实现方式也可能随之发生变化。在使用 API 时，应该及时了解并适应 API 的变更，以保持软件的可维护性和稳定性。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;综上所述，在通过遵循这些实践建议，可以更好地落实海勒姆定律，提高代码的可维护性和稳定性，同时也能够更好地适应软件开发过程中的变化和创新。&lt;/p&gt;
+&lt;h3 id=&#34;海勒姆定律的反模式&#34;&gt;海勒姆定律的反模式
+&lt;/h3&gt;&lt;p&gt;除了常见的实践建议外，以下是一些常见的反模式，这些做法不利于落实海勒姆定律：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;直接依赖具体实现。&lt;/strong&gt; 有些开发人员可能会直接依赖具体实现，而忽略了 API 的规范和约定。这种做法会使代码与实现紧密耦合，增加了代码的脆弱性和难以维护性。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;忽略 API 的限制和异常。&lt;/strong&gt; 有些开发人员可能会忽略 API 的限制和异常情况，而直接假定 API 总是能够正常工作。这种做法会增加代码的不确定性和出错概率，导致代码的不可靠性和难以维护性。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;直接使用底层库或组件。&lt;/strong&gt; 有些开发人员可能会直接使用底层库或组件，而忽略了 API 的规范和封装。这种做法会使代码与底层实现紧密耦合，增加了代码的复杂性和难以维护性。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;忽略 API 的版本变更。&lt;/strong&gt; 有些开发人员可能会忽略 API 的版本变更，而仍然使用过时或废弃的版本。这种做法会增加代码的不兼容性和难以维护性，同时也会使代码与技术发展脱节。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;不合理地添加或删除依赖。&lt;/strong&gt; 有些开发人员可能会不合理地添加或删除依赖，而忽略了 API 的依赖关系和稳定性。这种做法会使代码的依赖关系变得混乱和不可控，增加了代码的复杂性和难以维护性。&lt;br&gt;
+综上所述，避免这些常见的反模式，能够更好地落实海勒姆定律，提高代码的可维护性和稳定性，同时也能够更好地适应软件开发过程中的变化和创新。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;最后&#34;&gt;最后
+&lt;/h3&gt;&lt;p&gt;海勒姆定律是一个非常重要的原则。其告诉我们，在处理复杂系统时，我们不能只关注系统的主要功能，还需要考虑系统中的各种依赖关系和副作用。&lt;/p&gt;
+&lt;p&gt;如果我们只是假设一切都是正确的，并没有考虑到系统的各种依赖关系和副作用，那么就会遇到各种意外和问题，这可能会导致系统崩溃或出现其他严重问题。&lt;/p&gt;
+&lt;p&gt;在编写代码时，我们应该注意避免海勒姆定律的陷阱，并考虑使用一些最佳实践来确保代码的稳定性和可靠性。&lt;/p&gt;
+&lt;p&gt;总之，海勒姆定律的重要性不能被忽视。对于开发人员来说，了解这个原则，并在实践中应用它，将有助于提高代码的质量和稳定性，从而为用户提供更好的体验。&lt;/p&gt;
+&lt;hr&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/%E8%BD%AF%E4%BB%B6%E5%B7%A5%E7%A8%8B%E6%B5%B7%E5%8B%92%E5%A7%86%E5%AE%9A%E5%BE%8B/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;本文长期连接&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;如果您觉得我的博客对你有帮助，请通过 &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;RSS&lt;/a&gt;订阅我。&lt;/li&gt;
 &lt;li&gt;或者在&lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
@@ -12897,7 +13204,7 @@ HTTP/2里的Stream还可以设置优先级，尽管在rpc里可能用的比较�
 比如传统的rpc dubbo，需要写一个dubbo filter，还要考虑把鉴权相关的信息通过thread local传递进去。rpc协议本身也需要支持。总之，非常复杂。实际上绝大部分公司里的rpc都是没有鉴权的，可以随便调。&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id=&#34;基于http2-的缺点&#34;&gt;基于HTTP/2 的缺点
-&lt;/h2&gt;&lt;h3 id=&#34;rpc的元数据的传输不够高效&#34;&gt;rpc的元数据的传输不够高效
+&lt;/h2&gt;&lt;h3 id=&#34;rpc的元数据的传输不够高效&#34;&gt;Rpc的元数据的传输不够高效
 &lt;/h3&gt;&lt;p&gt;尽管HPAC可以压缩HTTP Header，但是对于rpc来说，确定一个函数调用，可以简化为一个int，只要两端去协商过一次，后面直接查表就可以了，不需要像HPAC那样编码解码。&lt;br&gt;
 可以考虑专门对gRPC做一个优化过的HTTP/2解析器，减少一些通用的处理，感觉可以提升性能。&lt;/p&gt;
 &lt;h3 id=&#34;http2-里一次grpc调用需要解码两次&#34;&gt;HTTP/2 里一次gRPC调用需要解码两次

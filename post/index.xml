@@ -8,6 +8,117 @@
         <language>en</language>
         <copyright>Copyright © 2023 huizhou92</copyright>
         <lastBuildDate>Thu, 16 Jan 2025 19:19:56 +0800</lastBuildDate><atom:link href="https://huizhou92.com/post/index.xml" rel="self" type="application/rss+xml" /><item>
+        <title>Use Request Hedging To Reduce Long-Tail Requests</title>
+        <link>https://huizhou92.com/p/use-request-hedging-to-reduce-long-tail-requests/</link>
+        <pubDate>Thu, 16 Jan 2025 19:19:56 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/p/use-request-hedging-to-reduce-long-tail-requests/</guid>
+        <description>&lt;p&gt;The request hedging pattern is introduced in the paper &lt;a class=&#34;link&#34; href=&#34;https://research.google/pubs/pub40801/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;The Tail At Scale&lt;/a&gt; as a solution by Google to address the long tail effect in &lt;code&gt;microservices&lt;/code&gt;. It is also one of the two retry modes in &lt;a class=&#34;link&#34; href=&#34;https://grpc.io/docs/guides/request-hedging/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;gRPC&lt;/a&gt;.&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/bc5c635fafbf4cdf41447c0469eb67a7.svg&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;source: https://grpc.io/img/basic_hedge.svg&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;The hedging client sends the same request to multiple nodes, and once it receives the first result, it cancels the remaining in-flight requests. This pattern primarily aims to achieve predictable latency.&lt;br&gt;
+For instance, if our service&amp;rsquo;s call chain consists of 20 nodes, each with a P99 latency of 1 second, there is a statistically significant 18.2% chance that the request time will exceed 1 second.&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/8a3dde08bd12375f9b9a8dc12ece10f6.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;!-- more--&gt;
+&lt;p&gt;Using the hedging pattern, we consistently obtain results from the fastest node, thus preventing unpredictable long tail latencies (service faults are not within the scope here).&lt;/p&gt;
+&lt;p&gt;In Golang, we can quickly implement the hedging request pattern using context. For example, in the code snippet below, we make five requests to the same backend service, but we only take the first one that returns:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;14
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;15
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;16
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;17
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;18
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;19
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;20
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;21
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;22
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;23
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;24
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;hedgedRequest&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;ch&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;make&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;chan&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// chan used to abort other requests
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;	&lt;span class=&#34;nx&#34;&gt;ctx&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;cancel&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;context&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;WithCancel&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;context&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Background&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;())&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;5&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;++&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;k&#34;&gt;go&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ctx&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;context&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Context&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;ch&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;chan&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;			&lt;span class=&#34;nx&#34;&gt;log&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;in goroutine: &amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;			&lt;span class=&#34;k&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;request&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ctx&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;#34;http://localhost:8090&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;				&lt;span class=&#34;nx&#34;&gt;ch&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;lt;-&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Sprintf&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;finsh [from %v]&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;				&lt;span class=&#34;nx&#34;&gt;log&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;completed goroutine: &amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;			&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;p&#34;&gt;}(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ctx&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;ch&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;k&#34;&gt;select&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;k&#34;&gt;case&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;s&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;lt;-&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ch&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;nf&#34;&gt;cancel&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;nx&#34;&gt;log&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;cancelled all inflight requests&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;s&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;k&#34;&gt;case&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;lt;-&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;time&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;After&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;5&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;time&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Second&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;):&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;nf&#34;&gt;cancel&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;#34;all requests timeout after 5 secs.&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;You can find the complete code at: &lt;a class=&#34;link&#34; href=&#34;https://go.dev/play/p/fY9Lj_M7ZYE&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;https://go.dev/play/p/fY9Lj_M7ZYE&lt;/a&gt;&lt;br&gt;
+The benefit of this approach is that we can mitigate long-tail latency in services and maintain the delays between services within a controllable range. However, directly implementing it can lead to multiple times the load, so careful design is necessary.&lt;/p&gt;
+&lt;h3 id=&#34;why-does-long-tail-latency-occur&#34;&gt;Why Does Long Tail Latency Occur?
+&lt;/h3&gt;&lt;p&gt;There are several reasons for long tail latency, such as:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Hybrid deployments have become mainstream, meaning many users compete for critical resources on the same physical machine, potentially leading to long-term effects due to resource scheduling.&lt;/li&gt;
+&lt;li&gt;Garbage Collection (GC), which doesn&amp;rsquo;t require much explanation; Golang&amp;rsquo;s Stop-The-World (STW) can amplify long tail latency.&lt;/li&gt;
+&lt;li&gt;Queuing, including message queues, network delays, etc.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Is there a way to avoid the request amplification caused by the hedging request pattern? The blog post &lt;a class=&#34;link&#34; href=&#34;https://pub.huizhou92.com/go-high-performance-programming-ep7-use-singleflight-to-merge-the-same-request-692bafe0940b&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Go High-Performance Programming EP7: Use singleflight To Merge The Same Request&lt;/a&gt; discusses how to use &lt;code&gt;SingleFlight&lt;/code&gt; to merge identical requests. In this scenario, using &lt;code&gt;SingleFlight&lt;/code&gt; can partially alleviate duplicate requests.&lt;/p&gt;
+&lt;p&gt;Another approach is to initially send only one request. If the P95 threshold does not respond, immediately request the second node. This method limits duplicate requests to about 5% and significantly reduces long-tail requests.&lt;/p&gt;
+&lt;p&gt;In the paper &lt;a class=&#34;link&#34; href=&#34;https://research.google/pubs/pub40801/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;The Tail At Scale&lt;/a&gt;, several other methods are suggested to address long tail requests:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;Service differentiation and priority queues&lt;/strong&gt;: Different service classes can be prioritized to schedule user requests over non-interactive requests. Short low-level queues allow faster execution of higher-level strategies.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Reducing head-of-line blocking&lt;/strong&gt;: Transforming time-consuming requests into more minor, more manageable requests is also a standard web performance enhancement method.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Micro-partitioning&lt;/strong&gt;: Fine-grained load adjustments to minimize the latency impact caused by uneven load distribution.&lt;/li&gt;
+&lt;li&gt;Implementing circuit breakers for poorly performing machines.&lt;/li&gt;
+&lt;li&gt;&amp;hellip;&lt;br&gt;
+Do you have other great ways to deal with long-tail requests?&lt;/li&gt;
+&lt;/ol&gt;
+</description>
+        </item>
+        <item>
         <title>Error Handling in Go: The New ? operator</title>
         <link>https://huizhou92.com/p/error-handling-in-go-the-new-operator/</link>
         <pubDate>Sat, 11 Jan 2025 19:35:01 +0800</pubDate>
@@ -193,6 +304,220 @@ It feels more like it was forced by public opinion and pressure from the Go comm
 &lt;hr&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/p/error-handling-in-go-the-new-operator/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Long Time Link&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;If you find my blog helpful, please subscribe to me via &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RSS&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Or follow me on &lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;X&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;If you have a &lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt; account, follow me there. My articles will be published there as soon as possible.&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+        </item>
+        <item>
+        <title>Big Tech Is Killing Their Customers</title>
+        <link>https://huizhou92.com/p/big-tech-is-killing-their-customers/</link>
+        <pubDate>Thu, 09 Jan 2025 16:02:38 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/p/big-tech-is-killing-their-customers/</guid>
+        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2025/01/589319fe1c17cafde315ff3dab8b3f24.webp" alt="Featured image of post Big Tech Is Killing Their Customers" /&gt;&lt;p&gt;Recently, &lt;a class=&#34;link&#34; href=&#34;https://pod.geraspora.de/people/4ce5b01a9e3a1b18d700000a&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Dennis Schubert&lt;/a&gt; posted a fiery update about a crisis in the “diaspora*” project. The platform&amp;rsquo;s network infrastructure was collapsing due to heavy traffic. But what caused this overload? Shockingly, &lt;strong&gt;70% of the requests came from LLM (Large Language Model) bots operated by major tech companies&lt;/strong&gt;. These bots ignored &lt;code&gt;robots.txt&lt;/code&gt; directives, relentlessly scraping every data they could access.&lt;/p&gt;
+&lt;!-- more--&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/3cbeeac63070c2d3d19c34cc21828f43.webp&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;Dennis discovered that &lt;code&gt;ChatGPT&lt;/code&gt; and &lt;code&gt;Amazon&lt;/code&gt; bots even went as far as to scrape &lt;strong&gt;the entire edit history of Wiki pages&lt;/strong&gt;—every single revision. He couldn’t help but ask:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;“What are they trying to achieve? Are they analyzing how text evolves?”&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;This data hoarding significantly strained diaspora*’s servers, slowing the platform for legitimate users. Dennis tried several countermeasures:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;Updating robots.txt&lt;/strong&gt;: Useless, as the bots ignored it.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Rate-limiting&lt;/strong&gt;: Failed because the bots rotated their IP addresses.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Blocking User Agents&lt;/strong&gt;: Ineffective, as the bots disguised themselves as regular browsers.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Frustrated, Dennis likened the situation to a &lt;strong&gt;DDoS attack on the entire internet&lt;/strong&gt;.&lt;/p&gt;
+&lt;h2 id=&#34;why-does-big-tech-need-our-data&#34;&gt;Why Does Big Tech Need Our Data?
+&lt;/h2&gt;&lt;p&gt;The answer lies in &lt;strong&gt;AI’s insatiable hunger for training data&lt;/strong&gt;.&lt;br&gt;
+High-quality datasets are the backbone of AI models, and the industry is running out of fresh material to train on. As OpenAI engineer James Betker once wrote:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;As I’ve spent these hours observing the effects of tweaking various model configurations and hyperparameters, one thing that has struck me is the similarities between all the training runs.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;It’s becoming clear to me that these models are truly approximating their datasets to an incredible degree&lt;/p&gt;
+&lt;p&gt;To stay ahead in the AI arms race, tech giants are aggressively scraping data from every corner of the web—personal blogs, independent wikis, and small projects. They don’t just scrape; they &lt;strong&gt;strip the internet bare&lt;/strong&gt;.&lt;/p&gt;
+&lt;h2 id=&#34;can-we-fight-back&#34;&gt;Can We Fight Back?
+&lt;/h2&gt;&lt;p&gt;Big Tech has teams of experts balancing web scraping and user experience, but small websites and independent projects lack these resources. For individuals, it’s an uphill battle.&lt;/p&gt;
+&lt;p&gt;Dennis suggested two unconventional methods to fend off bots:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;Tarpit Strategy&lt;/strong&gt;: Generate meaningless random text to trick bots into wasting resources on irrelevant data.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;JavaScript Traps&lt;/strong&gt;: Serve bot-detected requests with JavaScript-heavy content, embedding scripts that only bots would execute, such as crypto mining code.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;While these approaches might work, they’re expensive and technically demanding.&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id=&#34;the-zero-click-internet&#34;&gt;The Zero-Click Internet
+&lt;/h2&gt;&lt;p&gt;What’s Big Tech’s ultimate goal?&lt;br&gt;
+To &lt;strong&gt;trap users within their ecosystems&lt;/strong&gt;. By leveraging AI to generate “the best content,” they eliminate the need for users to visit other websites. No more outbound links, no more exploring—their AI serves everything directly, with ads seamlessly integrated.&lt;/p&gt;
+&lt;p&gt;For individual creators, this means:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;SEO doesn’t matter anymore.&lt;/li&gt;
+&lt;li&gt;High-quality content won’t reach users.&lt;/li&gt;
+&lt;li&gt;Revenue dries up.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Your work is more than fuel for Big Tech’s data engines in this new reality.&lt;/p&gt;
+&lt;h2 id=&#34;the-inevitable-decline-of-the-open-web&#34;&gt;The Inevitable Decline of the Open Web
+&lt;/h2&gt;&lt;p&gt;Big Tech is reshaping the internet, exploiting data while squeezing value out of independent creators. Fighting back is nearly impossible for small websites. The shift is already happening, and it’s irreversible. Ironically, the open web is dying, and the companies that built it are killing it.&lt;/p&gt;
+&lt;h3 id=&#34;references&#34;&gt;References
+&lt;/h3&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://pod.geraspora.de/posts/17342163&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Dennis Schubert’s Post&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://nonint.com/2023/06/10/the-it-in-ai-models-is-the-dataset/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;The IT in AI Models is the Dataset&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://www.techspot.com/article/2908-the-zero-click-internet/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;TechSpot: The Zero-Click Internet&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr&gt;
+&lt;p&gt;This version maintains the original tone while aligning with Medium’s concise, conversational style. It’s structured for readability and flows logically to keep readers engaged.&lt;/p&gt;
+&lt;hr&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/p/big-tech-is-killing-their-customers/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Long Time Link&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;If you find my blog helpful, please subscribe to me via &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RSS&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Or follow me on &lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;X&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;If you have a &lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt; account, follow me there. My articles will be published there as soon as possible.&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+        </item>
+        <item>
+        <title>Software Engineering: Hyrum&#39;s Law</title>
+        <link>https://huizhou92.com/p/software-engineering-hyrums-law/</link>
+        <pubDate>Wed, 08 Jan 2025 11:55:37 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/p/software-engineering-hyrums-law/</guid>
+        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2025/01/d84fece1bcb074ea83d61d4e2c43a8a2.webp" alt="Featured image of post Software Engineering: Hyrum&#39;s Law" /&gt;&lt;p&gt;In software development, have you ever encountered a situation where you are developing a shopping cart feature that requires storing product information in a database when a user adds an item? You might have designed a straightforward function as follows:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;addToCart&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;item&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;Item&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;c1&#34;&gt;// add to db
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;    &lt;span class=&#34;o&#34;&gt;...&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;In this method, you assume that the database storage operation will always succeed without considering potential errors such as connection failures, write errors, or incorrect data formats.&lt;/p&gt;
+&lt;p&gt;If you assume that the operation will always succeed and do not account for error conditions, you may encounter issues highlighted by Hyrum&amp;rsquo;s Law.&lt;/p&gt;
+&lt;h2 id=&#34;what-is-hyrums-law&#34;&gt;What is Hyrum&amp;rsquo;s Law?
+&lt;/h2&gt;&lt;p&gt;Hyrum&amp;rsquo;s Law is a principle in software development that states:&lt;br&gt;
+&lt;strong&gt;“When you depend on an API, you also depend on its implementation details.”&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;In other words, even if an API is defined and documented, the various ways it can be implemented should be considered when using that API. You must consider the implementation details, not just the declared functionality.&lt;/p&gt;
+&lt;p&gt;Hyrum&amp;rsquo;s Law is named after Google engineer &lt;a class=&#34;link&#34; href=&#34;https://x.com/hyrumwright&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Hyrum Wright&lt;/a&gt;, who introduced the concept in a presentation.&lt;/p&gt;
+&lt;p&gt;Hyrum Wright emphasized that developers should pay more attention to API implementation details, as these aspects can affect their code&amp;rsquo;s future maintainability and stability.&lt;/p&gt;
+&lt;h2 id=&#34;importance-of-hyrums-law&#34;&gt;Importance of Hyrum&amp;rsquo;s Law
+&lt;/h2&gt;&lt;p&gt;Hyrum&amp;rsquo;s Law serves several significant purposes:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Awareness of Implementation Details:&lt;/strong&gt; This reminds developers that it is crucial to understand an API&amp;rsquo;s functionalities, implementation details, and limitations when using it. APIs are commonplace in software development, helping us quickly implement features and improve productivity.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Implications for Code Behavior:&lt;/strong&gt; How APIs are implemented can significantly affect code behavior and may lead to unforeseen issues. Hyrum’s Law emphasizes the need to evaluate implementation details and stability carefully to prevent potential problems and enhance code maintainability and reliability.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Adaptation to Changes:&lt;/strong&gt; The law also underscores software development&amp;rsquo;s iterative and evolving nature. As software requirements and technical environments change, API implementations may also grow. Thus, staying abreast of these changes is vital for maintaining software quality and stability.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 id=&#34;a-case-study&#34;&gt;A Case Study
+&lt;/h2&gt;&lt;p&gt;In Go&amp;rsquo;s source code, there are echoes of Hyrum&amp;rsquo;s Law.&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/364f331ca65e0d92eb86d66a74167f81.webp&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34; Hyrum&amp;rsquo;s Law in the Go Source Code&#34;
+	
+	
+&gt;&lt;br&gt;
+For instance, in &lt;code&gt;./src/net/http/request.go:1199&lt;/code&gt;:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;e&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;MaxBytesError&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;Error&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;c1&#34;&gt;// Due to Hyrum&amp;#39;s law, this text cannot be changed.  
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;    &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;#34;http: request body too large&amp;#34;&lt;/span&gt;  
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;This raises the question: why is it a concern? Changing an error message might affect other users relying on that message.&lt;/p&gt;
+&lt;p&gt;I have encountered similar issues where upstream database changes in &lt;code&gt;ErrCode&lt;/code&gt; affected my business logic.&lt;/p&gt;
+&lt;h2 id=&#34;practical-recommendations-for-hyrums-law&#34;&gt;Practical Recommendations for Hyrum&amp;rsquo;s Law
+&lt;/h2&gt;&lt;p&gt;Here are some suggestions to effectively implement Hyrum’s Law in practice:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Understand API Documentation:&lt;/strong&gt; Before using an API, carefully read its documentation and specifications to understand its features, uses, limitations, and potential issues.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Write Robust Code:&lt;/strong&gt; When utilizing APIs, ensure robust error handling and consider various error and exception scenarios to bolster code reliability and stability.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Use Stable API Versions:&lt;/strong&gt; When multiple API versions are available, opt for stable versions and avoid deprecated or obsolete ones whenever possible.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Conduct Integration and Unit Tests:&lt;/strong&gt; Write integration and unit tests to validate the API&amp;rsquo;s correctness and stability and promptly address any emerging issues.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Be Aware of API Dependencies:&lt;/strong&gt; Pay attention to API dependencies, avoiding unnecessary dependencies while ensuring that those you do use are reliable and stable.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Promptly Address API Changes:&lt;/strong&gt; Stay informed about and adapt to changes in API implementations to maintain software quality and stability amidst evolving requirements.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;In summary, adhering to these best practices can help you better apply Hyrum&amp;rsquo;s Law, enhance the maintainability and stability of your code, and adapt to changes and innovations in the software development process.&lt;/p&gt;
+&lt;h2 id=&#34;anti-patterns-related-to-hyrums-law&#34;&gt;Anti-Patterns Related to Hyrum&amp;rsquo;s Law
+&lt;/h2&gt;&lt;p&gt;In addition to standard practices, here are some prevalent anti-patterns that detract from the principles of Hyrum’s Law:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Direct Dependency on Implementation:&lt;/strong&gt; Some developers may ignore API specifications and directly rely on its concrete implementations, leading to tight coupling and increased fragility and maintenance challenges.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Neglecting API Limitations:&lt;/strong&gt; Failing to consider API limitations and exceptions can result in code uncertainty and unreliability, as developers might assume the API will always function correctly.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Direct Use of Low-Level Libraries:&lt;/strong&gt; Bypassing API encapsulation by using low-level libraries or components can complicate code and hinder maintainability.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Ignoring API Version Changes:&lt;/strong&gt; Developers who overlook API version changes may face compatibility issues and maintenance difficulties, risking disconnection from technological advancements.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Unreasonable Additions or Removals of Dependencies:&lt;/strong&gt; Improperly managed dependencies can create confusion and complexity, hindering maintainability.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Avoiding these anti-patterns can ensure better alignment with Hyrum’s Law, ultimately leading to more maintainable and stable code.&lt;/p&gt;
+&lt;h2 id=&#34;conclusion&#34;&gt;Conclusion
+&lt;/h2&gt;&lt;p&gt;Hyrum&amp;rsquo;s Law is a vital principle that underscores the importance of focusing on a system&amp;rsquo;s core functionalities and considering various dependencies and side effects present within complex systems.&lt;/p&gt;
+&lt;p&gt;Assuming everything is functioning correctly without accounting for dependencies and side effects can result in unexpected issues that might lead to system failures or other significant problems.&lt;/p&gt;
+&lt;p&gt;As developers, we must be mindful of the traps posed by Hyrum&amp;rsquo;s Law and consider best practices to ensure the stability and reliability of our code.&lt;/p&gt;
+&lt;p&gt;In conclusion, Hyrum&amp;rsquo;s Law is of paramount importance. For developers, understanding this principle and applying it in practice will enhance code quality and reliability, subsequently providing users with better experiences.&lt;/p&gt;
+&lt;hr&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/p/software-engineering-hyrums-law/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;Long Time Link&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;If you find my blog helpful, please subscribe to me via &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;RSS&lt;/a&gt;&lt;/li&gt;
@@ -15078,7 +15403,7 @@ Because it never reaches the &lt;code&gt;recover()&lt;/code&gt; function.&lt;/p&
 &lt;li&gt;If the current connection is not a historical connection, the sender will send an &lt;code&gt;ACK&lt;/code&gt; control message, and the two parties will successfully establish a connection.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;By using a three-way handshake and the &lt;code&gt;RST&lt;/code&gt; control message, the ultimate control over whether to establish a connection is given to the sender. Only the sender has enough context to determine if the current connection is erroneous or expired. This is also the primary reason why TCP uses a three-way handshake to establish a connection.&lt;/p&gt;
-&lt;h1 id=&#34;initial-sequencenumbers&#34;&gt;Initial Sequence Numbers
+&lt;h1 id=&#34;initial-sequence-numbers&#34;&gt;Initial Sequence Numbers
 &lt;/h1&gt;&lt;p&gt;Another important reason for using a three-way handshake is that both communicating parties need to obtain an initial sequence number for sending information. As a reliable transport layer protocol, TCP needs to build a reliable transport layer in an unstable network environment. The uncertainty of the network can lead to issues such as packet loss and out-of-order delivery. Common problems may include:&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;Data packets being repeatedly sent by the sender, resulting in duplicate data.&lt;/li&gt;
@@ -19059,9 +19384,9 @@ In the Chrome browser, open &lt;code&gt;chrome://net-internals/#http2&lt;/code&g
 &lt;code&gt;GRPC Message: /helloworld.Greeter/SayHello, Request&lt;/code&gt;&lt;br&gt;
 In short, gRPC puts metadata in HTTP/2 Headers and serialized request parameters in the DATA frame.&lt;/p&gt;
 &lt;h2 id=&#34;advantages-of-http2-protocol&#34;&gt;Advantages of HTTP/2 Protocol
-&lt;/h2&gt;&lt;h3 id=&#34;http2-is-an-open-standard&#34;&gt;HTTP/2 is an Open Standard
+&lt;/h2&gt;&lt;h3 id=&#34;http2-is-an-open-standard&#34;&gt;HTTP/2 Is an Open Standard
 &lt;/h3&gt;&lt;p&gt;Google thought this through and chose not to open-source its internal Stubby but to create something new. As technology becomes more open, the space for proprietary protocols is shrinking.&lt;/p&gt;
-&lt;h3 id=&#34;http2-is-a-proven-standard&#34;&gt;HTTP/2 is a Proven Standard
+&lt;h3 id=&#34;http2-is-a-proven-standard&#34;&gt;HTTP/2 Is a Proven Standard
 &lt;/h3&gt;&lt;p&gt;HTTP/2 was developed based on practical experience, which is crucial. Many unsuccessful standards were created by a group of vendors before implementation, leading to chaos and unusability, such as CORBA. HTTP/2&amp;rsquo;s predecessor was Google&amp;rsquo;s &lt;a class=&#34;link&#34; href=&#34;https://en.wikipedia.org/wiki/SPDY&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;SPDY&lt;/a&gt;. Without Google&amp;rsquo;s practice and promotion, HTTP/2 might not exist.&lt;/p&gt;
 &lt;h3 id=&#34;http2-naturally-supports-iot-mobile-and-browsers&#34;&gt;HTTP/2 Naturally Supports IoT, Mobile, and Browsers
@@ -23175,7 +23500,7 @@ The role of groups in Redis is to parallelize the processing of a single stream.
 &lt;p&gt;Using Interrupt-driven I/O allows the CPU to handle other tasks when the device is busy, thus maximizing CPU utilization and avoiding wasting precious computing resources. Compared to Programmed I/O, Interrupt-driven I/O delegates some work to the I/O device, thereby improving resource utilization.&lt;/p&gt;
 &lt;p&gt;&lt;em&gt;Direct Memory Access (DMA)&lt;/em&gt; uses a DMA controller to perform I/O operations. Interrupt-driven I/O requires triggering an operating system interrupt for each character, which consumes CPU time. When we use a DMA controller, the CPU reads all the data from the buffer into the DMA controller at once, and the DMA controller is responsible for writing the data to the I/O device character by character。 Although the DMA controller can free up the CPU and reduce the number of interrupts, its execution speed is much slower than the CPU. If the DMA controller cannot drive the I/O device quickly, the CPU may have to wait for the DMA controller to trigger an interrupt. In this case, Interrupt-driven I/O or even Programmed I/O can provide faster access speed.&lt;/p&gt;
 &lt;p&gt;By default, we use a DMA controller to perform I/O tasks. However, Programmed I/O and Interrupt-driven I/O are also acceptable options. When the CPU frequently needs to wait for the DMA controller to perform I/O tasks, using Interrupt-driven I/O or even polling Programmed I/O can achieve higher throughput. However, regardless of the method used, I/O is a complex and time-consuming operation in the program.&lt;/p&gt;
-&lt;h1 id=&#34;mechanical-harddisk&#34;&gt;Mechanical Hard Disk
+&lt;h1 id=&#34;mechanical-hard-disk&#34;&gt;Mechanical Hard Disk
 &lt;/h1&gt;&lt;p&gt;A mechanical hard disk drive (HDD) is an electronic, non-volatile mechanical data storage device. It uses magnetic storage to store and retrieve data on the disk. During the process of reading and writing data, the disk head connected to the mechanical arm of the hard disk reads and writes bits on the surface of the disk &lt;a class=&#34;link&#34; href=&#34;https://draveness.me/whys-the-design-cpu-and-disk//#fn:4&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;4&lt;/a&gt;.&lt;/p&gt;
 &lt;p&gt;Because the disk has a complex mechanical structure, reading and writing data on the disk takes a lot of time. The read and write performance of databases also depends on the performance of the disk. If we randomly query a piece of data in a database using a mechanical hard disk, it may trigger random I/O on the disk. However, it requires a significant cost to read data from the disk into memory. Loading data from a regular disk (non-SSD) involves processes such as queueing, seeking, rotating, and transferring data, which takes about 10 ms.&lt;/p&gt;
@@ -23372,9 +23697,9 @@ The role of groups in Redis is to parallelize the processing of a single stream.
 &lt;/h1&gt;&lt;p&gt;Why does TCP disconnect require a four-way handshake? Let’s analyze this question from several aspects:&lt;/p&gt;
 &lt;h1 id=&#34;ensuring-data-integrity&#34;&gt;Ensuring Data Integrity
 &lt;/h1&gt;&lt;p&gt;TCP is a connection-oriented reliable transport protocol that guarantees data reliability and integrity. During connection termination, both parties may still have unsent or unacknowledged data packets. If only a three-way handshake is performed, the other party may not know whether the FIN message it sent has been received during the final handshake. This could result in the other party not fully receiving the data, leading to data loss. Therefore, by performing a four-way handshake, both parties can ensure that they receive each other’s data completely and maintain data integrity.&lt;/p&gt;
-&lt;h1 id=&#34;handling-network-latency-and-packetloss&#34;&gt;Handling Network Latency and Packet Loss
+&lt;h1 id=&#34;handling-network-latency-and-packet-loss&#34;&gt;Handling Network Latency and Packet Loss
 &lt;/h1&gt;&lt;p&gt;In a network, data packets may be delayed or lost due to network latency or packet loss. During connection termination, if only a three-way handshake is performed, the other party may not know whether the FIN message it sent has been received, which may prevent timely closure of the connection. By performing a four-way handshake, sufficient time is provided for the network to handle latency and packet loss issues, ensuring that the connection can be properly closed.&lt;/p&gt;
-&lt;h1 id=&#34;waiting-for-unsent-data-to-besent&#34;&gt;Waiting for Unsent Data to be Sent
+&lt;h1 id=&#34;waiting-for-unsent-data-to-be-sent&#34;&gt;Waiting for Unsent Data to Be Sent
 &lt;/h1&gt;&lt;p&gt;During connection termination, both parties may still have unsent data packets. If only a three-way handshake is performed, the other party may not know whether there is any unsent data before sending the FIN message. By performing a four-way handshake, both parties have enough time to send and receive the remaining data, ensuring data integrity and correctness.&lt;/p&gt;
 &lt;h1 id=&#34;handling-the-half-closed-state&#34;&gt;Handling the Half-Closed State
 &lt;/h1&gt;&lt;p&gt;During the TCP connection termination process, one party enters a half-closed state by sending a FIN message, indicating that it will no longer send data but can still receive data. If only a three-way handshake is performed, the other party will immediately close the connection upon receiving the FIN message, which may prevent proper handling of the half-closed state. By performing a four-way handshake, both parties can ensure the correct handling of the half-closed state, avoiding data loss and confusion.&lt;/p&gt;
