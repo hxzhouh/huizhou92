@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="zh-cn" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Go 1.24 的 Swiss Map 通过兼容性设计、扩展哈希和探测序列优化，显著提升哈希表性能。它支持无痛迁移、动态扩容和高效数据分布，解决了传统哈希表的性能瓶颈。尽管存在一些遗留问题和挑战，如并发支持和内存碎片化，但 Swiss Map 是 Go 1.24 中最值得期待的功能之一，未来将继续优化和演化。">
+<title>Go 1.24 的 Swiss Map：兼容性、扩展哈希与遗留问题</title>
+
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/go-124-%E7%9A%84-swiss-map%E5%85%BC%E5%AE%B9%E6%80%A7%E6%89%A9%E5%B1%95%E5%93%88%E5%B8%8C%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98/'>
+
+<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="Go 1.24 的 Swiss Map：兼容性、扩展哈希与遗留问题">
+<meta property='og:description' content="Go 1.24 的 Swiss Map 通过兼容性设计、扩展哈希和探测序列优化，显著提升哈希表性能。它支持无痛迁移、动态扩容和高效数据分布，解决了传统哈希表的性能瓶颈。尽管存在一些遗留问题和挑战，如并发支持和内存碎片化，但 Swiss Map 是 Go 1.24 中最值得期待的功能之一，未来将继续优化和演化。">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/go-124-%E7%9A%84-swiss-map%E5%85%BC%E5%AE%B9%E6%80%A7%E6%89%A9%E5%B1%95%E5%93%88%E5%B8%8C%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:tag' content='go1_24' /><meta property='article:tag' content='Swissmap' /><meta property='article:tag' content='SwissTable' /><meta property='article:published_time' content='2025-01-23T14:19:09&#43;08:00'/><meta property='article:modified_time' content='2025-01-23T14:18:55&#43;08:00'/>
+<meta name="twitter:site" content="@piaopiaopig">
+    <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="Go 1.24 的 Swiss Map：兼容性、扩展哈希与遗留问题">
+<meta name="twitter:description" content="Go 1.24 的 Swiss Map 通过兼容性设计、扩展哈希和探测序列优化，显著提升哈希表性能。它支持无痛迁移、动态扩容和高效数据分布，解决了传统哈希表的性能瓶颈。尽管存在一些遗留问题和挑战，如并发支持和内存碎片化，但 Swiss Map 是 Go 1.24 中最值得期待的功能之一，未来将继续优化和演化。">
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="切换菜单">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/zh-cn/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/zh-cn">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/zh-cn/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>主页</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/%E5%85%B3%E4%BA%8E/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>关于</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>归档</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>搜索</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" >English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" selected>中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>暗色模式</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">目录</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#go-124-的-swiss-map兼容性扩展哈希与遗留问题">Go 1.24 的 Swiss Map：兼容性、扩展哈希与遗留问题</a>
+      <ol>
+        <li><a href="#兼容性无痛迁移的底层支持">兼容性：无痛迁移的底层支持</a></li>
+        <li><a href="#swiss-map-的数据结构">Swiss Map 的数据结构</a></li>
+        <li><a href="#extendible-hashing如何实现动态扩展">Extendible Hashing：如何实现动态扩展？</a>
+          <ol>
+            <li><a href="#dir与table的层级结构">Dir与table的层级结构</a></li>
+            <li><a href="#拆分操作">拆分操作</a></li>
+            <li><a href="#数据分配哈希掩码与比特位判定">数据分配：哈希掩码与比特位判定</a></li>
+            <li><a href="#3-目录的更新与扩展"><strong>3. 目录的更新与扩展</strong></a></li>
+            <li><a href="#示例拆分前后的地址与目录变化">示例：拆分前后的地址与目录变化</a></li>
+            <li><a href="#拆分后的数据分布">拆分后的数据分布</a></li>
+            <li><a href="#关键设计优势">关键设计优势</a></li>
+          </ol>
+        </li>
+        <li><a href="#其他优化">其他优化</a></li>
+        <li><a href="#遗留问题与挑战">遗留问题与挑战</a>
+          <ol>
+            <li><a href="#并发支持的局限性">并发支持的局限性</a></li>
+            <li><a href="#内存碎片化">内存碎片化</a></li>
+            <li><a href="#迭代器复杂度">迭代器复杂度</a></li>
+          </ol>
+        </li>
+        <li><a href="#性能测试">性能测试</a></li>
+        <li><a href="#总结">总结</a></li>
+        <li><a href="#参考资料">参考资料</a></li>
+      </ol>
+    </li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="main-article">
+    <header class="article-header">
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/zh-cn/categories/tech/" style="background-color: #2a9d8f; color: #fff;">
+                技术
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/zh-cn/p/go-124-%E7%9A%84-swiss-map%E5%85%BC%E5%AE%B9%E6%80%A7%E6%89%A9%E5%B1%95%E5%93%88%E5%B8%8C%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98/">Go 1.24 的 Swiss Map：兼容性、扩展哈希与遗留问题</a>
+        </h2>
+    
+        
+        <h3 class="article-subtitle">
+            Go 1.24 的 Swiss Map 通过兼容性设计、扩展哈希和探测序列优化，显著提升哈希表性能。它支持无痛迁移、动态扩容和高效数据分布，解决了传统哈希表的性能瓶颈。尽管存在一些遗留问题和挑战，如并发支持和内存碎片化，但 Swiss Map 是 Go 1.24 中最值得期待的功能之一，未来将继续优化和演化。
+        </h3>
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Jan 23, 2025</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    阅读时长: 3 分钟
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <p><img src="https://images.hxzhouh.com/blog-images/2025/01/1899ebfa34c73a3c02f169d121b2ef77.png"
+	
+	
+	
+	loading="lazy"
+	
+	
+></p>
+<h2 id="go-124-的-swiss-map兼容性扩展哈希与遗留问题">Go 1.24 的 Swiss Map：兼容性、扩展哈希与遗留问题
+</h2><p>在 <a class="link" href="https://pub.huizhou92.com/swisstable-a-high-performance-hash-table-implementation-3e13bfe8c79b"  target="_blank" rel="noopener"
+    >上一篇</a>文章中，我介绍了<code>swiss map</code>跟 Dolthub 实现的一个Go语言版本。对于 <code>swiss map</code> 不太熟悉的读者，可以先去看看那篇文章。</p>
+<p>在即将正式发布的Go1.24中<code>swiss map</code> 将作为现有<code>map</code>的替代者正式进入gosrc。它完全兼容现有API，并且在部分<code>benchmark</code>场景下带来了超过50%的性能提升。到目前为止，<code>swiss map</code>是我对于Go1.24最期待的功能了。可是它真的有期待中的那么好嘛？本文将从<strong>兼容性</strong>、<strong>扩展哈希（Extendible Hashing</strong>的实现与优势，以及<strong>遗留问题</strong>三个方面，深入剖析这一新设计的核心逻辑。</p>
+<!-- more-->
+<h3 id="兼容性无痛迁移的底层支持">兼容性：无痛迁移的底层支持
+</h3><p>Go 的<code>swiss map</code> 设计目标之一是与旧版 <code>map</code> 兼容。通过条件编译标签和类型转换，实现在新旧版本间的无缝切换。例如，在 <code>export_swiss_test.go</code> 中，<code>newTestMapType</code> 函数直接通过类型转换将旧版 <code>map</code> 的元数据转换为 <code>swiss map</code> 的类型结构：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">//https://github.com/golang/go/blob/3f4164f508b8148eb526fc096884dba2609f5835/src/internal/runtime/maps/export_swiss_test.go#L14
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nx">newTestMapType</span><span class="p">[</span><span class="nx">K</span> <span class="nx">comparable</span><span class="p">,</span> <span class="nx">V</span> <span class="nx">any</span><span class="p">]()</span> <span class="o">*</span><span class="nx">abi</span><span class="p">.</span><span class="nx">SwissMapType</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">m</span> <span class="kd">map</span><span class="p">[</span><span class="nx">K</span><span class="p">]</span><span class="nx">V</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">mTyp</span> <span class="o">:=</span> <span class="nx">abi</span><span class="p">.</span><span class="nf">TypeOf</span><span class="p">(</span><span class="nx">m</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">mt</span> <span class="o">:=</span> <span class="p">(</span><span class="o">*</span><span class="nx">abi</span><span class="p">.</span><span class="nx">SwissMapType</span><span class="p">)(</span><span class="nx">unsafe</span><span class="p">.</span><span class="nf">Pointer</span><span class="p">(</span><span class="nx">mTyp</span><span class="p">))</span> <span class="c1">// 直接类型转换
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">return</span> <span class="nx">mt</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>这种设计允许现有代码无需修改即可通过实验性标志启用 <code>swiss map</code>，同时保留了旧版哈希表的内存布局兼容性。当前gotip(go1.24-3f4164f5) 中<a class="link" href="https://github.com/golang/go/commit/99d60c24e23d4d97ce51b1ee5660b60a5651693a"  target="_blank" rel="noopener"
+    >GOEXPERIMENT=swissmap</a> 编译选项已经默认打开，也就是默认使用的是<code>swiss map</code>。<br>
+如果您还是想用 原来的map可以使用 <code>GOEXPERIMENT=noswissmap</code></p>
+<h3 id="swiss-map-的数据结构">Swiss Map 的数据结构
+</h3><p><img src="https://images.hxzhouh.com/blog-images/2025/01/784e3f6a0ff90601480a2da80f3cb9d0.png"
+	
+	
+	
+	loading="lazy"
+	
+	
+></p>
+<h3 id="extendible-hashing如何实现动态扩展">Extendible Hashing：如何实现动态扩展？
+</h3><p>与其他其他几个社区实现，除了在兼容性方面的改进之外，<code>swiss map</code>的核心创新之一是采用了<code>Extendible Hashing</code>（扩展哈希），以支持高效的增量扩容。传统哈希表在扩容时需要全量迁移数据，而 <code>Extendible Hashing</code> 通过多级目录和表拆分，将扩容开销分摊到多次操作中。</p>
+<h4 id="dir与table的层级结构">Dir与table的层级结构
+</h4><p>在 <code>map.go</code> 的 <code>Map</code> 结构体中，<code>globalDepth</code> 和 <code>directory</code> 字段是关键：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">//https://github.com/golang/go/blob/3f4164f508b8148eb526fc096884dba2609f5835/src/internal/runtime/maps/map.go#L194
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">type</span> <span class="nx">Map</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">globalDepth</span>  <span class="kt">uint8</span>      <span class="c1">// dir的全局深度
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">dirPtr</span>       <span class="nx">unsafe</span><span class="p">.</span><span class="nx">Pointer</span> <span class="c1">// dir指针（指向多个 table）
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="c1">// ...
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>dir大小为 <code>1 &lt;&lt; globalDepth</code>，每个dir项指向一个 <code>table</code>。当某个 <code>table</code> 的负载过高时，会触发<strong>拆分</strong>（Split），而非全局扩容。</p>
+<h4 id="拆分操作">拆分操作
+</h4><p>拆分（Split）是 <code>swiss map</code>在单个表容量达到 <code>maxTableCapacity</code>（默认为 1024）时触发的动态扩容机制。其核心目标是将一个表的负载分摊到两个新表中，避免全局扩容的高延迟。以下是拆分的关键步骤与地址变化：<br>
+拆分时，原表（假设为 <code>table A</code>）会创建两个子表 <code>table Left</code> 和 <code>table Right</code>。它们的 <code>localDepth</code>（本地深度）比原表大 1，表示其哈希掩码多使用了一个高位比特。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span><span class="lnt">8
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">//https://github.com/golang/go/blob/3f4164f508b8148eb526fc096884dba2609f5835/src/internal/runtime/maps/table.go#L1043
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">table</span><span class="p">)</span> <span class="nf">split</span><span class="p">(</span><span class="nx">typ</span> <span class="o">*</span><span class="nx">abi</span><span class="p">.</span><span class="nx">SwissMapType</span><span class="p">,</span> <span class="nx">m</span> <span class="o">*</span><span class="nx">Map</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">localDepth</span> <span class="o">:=</span> <span class="nx">t</span><span class="p">.</span><span class="nx">localDepth</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">localDepth</span><span class="o">++</span> <span class="c1">// 子表的 localDepth 比原表大 1
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">left</span> <span class="o">:=</span> <span class="nf">newTable</span><span class="p">(</span><span class="nx">typ</span><span class="p">,</span> <span class="nx">maxTableCapacity</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="nx">localDepth</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">right</span> <span class="o">:=</span> <span class="nf">newTable</span><span class="p">(</span><span class="nx">typ</span><span class="p">,</span> <span class="nx">maxTableCapacity</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="nx">localDepth</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="c1">// ...
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p><code>left</code> 和 <code>right</code> 是新分配的内存对象，其 <code>groups.data</code> 指向新分配的连续内存块（通过 <code>newarray</code> 函数）。</p>
+<h4 id="数据分配哈希掩码与比特位判定">数据分配：哈希掩码与比特位判定
+</h4><p>拆分时，根据哈希值的高位比特（由 <code>localDepth</code> 决定）将原表的数据分配到左表或右表。例如，若 <code>localDepth</code> 为 2，则使用哈希值的第 2 个高位比特（从最高位开始计数）作为分配依据。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">//https://github.com/golang/go/blob/3f4164f508b8148eb526fc096884dba2609f5835/src/internal/runtime/maps/table.go#L1052
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="nx">mask</span> <span class="o">:=</span> <span class="nf">localDepthMask</span><span class="p">(</span><span class="nx">localDepth</span><span class="p">)</span> <span class="c1">// 生成掩码，例如 0x80000000（第 32 位）
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="k">for</span> <span class="o">...</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">hash</span> <span class="o">:=</span> <span class="nx">typ</span><span class="p">.</span><span class="nf">Hasher</span><span class="p">(</span><span class="nx">key</span><span class="p">,</span> <span class="nx">m</span><span class="p">.</span><span class="nx">seed</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">hash</span> <span class="o">&amp;</span> <span class="nx">mask</span> <span class="o">==</span> <span class="mi">0</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">left</span><span class="p">.</span><span class="nf">uncheckedPutSlot</span><span class="p">(</span><span class="o">...</span><span class="p">)</span> <span class="c1">// 分配到左表
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">right</span><span class="p">.</span><span class="nf">uncheckedPutSlot</span><span class="p">(</span><span class="o">...</span><span class="p">)</span> <span class="c1">// 分配到右表
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><ul>
+<li><strong>掩码计算</strong>：<code>localDepthMask</code> 根据 <code>localDepth</code> 生成一个掩码，例如：
+<ul>
+<li><code>localDepth=1</code> → <code>0x80000000</code>（32 位系统）或 <code>0x8000000000000000</code>（64 位系统）。</li>
+<li>该掩码用于提取哈希值的第 <code>localDepth</code> 个高位比特。</li>
+</ul>
+</li>
+</ul>
+<h4 id="3-目录的更新与扩展"><strong>3. 目录的更新与扩展</strong>
+</h4><p>拆分完成后，需要更新全局目录（<code>Map.directory</code>），使原表的索引范围指向新的子表。如果原表的 <code>localDepth</code> 等于全局的 <code>globalDepth</code>，则目录需要扩展（翻倍）。</p>
+<h5 id="目录扩展示例"><strong>目录扩展示例</strong>
+</h5><p>假设原表 <code>table A</code> 的 <code>localDepth=1</code>，<code>globalDepth=1</code>，目录大小为 <code>2</code>（<code>1 &lt;&lt; 1</code>）。拆分后：</p>
+<ol>
+<li><strong>目录翻倍</strong>：<code>globalDepth</code> 增加到 2，目录大小变为 <code>4</code>（<code>1 &lt;&lt; 2</code>）。</li>
+<li><strong>索引重映射</strong>：原表的目录项（例如索引 <code>0-1</code>）被替换为指向 <code>left</code> 和 <code>right</code> 表。</li>
+</ol>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// map.go
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="o">*</span><span class="nx">Map</span><span class="p">)</span> <span class="nf">installTableSplit</span><span class="p">(</span><span class="nx">old</span><span class="p">,</span> <span class="nx">left</span><span class="p">,</span> <span class="nx">right</span> <span class="o">*</span><span class="nx">table</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">old</span><span class="p">.</span><span class="nx">localDepth</span> <span class="o">==</span> <span class="nx">m</span><span class="p">.</span><span class="nx">globalDepth</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="c1">// 目录扩展：大小翻倍
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>        <span class="nx">newDir</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">([]</span><span class="o">*</span><span class="nx">table</span><span class="p">,</span> <span class="nx">m</span><span class="p">.</span><span class="nx">dirLen</span><span class="o">*</span><span class="mi">2</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="c1">// 复制旧目录项并指向新表
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>        <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">m</span><span class="p">.</span><span class="nx">dirLen</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">            <span class="nx">newDir</span><span class="p">[</span><span class="mi">2</span><span class="o">*</span><span class="nx">i</span><span class="p">]</span> <span class="p">=</span> <span class="nx">left</span>
+</span></span><span class="line"><span class="cl">            <span class="nx">newDir</span><span class="p">[</span><span class="mi">2</span><span class="o">*</span><span class="nx">i</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span> <span class="p">=</span> <span class="nx">right</span>
+</span></span><span class="line"><span class="cl">        <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">m</span><span class="p">.</span><span class="nx">dirPtr</span> <span class="p">=</span> <span class="nx">unsafe</span><span class="p">.</span><span class="nf">Pointer</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">newDir</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">m</span><span class="p">.</span><span class="nx">globalDepth</span><span class="o">++</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="c1">// 不扩展目录，仅替换部分项
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>        <span class="nx">entries</span> <span class="o">:=</span> <span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="p">(</span><span class="nx">m</span><span class="p">.</span><span class="nx">globalDepth</span> <span class="o">-</span> <span class="nx">left</span><span class="p">.</span><span class="nx">localDepth</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nx">entries</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">            <span class="nx">m</span><span class="p">.</span><span class="nf">directorySet</span><span class="p">(</span><span class="nb">uintptr</span><span class="p">(</span><span class="nx">old</span><span class="p">.</span><span class="nx">index</span><span class="o">+</span><span class="nx">i</span><span class="p">),</span> <span class="nx">left</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">            <span class="nx">m</span><span class="p">.</span><span class="nf">directorySet</span><span class="p">(</span><span class="nb">uintptr</span><span class="p">(</span><span class="nx">old</span><span class="p">.</span><span class="nx">index</span><span class="o">+</span><span class="nx">i</span><span class="o">+</span><span class="nx">entries</span><span class="p">),</span> <span class="nx">right</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><ul>
+<li><strong>地址变化</strong>：
+<ul>
+<li>原表 <code>table A</code> 的 <code>dirPtr</code> 指向的目录项被更新为新表的地址。</li>
+<li>例如，原目录项 <code>[A, A]</code> 变为 <code>[Left, Right]</code>（扩展后目录为 <code>[Left, Right, Left, Right]</code>）。</li>
+</ul>
+</li>
+</ul>
+<h4 id="示例拆分前后的地址与目录变化">示例：拆分前后的地址与目录变化
+</h4><h5 id="初始状态"><strong>初始状态</strong>
+</h5><ul>
+<li><strong>全局目录</strong>：<code>globalDepth=1</code>，目录大小为 2，指向同一个表 <code>A</code>。
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">directory[0] → A (localDepth=1)
+</span></span><span class="line"><span class="cl">directory[1] → A (localDepth=1)
+</span></span></code></pre></td></tr></table>
+</div>
+</div></li>
+</ul>
+<h5 id="触发拆分"><strong>触发拆分</strong>
+</h5><ol>
+<li><strong>创建子表</strong>：<code>Left</code>（<code>localDepth=2</code>）和 <code>Right</code>（<code>localDepth=2</code>）。</li>
+<li><strong>目录扩展</strong>：<code>globalDepth</code> 增加到 2，目录大小变为 4。</li>
+<li><strong>更新目录项</strong>：
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">directory[0] → Left  // 哈希前缀 00
+</span></span><span class="line"><span class="cl">directory[1] → Left  // 哈希前缀 01（原属于 A 的低半区）
+</span></span><span class="line"><span class="cl">directory[2] → Right // 哈希前缀 10
+</span></span><span class="line"><span class="cl">directory[3] → Right // 哈希前缀 11（原属于 A 的高半区）
+</span></span></code></pre></td></tr></table>
+</div>
+</div></li>
+</ol>
+<ul>
+<li><strong>地址变化</strong>：
+<ul>
+<li><code>directory[0]</code> 和 <code>directory[1]</code> 的指针从 <code>A</code> 变为 <code>Left</code>。</li>
+<li><code>directory[2]</code> 和 <code>directory[3]</code> 的指针从 <code>A</code> 变为 <code>Right</code>。</li>
+</ul>
+</li>
+</ul>
+<h4 id="拆分后的数据分布">拆分后的数据分布
+</h4><p>假设原表 <code>A</code> 的哈希键分布如下：</p>
+<ul>
+<li>哈希值高位为 <code>00</code> 或 <code>01</code> → 分配到 <code>Left</code>。</li>
+<li>哈希值高位为 <code>10</code> 或 <code>11</code> → 分配到 <code>Right</code>。</li>
+</ul>
+<p>通过掩码 <code>localDepthMask(2)</code>（例如 <code>0x40000000</code>），提取哈希值的第 2 个高位比特，决定数据归属。</p>
+<h4 id="关键设计优势">关键设计优势
+</h4><ol>
+<li><strong>局部性</strong>：仅拆分负载高的表，其他表不受影响。</li>
+<li><strong>渐进式扩容</strong>：目录按需扩展，避免一次性全量迁移。</li>
+<li><strong>地址连续性</strong>：新表的 <code>groups.data</code> 是连续内存块，利于缓存优化。</li>
+</ol>
+<h3 id="其他优化">其他优化
+</h3><p>此外，<code>swiss map</code> 针对一些特定场景也有优化，比如针对于少量元素(&lt;=8)就直接使用一个group来存储数据，尽量降低 <code>swiss map</code> 在少量数据的时候的性能劣势。</p>
+<h3 id="遗留问题与挑战">遗留问题与挑战
+</h3><p>尽管 <code>swiss map</code> 在设计与性能上迈出了一大步，但仍存在以下待优化点：</p>
+<h4 id="并发支持的局限性">并发支持的局限性
+</h4><p>当前实现通过 <code>writing</code> 标志检测并发写入，但缺乏细粒度锁：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">//https://github.com/golang/go/blob/3f4164f508b8148eb526fc096884dba2609f5835/src/internal/runtime/maps/map.go#L478
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="o">*</span><span class="nx">Map</span><span class="p">)</span> <span class="nf">PutSlot</span><span class="p">(</span><span class="nx">typ</span> <span class="o">*</span><span class="nx">abi</span><span class="p">.</span><span class="nx">SwissMapType</span><span class="p">,</span> <span class="nx">key</span> <span class="nx">unsafe</span><span class="p">.</span><span class="nx">Pointer</span><span class="p">)</span> <span class="nx">unsafe</span><span class="p">.</span><span class="nx">Pointer</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="nx">m</span><span class="p">.</span><span class="nx">writing</span> <span class="p">^=</span> <span class="mi">1</span> <span class="c1">// 简单标志位，非原子操作
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="c1">// ...
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>这在多线程高并发场景下可能导致竞争条件。官方文档提到未来可能引入更复杂的同步机制，但目前仍需依赖外部锁。</p>
+<h4 id="内存碎片化">内存碎片化
+</h4><p><code>swiss map</code> 的 <code>group</code> 结构（8 控制字节 + 8 键值槽）可能导致内存对齐浪费，尤其是键值类型较小时。例如，若键为 <code>int32</code>、值为 <code>int8</code>，每个槽位将浪费 3 字节。</p>
+<h4 id="迭代器复杂度">迭代器复杂度
+</h4><p><code>Iter</code> 的实现（<code>table.go</code>）需处理目录扩展和表拆分，逻辑复杂：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span><span class="lnt">8
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// https://github.com/golang/go/blob/3f4164f508b8148eb526fc096884dba2609f5835/src/internal/runtime/maps/table.go#L742
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">it</span> <span class="o">*</span><span class="nx">Iter</span><span class="p">)</span> <span class="nf">Next</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">it</span><span class="p">.</span><span class="nx">globalDepth</span> <span class="o">!=</span> <span class="nx">it</span><span class="p">.</span><span class="nx">m</span><span class="p">.</span><span class="nx">globalDepth</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="c1">// 处理目录扩展后的索引调整
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>        <span class="nx">it</span><span class="p">.</span><span class="nx">dirIdx</span> <span class="o">&lt;&lt;=</span> <span class="p">(</span><span class="nx">it</span><span class="p">.</span><span class="nx">m</span><span class="p">.</span><span class="nx">globalDepth</span> <span class="o">-</span> <span class="nx">it</span><span class="p">.</span><span class="nx">globalDepth</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="c1">// ...
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>在频繁扩容的场景下，迭代器的性能可能受到影响。</p>
+<p>此外，在最新的代码中，遗留了很多TODO<br>
+<img src="https://images.hxzhouh.com/blog-images/2025/01/715d866b7013c977454d49537e01888b.png"
+	
+	
+	
+	loading="lazy"
+	
+	
+><br>
+我甚至都不知道如何总结这些TODO， 目前距离 Go 1.24 正式发布还有不到一个月的时间，不知道这些TODO会不会全部解决。<br>
+在社区中关于<code>swiss map</code> 的讨论也还有很多，主要集中在性能优化方面，可以想象未来 还会出现很多变动。<br>
+<img src="https://images.hxzhouh.com/blog-images/2025/01/f39ed089d7c8ab59a90840411de6551d.png"
+	
+	
+	
+	loading="lazy"
+	
+	
+></p>
+<p>一切都要等到2月份正式发布。</p>
+<h3 id="性能测试">性能测试
+</h3><p>完整的测试代码：https://github.com/hxzhouh/gomapbench<br>
+go version devel go1.24-3f4164f5 Mon Jan 20 09:25:11 2025 -0800 darwin/arm64<br>
+<img src="https://images.hxzhouh.com/blog-images/2025/01/f4a1ee763ddd58e309055e616b562268.png"
+	
+	
+	
+	loading="lazy"
+	
+	
+><br>
+平均性能提升 28% 大约，在某些场景下，甚至高达 50%。不愧是Go1.24 最期待的功能。</p>
+<p>但是，这是一份不严谨的性能测试，测试机器也仅限于我自己的笔记本电脑，有一些报告显示<code>swiss map</code> 在某些地方的性能甚至出现了下降。<br>
+<a class="link" href="https://x.com/valyala/status/1879988053076504761"  target="_blank" rel="noopener"
+    >https://x.com/valyala/status/1879988053076504761</a></p>
+<p><a class="link" href="https://x.com/zigo_101/status/1882311256541102178"  target="_blank" rel="noopener"
+    >https://x.com/zigo_101/status/1882311256541102178</a><br>
+<img src="https://images.hxzhouh.com/blog-images/2025/01/72e1e0c7299e083da7db0f6c2fdd0a61.png"
+	
+	
+	
+	loading="lazy"
+	
+	
+><br>
+<img src="https://images.hxzhouh.com/blog-images/2025/01/391c2aec55c9e25ffacd2f3e5c9f1265.png"
+	
+	
+	
+	loading="lazy"
+	
+	
+></p>
+<p>最终<code>swiss map</code> 如何，还是要看后续的演化。</p>
+<h3 id="总结">总结
+</h3><p>Go 1.24 的 <code>swiss map</code> 通过兼容性设计、Extendible Hashing 和优化的探测序列，显著提升了哈希表在高负载场景下的性能。然而，其并发模型和内存效率仍有改进空间。对于开发者而言，这一新特性值得在性能敏感的场景中尝试，但也需关注其当前限制。</p>
+<h3 id="参考资料">参考资料
+</h3><p><a class="link" href="https://tonybai.com/2024/11/14/go-map-use-swiss-table/"  target="_blank" rel="noopener"
+    >https://tonybai.com/2024/11/14/go-map-use-swiss-table/</a><br>
+<a class="link" href="https://github.com/golang/go/issues/54766"  target="_blank" rel="noopener"
+    >https://github.com/golang/go/issues/54766</a><br>
+<a class="link" href="https://pub.huizhou92.com/swisstable-a-high-performance-hash-table-implementation-3e13bfe8c79b"  target="_blank" rel="noopener"
+    >https://pub.huizhou92.com/swisstable-a-high-performance-hash-table-implementation-3e13bfe8c79b</a><br>
+<a class="link" href="https://www.geeksforgeeks.org/extendible-hashing-dynamic-approach-to-dbms/"  target="_blank" rel="noopener"
+    >https://www.geeksforgeeks.org/extendible-hashing-dynamic-approach-to-dbms/</a></p>
+<hr>
+<ul>
+<li><a class="link" href="https://huizhou92.com/zh-cn/p/go-124-%E7%9A%84-swiss-map%E5%85%BC%E5%AE%B9%E6%80%A7%E6%89%A9%E5%B1%95%E5%93%88%E5%B8%8C%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98/"  target="_blank" rel="noopener"
+    >本文长期链接</a></li>
+<li>如果您觉得我的博客对你有帮助，请通过 <a class="link" href="https://huizhou92.com/index.xml"  target="_blank" rel="noopener"
+    >RSS</a>订阅我。</li>
+<li>或者在<a class="link" href="https://x.com/@piaopiaopig"  target="_blank" rel="noopener"
+    >X</a>上关注我。</li>
+<li>如果您有<a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >Medium</a>账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。</li>
+</ul>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/zh-cn/tags/golang/">Golang</a>
+        
+            <a href="/zh-cn/tags/go1_24/">Go1_24</a>
+        
+            <a href="/zh-cn/tags/swissmap/">Swissmap</a>
+        
+            <a href="/zh-cn/tags/swisstable/">SwissTable</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            最后更新于 Jan 23, 2025 14:18 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+<aside class="related-content--wrapper">
+    <h2 class="section-title">相关文章</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/go-1.24-%E6%96%B0%E7%9A%84%E5%AE%98%E6%96%B9%E5%BA%93-synctest/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/12/260aeb6207be4b765d34328515c144dc.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/12/260aeb6207be4b765d34328515c144dc.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 1.24: 新的官方库 synctest</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/golang-1.24-runtime.addcleanup-%E6%94%B9%E8%BF%9B-runtime.setfinalizer-%E7%9A%84%E4%B8%80%E4%BA%9B%E9%97%AE%E9%A2%98/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/12/53b24938b44977786f01d0db8768c34e.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/12/53b24938b44977786f01d0db8768c34e.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Golang 1.24: runtime.AddCleanup 改进 runtime.SetFinalizer 的一些问题</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/go1.24-%E6%96%B0%E7%9A%84%E6%A0%87%E5%87%86%E5%BA%93-os.root/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">go1.24: 新的标准库 os.Root</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/%E8%AF%91swissmap%E4%B8%80%E4%B8%AA%E6%9B%B4%E5%B0%8F%E6%9B%B4%E5%BF%AB%E7%9A%84-golang-hashmap/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">【译】SwissMap：一个更小、更快的 Golang HashMap</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/%E4%BD%BF%E7%94%A8%E5%AF%B9%E5%86%B2%E6%A8%A1%E5%BC%8F%E9%99%8D%E4%BD%8E%E9%95%BF%E5%B0%BE%E8%AF%B7%E6%B1%82/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">使用对冲模式降低长尾请求</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+
+    
+        
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2025 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+    </section>
+    <script src="/js/adblock-detection.js" defer></script>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>
