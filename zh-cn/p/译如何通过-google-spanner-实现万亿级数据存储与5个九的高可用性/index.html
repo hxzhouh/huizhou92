@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="zh-cn" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="本文深入探讨Google Cloud Spanner如何通过同步复制、TrueTime技术和Paxos共识算法，实现高可用性和全球一致性，适合需要万亿级数据存储的企业。了解其架构和数据处理机制，掌握现代数据库的未来趋势。">
+<title>【译】如何通过 Google Spanner 实现万亿级数据存储与5个九的高可用性</title>
+
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/%E8%AF%91%E5%A6%82%E4%BD%95%E9%80%9A%E8%BF%87-google-spanner-%E5%AE%9E%E7%8E%B0%E4%B8%87%E4%BA%BF%E7%BA%A7%E6%95%B0%E6%8D%AE%E5%AD%98%E5%82%A8%E4%B8%8E5%E4%B8%AA%E4%B9%9D%E7%9A%84%E9%AB%98%E5%8F%AF%E7%94%A8%E6%80%A7/'>
+
+<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="【译】如何通过 Google Spanner 实现万亿级数据存储与5个九的高可用性">
+<meta property='og:description' content="本文深入探讨Google Cloud Spanner如何通过同步复制、TrueTime技术和Paxos共识算法，实现高可用性和全球一致性，适合需要万亿级数据存储的企业。了解其架构和数据处理机制，掌握现代数据库的未来趋势。">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/%E8%AF%91%E5%A6%82%E4%BD%95%E9%80%9A%E8%BF%87-google-spanner-%E5%AE%9E%E7%8E%B0%E4%B8%87%E4%BA%BF%E7%BA%A7%E6%95%B0%E6%8D%AE%E5%AD%98%E5%82%A8%E4%B8%8E5%E4%B8%AA%E4%B9%9D%E7%9A%84%E9%AB%98%E5%8F%AF%E7%94%A8%E6%80%A7/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='Spanner' /><meta property='article:tag' content='数据库' /><meta property='article:published_time' content='2025-02-06T10:01:23&#43;08:00'/><meta property='article:modified_time' content='2025-02-06T10:01:21&#43;08:00'/>
+<meta name="twitter:site" content="@piaopiaopig">
+    <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="【译】如何通过 Google Spanner 实现万亿级数据存储与5个九的高可用性">
+<meta name="twitter:description" content="本文深入探讨Google Cloud Spanner如何通过同步复制、TrueTime技术和Paxos共识算法，实现高可用性和全球一致性，适合需要万亿级数据存储的企业。了解其架构和数据处理机制，掌握现代数据库的未来趋势。">
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="切换菜单">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/zh-cn/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/zh-cn">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/zh-cn/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>主页</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/%E5%85%B3%E4%BA%8E/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>关于</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>归档</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>搜索</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" >English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" selected>中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>暗色模式</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">目录</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li>
+      <ol>
+        <li><a href="#cloud-spanner-的主要特性">Cloud Spanner 的主要特性</a></li>
+        <li><a href="#cloud-spanner-架构概述">Cloud Spanner 架构概述</a></li>
+        <li><a href="#关键架构组件">关键架构组件</a></li>
+        <li><a href="#paxos-共识机制">Paxos 共识机制</a>
+          <ol>
+            <li><a href="#领导者分配机制">领导者分配机制</a></li>
+          </ol>
+        </li>
+        <li><a href="#事务处理机制">事务处理机制</a>
+          <ol>
+            <li><a href="#写事务">写事务</a></li>
+            <li><a href="#读事务">读事务</a></li>
+          </ol>
+        </li>
+        <li><a href="#truetime-技术">TrueTime 技术</a></li>
+        <li><a href="#总结">总结</a></li>
+        <li><a href="#参考文献">参考文献</a></li>
+      </ol>
+    </li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="main-article">
+    <header class="article-header">
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/zh-cn/categories/tech/" style="background-color: #2a9d8f; color: #fff;">
+                技术
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/zh-cn/p/%E8%AF%91%E5%A6%82%E4%BD%95%E9%80%9A%E8%BF%87-google-spanner-%E5%AE%9E%E7%8E%B0%E4%B8%87%E4%BA%BF%E7%BA%A7%E6%95%B0%E6%8D%AE%E5%AD%98%E5%82%A8%E4%B8%8E5%E4%B8%AA%E4%B9%9D%E7%9A%84%E9%AB%98%E5%8F%AF%E7%94%A8%E6%80%A7/">【译】如何通过 Google Spanner 实现万亿级数据存储与5个九的高可用性</a>
+        </h2>
+    
+        
+        <h3 class="article-subtitle">
+            本文深入探讨Google Cloud Spanner如何通过同步复制、TrueTime技术和Paxos共识算法，实现高可用性和全球一致性，适合需要万亿级数据存储的企业。了解其架构和数据处理机制，掌握现代数据库的未来趋势。
+        </h3>
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Feb 06, 2025</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    阅读时长: 2 分钟
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <p>原始链接 <a class="link" href="https://blog.bytebytego.com/p/how-google-spanner-powers-trillions"  target="_blank" rel="noopener"
+    >https://blog.bytebytego.com/p/how-google-spanner-powers-trillions</a> 作者 <a class="link" href="https://substack.com/@bytebytego399569"  target="_blank" rel="noopener"
+    >ByteByteGo</a></p>
+<blockquote>
+<p><em>免责声明：本文中的所有细节均来源于 Google 博客和研究论文，所有技术细节的原始版权均归 Google 工程团队所有。文末附有原始文章的链接。我们对这些细节进行了分析并提供了我们的解读。如果您发现任何不准确或遗漏之处，请留言，我们会尽力修正。</em></p>
+</blockquote>
+<p>Google Cloud Spanner 是 Google 开发的一款革命性数据库系统，它巧妙地将传统关系型数据库的优势与 NoSQL 系统通常具备的可扩展性相结合。</p>
+<p>专为跨多个区域处理海量工作负载而设计，Cloud Spanner 提供了一个全球分布、强一致性且高可用的数据管理平台。其独特之处在于，它既支持 SQL 查询和关系型数据结构，同时又实现了水平扩展能力，使其能够满足现代高负载应用的需求。</p>
+<!-- more-->
+<h3 id="cloud-spanner-的主要特性">Cloud Spanner 的主要特性
+</h3><ul>
+<li><strong>多版本数据库</strong> 采用同步复制技术，即使在区域故障的情况下也能保证数据的持久性与可用性。</li>
+<li><strong>TrueTime 技术</strong> 整合了 GPS 和原子钟，<strong>提供全球一致的时间线</strong>。</li>
+<li><strong>简化数据管理</strong> 提供熟悉的 SQL 接口，同时在后台处理分布式数据处理的复杂性。</li>
+<li><strong>数据切分与动态分片</strong> 将数据按照连续的键范围（称为 splits）进行分区，并根据负载或数据量动态调整分片以优化性能。</li>
+</ul>
+<p>总体而言，Google Spanner 为需要支持全球规模操作，同时保持传统关系型系统的稳健性和可靠性的企业提供了一种极具竞争力的数据库解决方案。</p>
+<p>在本文中，我们将深入探讨 Google Cloud Spanner 的架构，以及它如何支持构成这一出色数据库选项的各项能力。</p>
+<h3 id="cloud-spanner-架构概述">Cloud Spanner 架构概述
+</h3><p>Spanner 的架构旨在支持其作为一个全球分布、强一致性及高可用性数据库的角色。</p>
+<p>在最高层次上，Spanner 被组织为一个被称为 “Universe” 的逻辑实体，该实体跨越多个物理或逻辑位置，这些位置被称为“区域（zones）”。</p>
+<p>每个区域都具有一定的独立性，并包含专用的 <strong>spanservers</strong>。这些服务器负责数据存储和事务处理，基于 Google 早期分布式存储系统 Bigtable 的概念，并在此基础上进行了增强以支持复杂事务和多版本数据。</p>
+<p><img src="https://substackcdn.com/image/fetch/w_1456,c_limit,f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2Fc13e917f-5771-43be-ad01-2b27e24c6707_1600x970.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="架构图"
+	
+	
+></p>
+<h3 id="关键架构组件">关键架构组件
+</h3><p>Cloud Spanner 通过将数据划分成更小的单元来进行管理，这些单元称为 <strong>tablets</strong>，并分布在多个 spanservers 上。</p>
+<ul>
+<li><strong>Tablets</strong>：每个 tablet 存储键值对数据，并附带时间戳用于版本控制。这种结构使得 Spanner 成为一个多版本数据库，能够根据需要访问数据的旧版本。</li>
+<li><strong>Colossus 文件系统</strong>：Tablets 存储在 Colossus 上，这是 Google 的分布式文件系统。Colossus 提供了容错性和高性能存储，使得 Spanner 能够实现存储与计算资源的独立扩展。</li>
+<li><strong>Splits</strong>：表中的数据依据连续的键值范围进行划分，这些范围称为 splits。当某个 split 变得过大或流量过高时，系统会自动将其分割成更小的部分并重新分布到不同的 spanservers，这一过程称为动态分片（dynamic sharding）。</li>
+<li><strong>跨区域复制</strong>：每个 split 都会在多个区域间进行复制，以实现冗余和故障容错。</li>
+</ul>
+<p>为了保证数据一致性，Spanner 采用了 <code>Paxos 共识算法</code>来管理跨区域的复制。每个 split 都有多个副本，Paxos 算法确保这些副本保持一致性。</p>
+<ul>
+<li><strong>Leader选举</strong>：在这些副本中，一个副本被选为领导者，负责处理该 split 的所有写事务，确保更新以一致的顺序进行。如果领导者出现故障，Paxos 会自动选举出新的领导者，从而在无需人工干预的情况下保持系统可用性。同时，非领导者副本可以处理读操作，从而减轻领导者的负载并提高扩展性。</li>
+</ul>
+<p><img src="https://substackcdn.com/image/fetch/w_1456,c_limit,f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2Fa0bf8a26-ea4d-4084-a107-2b2cf55786d7_1600x913.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="数据分片与复制"
+	
+	
+></p>
+<p>Spanner 实例通常跨越某一地区内的多个区域，并将副本分布在这些区域中。这样的架构提高了系统的可用性，因为即便某个区域发生故障，其他区域仍能继续处理请求。对于全球部署，还可以将数据复制到不同大陆，以便为全球用户提供低延迟访问。</p>
+<p>所有数据均存储在 Colossus 上，该系统为分布式、复制的文件存储而设计，通过在多台物理机器间复制数据来确保高耐久性，从而在硬件故障时能够恢复数据。文件系统与计算资源分离，使得数据库可以独立扩展并高效运行。</p>
+<p><img src="https://substackcdn.com/image/fetch/w_1456,c_limit,f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F42c83ab5-6e93-46d4-8c56-36519687168e_1600x1095.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Colossus 文件系统"
+	
+	
+></p>
+<h3 id="paxos-共识机制">Paxos 共识机制
+</h3><p>Paxos 是 Spanner 架构中的核心组件之一。其基本原理是通过分布式共识，让一组副本（称为 Paxos 组）就一个值（例如某事务的提交或负责更新的领导者）达成一致。</p>
+<p><img src="https://substackcdn.com/image/fetch/w_1456,c_limit,f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F673e7076-2212-44c0-bae5-503f82bf7318_1600x970.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Paxos 架构图"
+	
+	
+></p>
+<h4 id="领导者分配机制">领导者分配机制
+</h4><ul>
+<li>每个数据 split（即连续键范围）都关联有一个横跨多个区域的 Paxos 组。</li>
+<li>在 Paxos 组中，一个副本被指定为领导者，该领导者负责处理该 split 的所有写操作，从而保证更新协调一致。</li>
+<li>其他副本作为跟随者，不仅帮助分担读操作的负载，还为系统的扩展性做出贡献。</li>
+</ul>
+<p><strong>Paxos 领导者的主要职责包括：</strong></p>
+<ul>
+<li><strong>处理写操作</strong>：领导者接收写请求，并确保这些请求在多数副本确认后才进行提交，从而确保数据的持久性和一致性，即便部分副本出现故障。</li>
+<li><strong>维护顺序</strong>：通过 TrueTime 为事务分配时间戳，确保写操作按照全局一致的顺序执行。</li>
+<li><strong>与跟随者通信</strong>：领导者向跟随者广播提案，并收集确认信息来协调更新。</li>
+</ul>
+<p>即使在分布式系统中不可避免会出现故障，Paxos 机制也能确保 Spanner 在面对这些问题时依旧保持可用性与一致性。若当前领导者因机器或区域故障而失效，Paxos 组将检测到这一情况并选举出新的领导者，从而避免系统停机。</p>
+<h3 id="事务处理机制">事务处理机制
+</h3><p>Cloud Spanner 使用强大而稳健的事务处理方法，确保数据一致性、可靠性和高性能。下面介绍写事务和读事务的工作原理：</p>
+<h4 id="写事务">写事务
+</h4><p>写事务确保了原子性（全有或全无）和一致性（所有副本数据一致），由 Paxos 领导者协调处理，即便在出现故障时也能保证数据完整性。其基本步骤如下：</p>
+<ol>
+<li><strong>加锁</strong>：在修改数据之前，负责该 split 的 Paxos 领导者会对相关行加写锁。如果另一事务已持有冲突锁，则当前事务需等待锁释放。</li>
+<li><strong>通过 TrueTime 分配时间戳</strong>：利用 TrueTime 为事务分配全局一致的时间戳，该时间戳总是大于之前任何已提交事务的时间戳，从而保证时间顺序的一致性。</li>
+<li><strong>多数副本复制保证持久性</strong>：领导者在加锁并分配时间戳后，会将事务细节发送给 Paxos 组中超过半数的副本。只有在多数副本确认后，事务才被认为已提交，确保即便部分副本故障，数据也能得到持久保存。</li>
+<li><strong>提交等待</strong>：领导者会等待一个短暂的时段，确保提交时间戳对所有副本均已生效，然后再最终提交事务，使得后续所有读取操作都能反映该变更。</li>
+</ol>
+<p>对于单个 split 内的写操作，例如用户希望在表中添加一个 ID 为 7、值为 “Seven” 的行：</p>
+<ul>
+<li>Spanner API 会确定 ID 7 所在的 split，并将请求发送至该 split 的 Paxos 领导者。</li>
+<li>领导者对 ID 7 加锁、分配时间戳，并将变更复制给多数副本。</li>
+<li>在确保时间戳生效后，事务提交，所有副本应用该变更。</li>
+</ul>
+<p>而对于涉及多个 split 的写操作（例如修改多个 split 中的 ID 2000、3000 和 4000），Spanner 则采用两阶段提交协议：</p>
+<ul>
+<li>每个参与的 split 都成为事务的参与者，其中一个 split 的领导者担当协调者角色。</li>
+<li>协调者确保所有参与者都已加锁并同意提交事务，然后再进行下一步操作。</li>
+<li>在所有参与者确认后，协调者提交事务，并通知其他参与者应用变更。</li>
+</ul>
+<h4 id="读事务">读事务
+</h4><p>读事务经过优化，可在高负载下提供高性能的强一致性读取，同时无需加锁。</p>
+<ul>
+<li><strong>强一致性读取</strong>：这类读取始终返回最新的已提交数据。系统通过 TrueTime 检查数据最新的时间戳，确保返回的数据是最新状态。例如，当客户端请求读取 ID 为 1000 的行时，系统会路由该请求至某个副本，并在返回结果前与领导者确认数据的最新性。</li>
+<li><strong>陈旧读取</strong>：允许在一定程度上返回稍微过时的数据（例如最多延迟 10 秒），以换取更低的延迟。客户端在请求时，可以直接从副本读取数据，而无需等待领导者确认，从而加速响应。</li>
+</ul>
+<p>下面的图示展示了强一致性读取的场景：</p>
+<p><img src="https://substackcdn.com/image/fetch/w_1456,c_limit,f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2Ff7819b45-937e-4e3f-9e23-ab2cfb52ce75_1600x923.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="强一致性读取"
+	
+	
+></p>
+<p>而下图则展示了陈旧读取的场景：</p>
+<p><img src="https://substackcdn.com/image/fetch/w_1456,c_limit,f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F5909c950-6524-4088-9519-5719b4d7a528_1600x923.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="陈旧读取"
+	
+	
+></p>
+<p>为了避免死锁——即多个事务相互等待释放锁的情况——Spanner 采用了 <strong>wound-wait 算法</strong>。其基本规则如下：</p>
+<ul>
+<li>如果一个较晚启动的（年轻的）事务请求被较早启动（较老）的事务所持有的锁，则该年轻事务等待。</li>
+<li>如果较老事务请求较年轻事务所持有的锁，则较年轻事务会被 “wound” （即中止），以便较老事务继续执行。</li>
+<li>这种策略确保事务始终能够推进，避免形成死锁循环。</li>
+</ul>
+<p>Spanner 的设计确保了数据即使在故障情况下也能保持一致性和可用性。所有写操作的数据均存储于 Google 的 Colossus 分布式文件系统中，该系统通过将数据复制到多台物理机器上，即使部分机器或区域出现故障，也能从其他副本中恢复数据。TrueTime 则确保了在分布式环境中事务的全局一致排序，保证一旦某事务对一个客户端可见，则对所有客户端均可见。</p>
+<h3 id="truetime-技术">TrueTime 技术
+</h3><p>TrueTime 是 Cloud Spanner 的一项关键创新，使其能够作为一个全球分布、强一致性的数据库运行。TrueTime 解决了分布式系统中最具挑战性的问题之一：如何在分布于多个区域和数据中心的节点间提供全球同步和一致的时间视图。</p>
+<p>TrueTime 基于原子钟和 GPS 时钟的组合工作，二者协同提供高度准确和可靠的时间同步：</p>
+<ul>
+<li><strong>原子钟</strong>：基于原子振动频率计时，提供极高精度、漂移极小的时间测量。在 GPS 信号中断或不准确时，原子钟能保证时间的准确性。</li>
+<li><strong>GPS 时钟</strong>：依靠卫星信号提供准确的全球同步时间。但 GPS 系统可能会遇到干扰、天线故障，甚至伪造攻击的问题。</li>
+</ul>
+<p>TrueTime 不将时间表示为单一的点，而是表示为一个时间区间，明确体现了分布式系统中固有的不确定性：</p>
+<ul>
+<li><strong>TTInterval</strong>：TrueTime 提供一个时间范围 [earliest, latest]，保证实际的全球时间落在此区间内。区间宽度由时钟漂移和网络延迟等因素决定。</li>
+<li><strong>误差范围与同步</strong>：通过大约每 30 秒与时间主机（原子钟和 GPS 时钟）同步一次，系统可将不确定性区间保持在一个较小的范围内（通常在 10 毫秒以内）。</li>
+</ul>
+<p>TrueTime 具有以下重要特性，使其在分布式数据库中发挥关键作用：</p>
+<ul>
+<li><strong>全局外部一致性</strong>：确保所有副本中事务以相同的全局顺序进行序列化。例如，如果某事务提交早于另一事务开始，TrueTime 能保证时间戳反映这种全局顺序。</li>
+<li><strong>无锁读取事务</strong>：允许 Spanner 执行无锁的只读请求，这些事务可以在不加锁的情况下访问数据的一致快照，从而提升系统扩展性和性能。</li>
+<li><strong>原子模式更新</strong>：在分布式系统中，模式更改（如修改表结构）通常十分复杂。TrueTime 将模式更新视为具有特定时间戳的事务，确保所有服务器一致地应用更改。</li>
+<li><strong>历史数据读取</strong>：TrueTime 允许基于指定时间戳读取数据的一致快照，方便进行审计或调试。</li>
+</ul>
+<h3 id="总结">总结
+</h3><p>Google Spanner 在数据库工程领域是一项重大突破，它完美地将传统关系型数据库的可靠性和结构性与 NoSQL 系统的可扩展性和全球可用性相结合。通过创新的架构设计，依靠 Paxos 共识机制以及 TrueTime 技术，Spanner 能够高效地处理分布式事务、保证外部一致性，并在全球范围内保持高性能运行。</p>
+<p>Google Spanner 正在重新定义分布式数据库系统的可能性，为可扩展性、可靠性和创新设定了新的标准。</p>
+<hr>
+<h3 id="参考文献">参考文献
+</h3><ul>
+<li><a class="link" href="https://static.googleusercontent.com/media/research.google.com/en//archive/spanner-osdi2012.pdf"  target="_blank" rel="noopener"
+    >Spanner: Google’s Globally-Distributed Database</a></li>
+<li><a class="link" href="https://cloud.google.com/spanner/docs/whitepapers/life-of-reads-and-writes"  target="_blank" rel="noopener"
+    >Life of Spanner Reads and Writes</a></li>
+<li><a class="link" href="https://cloud.google.com/blog/topics/developers-practitioners/what-cloud-spanner"  target="_blank" rel="noopener"
+    >What is Cloud Spanner?</a></li>
+</ul>
+<hr>
+<ul>
+<li><a class="link" href="https://huizhou92.com/p/%e8%af%91%e5%a6%82%e4%bd%95%e9%80%9a%e8%bf%87-google-spanner-%e5%ae%9e%e7%8e%b0%e4%b8%87%e4%ba%bf%e7%ba%a7%e6%95%b0%e6%8d%ae%e5%ad%98%e5%82%a8%e4%b8%8e5%e4%b8%aa%e4%b9%9d%e7%9a%84%e9%ab%98%e5%8f%af%e7%94%a8%e6%80%a7/"  target="_blank" rel="noopener"
+    >Long Time Link</a></li>
+<li>If you find my blog helpful, please subscribe to me via <a class="link" href="https://huizhou92.com/index.xml"  target="_blank" rel="noopener"
+    >RSS</a></li>
+<li>Or follow me on <a class="link" href="https://x.com/@piaopiaopig"  target="_blank" rel="noopener"
+    >X</a></li>
+<li>If you have a <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >Medium</a> account, follow me there. My articles will be published there as soon as possible.</li>
+</ul>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/zh-cn/tags/spanner/">Spanner</a>
+        
+            <a href="/zh-cn/tags/%E6%95%B0%E6%8D%AE%E5%BA%93/">数据库</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            最后更新于 Feb 06, 2025 10:01 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+<aside class="related-content--wrapper">
+    <h2 class="section-title">相关文章</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="">
+    <a href="/zh-cn/p/deepseekai-%E7%AB%9E%E8%B5%9B%E4%B8%AD%E7%9A%84%E9%BB%91%E5%A4%A9%E9%B9%85zh-cn/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">DeepSeek：AI 竞赛中的黑天鹅</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/go-124-%E7%9A%84-swiss-map%E5%85%BC%E5%AE%B9%E6%80%A7%E6%89%A9%E5%B1%95%E5%93%88%E5%B8%8C%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 1.24 的 Swiss Map：兼容性、扩展哈希与遗留问题</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/%E4%BD%BF%E7%94%A8%E5%AF%B9%E5%86%B2%E6%A8%A1%E5%BC%8F%E9%99%8D%E4%BD%8E%E9%95%BF%E5%B0%BE%E8%AF%B7%E6%B1%82/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">使用对冲模式降低长尾请求</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/%E9%AB%98%E6%95%88%E7%AE%A1%E7%90%86%E5%AE%9A%E6%97%B6%E4%BA%8B%E4%BB%B6/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2025/01/12ffa89f8829f9122cee1eb9daacc043.webp" loading="lazy" data-key="%E9%AB%98%E6%95%88%E7%AE%A1%E7%90%86%E5%AE%9A%E6%97%B6%E4%BA%8B%E4%BB%B6" data-hash="https://images.hxzhouh.com/blog-images/2025/01/12ffa89f8829f9122cee1eb9daacc043.webp"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">高效管理定时事件</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/streamlining-error-handling-in-go-exploring-the-new-proposal/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 中的错误处理:新的?运算符</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+
+    
+        
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2025 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+    </section>
+    <script src="/js/adblock-detection.js" defer></script>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>
