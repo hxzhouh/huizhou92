@@ -7,7 +7,146 @@
         <generator>Hugo -- gohugo.io</generator>
         <language>zh-cn</language>
         <copyright>Copyright © 2023 huizhou92</copyright>
-        <lastBuildDate>Thu, 23 Jan 2025 14:19:09 +0800</lastBuildDate><atom:link href="https://huizhou92.com/zh-cn/tags/golang/index.xml" rel="self" type="application/rss+xml" /><item>
+        <lastBuildDate>Sat, 08 Feb 2025 15:05:21 +0800</lastBuildDate><atom:link href="https://huizhou92.com/zh-cn/tags/golang/index.xml" rel="self" type="application/rss+xml" /><item>
+        <title>go_fix 自动化代码迁移的全新利器</title>
+        <link>https://huizhou92.com/zh-cn/p/go_fix-%E8%87%AA%E5%8A%A8%E5%8C%96%E4%BB%A3%E7%A0%81%E8%BF%81%E7%A7%BB%E7%9A%84%E5%85%A8%E6%96%B0%E5%88%A9%E5%99%A8/</link>
+        <pubDate>Sat, 08 Feb 2025 15:05:21 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/zh-cn/p/go_fix-%E8%87%AA%E5%8A%A8%E5%8C%96%E4%BB%A3%E7%A0%81%E8%BF%81%E7%A7%BB%E7%9A%84%E5%85%A8%E6%96%B0%E5%88%A9%E5%99%A8/</guid>
+        <description>&lt;p&gt;随着项目规模不断扩大，代码库的维护与更新变得越来越繁琐。每当某个函数、常量或包路径需要替换时，手动查找和修改不仅费时费力，还容易出错。幸运的是，Go 语言在不断进步，最新接受的提案 &lt;a class=&#34;link&#34; href=&#34;https://go.dev/issue/32816&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;go:fix&lt;/a&gt;工具为开发者提供了一种自动化迁移的解决方案。本文将带你从浅入深地了解 go:fix 的原理、应用场景以及具体使用示例。&lt;/p&gt;
+&lt;h2 id=&#34;一gofix-背景简介&#34;&gt;一、go:fix 背景简介
+&lt;/h2&gt;&lt;p&gt;在日常开发过程中，API 的弃用与替换是不可避免的。举例来说，当一个函数被标记为弃用时，我们可能希望所有对该函数的调用都替换为新的实现；当一个常量被重命名或迁移到其他包中时，我们也希望工具能够自动更新所有引用。 &lt;a class=&#34;link&#34; href=&#34;https://go.dev/issue/32816&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;#32816&lt;/a&gt; 提出的这一方案正是为了实现这样的目标——通过在代码中添加特定指令，实现简单弃用项的自动迁移。&lt;/p&gt;
+&lt;p&gt;go:fix 工具主要通过两种机制完成自动化迁移：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;函数内联（Inlining）&lt;/strong&gt;&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;常量转发（Forwarding）&lt;/strong&gt;&lt;br&gt;
+接下来，我们将详细介绍这两种机制及其使用示例。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 id=&#34;二函数内联与常量转发&#34;&gt;二、函数内联与常量转发
+&lt;/h2&gt;&lt;h3 id=&#34;1-函数内联inline-functions&#34;&gt;1. 函数内联（Inline Functions）
+&lt;/h3&gt;&lt;p&gt;当一个函数被标记为需要内联时（例如通过 &lt;code&gt;//go:fix inline&lt;/code&gt; 注释），go:fix 会自动将对该函数的调用替换为其函数体内的实现。这种机制常用于两种场景：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;弃用函数的替换&lt;/strong&gt;：当某个函数不再推荐使用时，可以直接将其内部逻辑迁移到新函数。例如：
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// Deprecated: prefer Pow(x, 2).
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;//go:fix inline
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;Square&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;x&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;Pow&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;x&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;2&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;如果代码中存在对 &lt;code&gt;Square&lt;/code&gt; 的调用，工具会自动替换为 &lt;code&gt;Pow(x, 2)&lt;/code&gt;，从而逐步淘汰旧函数。&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;包迁移&lt;/strong&gt;：在包升级或重构过程中，可能需要将原先某个包中的函数调用替换为新包中的实现。例如：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;8
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kn&#34;&gt;package&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;pkg&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kn&#34;&gt;import&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;pkg2&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;#34;pkg/v2&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;//go:fix inline
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;F&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;pkg2&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;F&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;kc&#34;&gt;nil&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;这样，调用 &lt;code&gt;pkg.F()&lt;/code&gt; 的代码将自动更新为 &lt;code&gt;pkg2.F(nil)&lt;/code&gt;，简化包路径更新的过程。&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;2-常量转发forward-constants&#34;&gt;2. 常量转发（Forward Constants）
+&lt;/h3&gt;&lt;p&gt;常量转发机制适用于常量重命名或跨包迁移的场景。只需在常量定义前添加 &lt;code&gt;//go:fix forward&lt;/code&gt; 注释，工具便能将所有对该常量的引用替换为其目标常量。例如：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kn&#34;&gt;package&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;example&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;//go:fix forward
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;const&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;Ptr&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;Pointer&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;如果其他地方有如下调用：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;example&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Ptr&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;运行 go:fix 工具后，该调用会被替换为：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;example&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Pointer&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;此机制不仅支持单个常量，也可以对常量组同时生效。&lt;/p&gt;
+&lt;h2 id=&#34;三-gofix-的优势与挑战&#34;&gt;三 go:fix 的优势与挑战
+&lt;/h2&gt;&lt;h3 id=&#34;优势&#34;&gt;优势
+&lt;/h3&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;低风险迁移&lt;/strong&gt;：自动替换确保新旧代码行为一致，降低因手动修改引入错误的风险。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;提高开发效率&lt;/strong&gt;：通过自动化工具处理重复性修改任务，开发者可以将更多精力投入到核心业务逻辑中。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;一致性更新&lt;/strong&gt;：确保代码库中所有弃用项都被统一更新，避免遗漏。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;无缝集成&lt;/strong&gt;：GoFix 与 gopls（Go 语言服务器协议）等工具紧密集成，提供实时反馈，方便开发者及时发现和修正问题。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;挑战&#34;&gt;挑战
+&lt;/h3&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;复杂场景处理&lt;/strong&gt;：对于一些特殊情况（例如常量组、iota 的用法）需要特别处理。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;跨包依赖&lt;/strong&gt;：当替换项来自不同包时，可能涉及更多细节问题，需要确保新包的导入和引用正确。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;非确定性行为&lt;/strong&gt;：工具在处理 map 遍历等非确定性场景时，需要特别注意替换的一致性。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;四结语&#34;&gt;四、结语
+&lt;/h2&gt;&lt;p&gt;go:fix 的引入为Go语言的自动化代码迁移带来了新的可能性。通过简单的注释指令（如 &lt;code&gt;//go:fix inline&lt;/code&gt;、&lt;code&gt;//go:fix forward&lt;/code&gt; ），开发者可以轻松实现对弃用函数、常量甚至包路径的自动替换，从而保持代码库的现代性和一致性。无论是大规模重构，还是逐步淘汰旧 API，go:fix 都能为你的项目维护工作提供极大的便利。&lt;/p&gt;
+&lt;p&gt;随着工具的不断完善和更多社区反馈的积累，相信未来 go:fix 能够覆盖更多复杂场景，进一步提升 Go 开发的生产力。如果你也在为手动修改代码而烦恼，不妨期待一下这款新工具，体验自动化带来的高效与便捷。&lt;/p&gt;
+&lt;h2 id=&#34;五参考资料&#34;&gt;五、参考资料
+&lt;/h2&gt;&lt;p&gt;&lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/32816&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;https://github.com/golang/go/issues/32816&lt;/a&gt;&lt;br&gt;
+&lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/tools/blob/master/gopls/internal/analysis/gofix/doc.go&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;https://github.com/golang/tools/blob/master/gopls/internal/analysis/gofix/doc.go&lt;/a&gt;&lt;/p&gt;
+&lt;hr&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/go_fix-%E8%87%AA%E5%8A%A8%E5%8C%96%E4%BB%A3%E7%A0%81%E8%BF%81%E7%A7%BB%E7%9A%84%E5%85%A8%E6%96%B0%E5%88%A9%E5%99%A8/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;本文长期链接&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;如果您觉得我的博客对你有帮助，请通过 &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RSS&lt;/a&gt;订阅我。&lt;/li&gt;
+&lt;li&gt;或者在&lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;X&lt;/a&gt;上关注我。&lt;/li&gt;
+&lt;li&gt;如果您有&lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt;账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+        </item>
+        <item>
         <title>Go 1.24 的 Swiss Map：兼容性、扩展哈希与遗留问题</title>
         <link>https://huizhou92.com/zh-cn/p/go-124-%E7%9A%84-swiss-map%E5%85%BC%E5%AE%B9%E6%80%A7%E6%89%A9%E5%B1%95%E5%93%88%E5%B8%8C%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98/</link>
         <pubDate>Thu, 23 Jan 2025 14:19:09 +0800</pubDate>
