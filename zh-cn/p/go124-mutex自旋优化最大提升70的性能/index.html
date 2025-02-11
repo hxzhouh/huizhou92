@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="zh-cn" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Go1.24引入了mutex自旋优化，提升性能最高可达70%。通过增加spinning状态，减少了锁竞争时的CPU资源浪费，优化了多线程环境下的性能表现。基准测试显示，在高竞争场景下，mutex的性能显著提升，平均性能提升约29%。该特性默认开启，用户可通过GOEXPERIMENT控制，期待在未来的版本中进一步优化。">
+<title>Go1.24: mutex自旋优化,最大提升70%的性能</title>
+
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/go124-mutex%E8%87%AA%E6%97%8B%E4%BC%98%E5%8C%96%E6%9C%80%E5%A4%A7%E6%8F%90%E5%8D%8770%E7%9A%84%E6%80%A7%E8%83%BD/'>
+
+<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="Go1.24: mutex自旋优化,最大提升70%的性能">
+<meta property='og:description' content="Go1.24引入了mutex自旋优化，提升性能最高可达70%。通过增加spinning状态，减少了锁竞争时的CPU资源浪费，优化了多线程环境下的性能表现。基准测试显示，在高竞争场景下，mutex的性能显著提升，平均性能提升约29%。该特性默认开启，用户可通过GOEXPERIMENT控制，期待在未来的版本中进一步优化。">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/go124-mutex%E8%87%AA%E6%97%8B%E4%BC%98%E5%8C%96%E6%9C%80%E5%A4%A7%E6%8F%90%E5%8D%8770%E7%9A%84%E6%80%A7%E8%83%BD/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:tag' content='mutex' /><meta property='article:published_time' content='2025-02-11T11:16:36&#43;08:00'/><meta property='article:modified_time' content='2025-02-11T11:16:33&#43;08:00'/><meta property='og:image' content='https://images.hxzhouh.com/blog-images/2025/02/aee1ae007540f5e7191e3ac7cd6b4f8d.png' />
+<meta name="twitter:site" content="@piaopiaopig">
+    <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="Go1.24: mutex自旋优化,最大提升70%的性能">
+<meta name="twitter:description" content="Go1.24引入了mutex自旋优化，提升性能最高可达70%。通过增加spinning状态，减少了锁竞争时的CPU资源浪费，优化了多线程环境下的性能表现。基准测试显示，在高竞争场景下，mutex的性能显著提升，平均性能提升约29%。该特性默认开启，用户可通过GOEXPERIMENT控制，期待在未来的版本中进一步优化。"><meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content='https://images.hxzhouh.com/blog-images/2025/02/aee1ae007540f5e7191e3ac7cd6b4f8d.png' />
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="切换菜单">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/zh-cn/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/zh-cn">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/zh-cn/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>主页</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/%E5%85%B3%E4%BA%8E/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>关于</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>归档</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>搜索</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" >English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" selected>中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>暗色模式</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">目录</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#背景">背景</a></li>
+  </ol>
+
+  <ol>
+    <li><a href="#核心优化点">核心优化点</a></li>
+    <li><a href="#mutex-获取锁分析">Mutex 获取锁分析</a>
+      <ol>
+        <li><a href="#1-快速路径尝试获取锁">1. 快速路径尝试获取锁</a></li>
+        <li><a href="#2-自旋等待阶段">2. 自旋等待阶段</a></li>
+      </ol>
+    </li>
+    <li><a href="#休眠等待阶段">休眠等待阶段</a></li>
+    <li><a href="#效果">效果</a></li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="has-image main-article">
+    <header class="article-header">
+        <div class="article-image">
+            <a href="/zh-cn/p/go124-mutex%E8%87%AA%E6%97%8B%E4%BC%98%E5%8C%96%E6%9C%80%E5%A4%A7%E6%8F%90%E5%8D%8770%E7%9A%84%E6%80%A7%E8%83%BD/">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2025/02/aee1ae007540f5e7191e3ac7cd6b4f8d.png" loading="lazy" alt="Featured image of post Go1.24: mutex自旋优化,最大提升70%的性能" />
+                
+            </a>
+        </div>
+    
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/zh-cn/categories/tech/" style="background-color: #2a9d8f; color: #fff;">
+                技术
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/zh-cn/p/go124-mutex%E8%87%AA%E6%97%8B%E4%BC%98%E5%8C%96%E6%9C%80%E5%A4%A7%E6%8F%90%E5%8D%8770%E7%9A%84%E6%80%A7%E8%83%BD/">Go1.24: mutex自旋优化,最大提升70%的性能</a>
+        </h2>
+    
+        
+        <h3 class="article-subtitle">
+            Go1.24引入了mutex自旋优化，提升性能最高可达70%。通过增加spinning状态，减少了锁竞争时的CPU资源浪费，优化了多线程环境下的性能表现。基准测试显示，在高竞争场景下，mutex的性能显著提升，平均性能提升约29%。该特性默认开启，用户可通过GOEXPERIMENT控制，期待在未来的版本中进一步优化。
+        </h3>
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Feb 11, 2025</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    阅读时长: 3 分钟
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <h2 id="背景">背景
+</h2><p>Rhys Hiltner 在 2024 年提出了改进互斥锁的性能优化诉求。现在这个优化已经合并到即将发布的Go1.24中，在锁竞争激烈的场景下最多会提升70%的性能。<br>
+<img src="https://images.hxzhouh.com/blog-images/2025/02/8c658c9a0a11655b7500d13e4ad68206.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="source https://github.com/golang/go/issues/68578 "
+	
+	
+></p>
+<p>在基准测试 ChanContended 中，作者发现随着 <code>GOMAXPROCS</code> 的增加，mutex 的性能明显下降。<br>
+<strong>Intel i7-13700H</strong> (linux/amd64)：</p>
+<ul>
+<li>当允许使用 4 个线程时，整个进程的吞吐量是单线程时的一半。</li>
+<li>当允许使用 8 个线程时，吞吐量再次减半。</li>
+<li>当允许使用 12 个线程时，吞吐量再次减半。</li>
+<li>在 <code>GOMAXPROCS=20</code> 时，200 次channel操作平均耗时 44 微秒，平均每 220 纳秒调用一次 unlock2，每次都有机会唤醒一个睡眠线程。<br>
+另一个角度是考虑进程的 CPU占用时间。<br>
+下面的数据显示，在 1.78 秒的<code>Wall-Clock Time</code>内，<strong>进程的20个线程在lock2调用中总共有27.74秒处于CPU(自旋)上。</strong></li>
+</ul>
+<p><img src="https://images.hxzhouh.com/blog-images/2025/02/19eeb4e1afc7cce66c0bc6af46dff2d6.png"
+	
+	
+	
+	loading="lazy"
+	
+	
+></p>
+<p><strong>这些 lock2 相关的线程并没有休眠，而是一直在自旋，这将消耗大量的CPU资源。</strong></p>
+<h1 id="新提案增加spinning状态">新提案：增加spinning状态
+</h1><p>通过上述的分析，作者发现在当前的lock2实现中，虽然理论上允许线程睡眠，但实际上导致所有线程都在自旋，导致了更慢的锁传递，带来了不少的性能损耗。<br>
+于是提出了新的设计方案<a class="link" href="https://github.com/golang/proposal/blob/master/design/68578-mutex-spinbit.md"  target="_blank" rel="noopener"
+    >《Proposal: Improve scalability of runtime.lock2》</a></p>
+<h2 id="核心优化点">核心优化点
+</h2><p><strong>mutex 的状态字添加了一个个新的标志位，称为 “spinning”</strong>。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">https</span><span class="p">:</span><span class="c1">//github.com/golang/go/blob/608acff8479640b00c85371d91280b64f5ec9594/src/runtime/lock_spinbit.go#L57
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">const</span> <span class="p">(</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">mutexLocked</span> <span class="p">=</span> <span class="mh">0x001</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">mutexSleeping</span> <span class="p">=</span> <span class="mh">0x002</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">mutexSpinning</span> <span class="p">=</span> <span class="mh">0x100</span>
+</span></span><span class="line"><span class="cl">	<span class="o">...</span>
+</span></span><span class="line"><span class="cl"><span class="p">)</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>使用这个 <code>spinning</code>位来表示是否有一个等待的线程处于 “醒着并循环尝试获取锁” 的状态。线程之间会互相排除进入 <code>spinning</code>状态，但它们不会因为尝试获取这个标志位而阻塞。</p>
+<blockquote>
+<p>metux 的介绍可以参考以前的文章<br>
+<a class="link" href="https://pub.huizhou92.com/go-source-code-sync-mutex-3082a25ef092"  target="_blank" rel="noopener"
+    >https://pub.huizhou92.com/go-source-code-sync-mutex-3082a25ef092</a></p>
+</blockquote>
+<h2 id="mutex-获取锁分析">Mutex 获取锁分析
+</h2><h3 id="1-快速路径尝试获取锁">1. 快速路径尝试获取锁
+</h3><div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span><span class="lnt">8
+</span><span class="lnt">9
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">//https://github.com/golang/go/blob/adc9c455873fef97c5759e4811f0d9c8217fe27b/src/runtime/lock_spinbit.go#L160
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="nx">k8</span> <span class="o">:=</span> <span class="nf">key8</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">l</span><span class="p">.</span><span class="nx">key</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="nx">v8</span> <span class="o">:=</span> <span class="nx">atomic</span><span class="p">.</span><span class="nf">Xchg8</span><span class="p">(</span><span class="nx">k8</span><span class="p">,</span> <span class="nx">mutexLocked</span><span class="p">)</span> 
+</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">v8</span><span class="o">&amp;</span><span class="nx">mutexLocked</span> <span class="o">==</span> <span class="mi">0</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">v8</span><span class="o">&amp;</span><span class="nx">mutexSleeping</span> <span class="o">!=</span> <span class="mi">0</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">atomic</span><span class="p">.</span><span class="nf">Or8</span><span class="p">(</span><span class="nx">k8</span><span class="p">,</span> <span class="nx">mutexSleeping</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>fast 模式跟以前变化不大。如果成功(锁之前未被持有)则快速返回。这是最理想的情况，无竞争时的快速路径。</p>
+<h3 id="2-自旋等待阶段">2. 自旋等待阶段
+</h3><div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">//https://github.com/golang/go/blob/adc9c455873fef97c5759e4811f0d9c8217fe27b/src/runtime/lock_spinbit.go#L208
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="k">if</span> <span class="p">!</span><span class="nx">weSpin</span> <span class="o">&amp;&amp;</span> <span class="nx">v</span><span class="o">&amp;</span><span class="nx">mutexSpinning</span> <span class="o">==</span> <span class="mi">0</span> <span class="o">&amp;&amp;</span> <span class="nx">atomic</span><span class="p">.</span><span class="nf">Casuintptr</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">l</span><span class="p">.</span><span class="nx">key</span><span class="p">,</span> <span class="nx">v</span><span class="p">,</span> <span class="nx">v</span><span class="p">|</span><span class="nx">mutexSpinning</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">v</span> <span class="o">|=</span> <span class="nx">mutexSpinning</span> 
+</span></span><span class="line"><span class="cl">    <span class="nx">weSpin</span> <span class="p">=</span> <span class="kc">true</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">weSpin</span> <span class="o">||</span> <span class="nx">atTail</span> <span class="o">||</span> <span class="nf">mutexPreferLowLatency</span><span class="p">(</span><span class="nx">l</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nx">spin</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nf">procyield</span><span class="p">(</span><span class="nx">mutexActiveSpinSize</span><span class="p">)</span>  <span class="c1">//主动自旋
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>        <span class="c1">// ...
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="p">}</span> <span class="k">else</span> <span class="k">if</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nx">spin</span><span class="o">+</span><span class="nx">mutexPassiveSpinCount</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nf">osyield</span><span class="p">()</span> <span class="c1">//被动自旋
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>        <span class="c1">// ...
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><ul>
+<li>如果快速路径失败，进入自旋等待阶段。</li>
+<li>通过 <a class="link" href="https://github.com/golang/go/blob/608acff8479640b00c85371d91280b64f5ec9594/src/runtime/lock_spinbit.go#L60"  target="_blank" rel="noopener"
+    >mutexSpinning</a> 标志控制<strong>同时只允许一个 goroutine 自旋</strong></li>
+<li>自旋分为procyield与osyield，两者的区别是:procyield会持续占有CPU，响应会更快，适合极短时间的等待，osyield会临时释放CPU，响应较慢，但是不会占用较多CPU，适用于较长时间的等待。<br>
+这种两阶段自旋设计能够在不同竞争强度下都保持较好的性能表现。</li>
+<li>轻度竞争时主要使用主动自旋，保证低延迟</li>
+<li>重度竞争时快速进入被动自旋，避免CPU资源浪费</li>
+</ul>
+<h2 id="休眠等待阶段">休眠等待阶段
+</h2><div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">//https://github.com/golang/go/blob/adc9c455873fef97c5759e4811f0d9c8217fe27b/src/runtime/lock_spinbit.go#L231
+</span></span></span><span class="line"><span class="cl"><span class="c1">// Store the current head of the list of sleeping Ms in our gp.m.mWaitList.next field
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="nx">gp</span><span class="p">.</span><span class="nx">m</span><span class="p">.</span><span class="nx">mWaitList</span><span class="p">.</span><span class="nx">next</span> <span class="p">=</span> <span class="nf">mutexWaitListHead</span><span class="p">(</span><span class="nx">v</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1">// Pack a (partial) pointer to this M with the current lock state bits
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="nx">next</span> <span class="o">:=</span> <span class="p">(</span><span class="nb">uintptr</span><span class="p">(</span><span class="nx">unsafe</span><span class="p">.</span><span class="nf">Pointer</span><span class="p">(</span><span class="nx">gp</span><span class="p">.</span><span class="nx">m</span><span class="p">))</span> <span class="o">&amp;^</span> <span class="nx">mutexMMask</span><span class="p">)</span> <span class="p">|</span> <span class="nx">v</span><span class="o">&amp;</span><span class="nx">mutexMMask</span> <span class="p">|</span> <span class="nx">mutexSleeping</span>
+</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">weSpin</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">next</span> <span class="p">=</span> <span class="nx">next</span> <span class="o">&amp;^</span> <span class="nx">mutexSpinning</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">atomic</span><span class="p">.</span><span class="nf">Casuintptr</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">l</span><span class="p">.</span><span class="nx">key</span><span class="p">,</span> <span class="nx">v</span><span class="p">,</span> <span class="nx">next</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">weSpin</span> <span class="p">=</span> <span class="kc">false</span>
+</span></span><span class="line"><span class="cl">    <span class="nf">semasleep</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">atTail</span> <span class="p">=</span> <span class="nx">gp</span><span class="p">.</span><span class="nx">m</span><span class="p">.</span><span class="nx">mWaitList</span><span class="p">.</span><span class="nx">next</span> <span class="o">==</span> <span class="mi">0</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">i</span> <span class="p">=</span> <span class="mi">0</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>如果自旋失败，<code>goroutine</code> 将进入休眠等待，然后将当前 M 加入等待队列(通过 mWaitList 链表)，通过信号量(<a class="link" href="https://github.com/golang/go/blob/fd050b3c6d0294b6d72adb014ec14b3e6bf4ad60/src/runtime/lock_sema_tristate.go#L106"  target="_blank" rel="noopener"
+    >semasleep</a>)使当前 <code>goroutine</code> 进入休眠，等待持有锁的 <code>goroutine</code> 在解锁时唤醒。</p>
+<p>当某个线程解锁互斥锁时，如果发现已经有线程处于 “醒着并旋转” 的状态，就不会唤醒其他线程。在 Go 运行时的背景下，这种设计被称为 <code>spinbit</code>。<br>
+这个设计的核心目的是：<strong>通过让一个线程负责 “旋转尝试获取锁”，避免所有线程都同时竞争资源，从而减少争用和不必要的线程切换</strong>。</p>
+<h2 id="效果">效果
+</h2><div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span><span class="lnt">25
+</span><span class="lnt">26
+</span><span class="lnt">27
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">goos: linux
+</span></span><span class="line"><span class="cl">goarch: amd64
+</span></span><span class="line"><span class="cl">pkg: runtime
+</span></span><span class="line"><span class="cl">cpu: 13th Gen Intel<span class="o">(</span>R<span class="o">)</span> Core<span class="o">(</span>TM<span class="o">)</span> i7-13700H
+</span></span><span class="line"><span class="cl">                │     old     │                  new                  │
+</span></span><span class="line"><span class="cl">                │   sec/op    │    sec/op     vs base                 │
+</span></span><span class="line"><span class="cl">ChanContended      3.147µ ± 0%    3.703µ ± 0%   +17.65% <span class="o">(</span><span class="nv">p</span><span class="o">=</span>0.000 <span class="nv">n</span><span class="o">=</span>10<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ChanContended-2    4.511µ ± 2%    5.280µ ± 7%   +17.06% <span class="o">(</span><span class="nv">p</span><span class="o">=</span>0.000 <span class="nv">n</span><span class="o">=</span>10<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ChanContended-3    5.726µ ± 2%   12.125µ ± 2%  +111.75% <span class="o">(</span><span class="nv">p</span><span class="o">=</span>0.000 <span class="nv">n</span><span class="o">=</span>10<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ChanContended-4    6.574µ ± 1%   13.356µ ± 4%  +103.16% <span class="o">(</span><span class="nv">p</span><span class="o">=</span>0.000 <span class="nv">n</span><span class="o">=</span>10<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ChanContended-5    7.706µ ± 1%   13.717µ ± 3%   +78.00% <span class="o">(</span><span class="nv">p</span><span class="o">=</span>0.000 <span class="nv">n</span><span class="o">=</span>10<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ChanContended-6    8.830µ ± 1%   13.674µ ± 2%   +54.85% <span class="o">(</span><span class="nv">p</span><span class="o">=</span>0.000 <span class="nv">n</span><span class="o">=</span>10<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ChanContended-7    11.07µ ± 0%    13.59µ ± 2%   +22.77% <span class="o">(</span><span class="nv">p</span><span class="o">=</span>0.000 <span class="nv">n</span><span class="o">=</span>10<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ChanContended-8    13.99µ ± 1%    14.06µ ± 1%         ~ <span class="o">(</span><span class="nv">p</span><span class="o">=</span>0.190 <span class="nv">n</span><span class="o">=</span>10<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ChanContended-9    16.93µ ± 2%    14.04µ ± 3%   -17.04% <span class="o">(</span><span class="nv">p</span><span class="o">=</span>0.000 <span class="nv">n</span><span class="o">=</span>10<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ChanContended-10   20.12µ ± 4%    14.12µ ± 1%   -29.80% <span class="o">(</span><span class="nv">p</span><span class="o">=</span>0.000 <span class="nv">n</span><span class="o">=</span>10<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ChanContended-11   23.96µ ± 2%    14.44µ ± 3%   -39.74% <span class="o">(</span><span class="nv">p</span><span class="o">=</span>0.000 <span class="nv">n</span><span class="o">=</span>10<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ChanContended-12   29.65µ ± 6%    14.61µ ± 3%   -50.74% <span class="o">(</span><span class="nv">p</span><span class="o">=</span>0.000 <span class="nv">n</span><span class="o">=</span>10<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ChanContended-13   33.98µ ± 7%    14.69µ ± 3%   -56.76% <span class="o">(</span><span class="nv">p</span><span class="o">=</span>0.000 <span class="nv">n</span><span class="o">=</span>10<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ChanContended-14   37.90µ ± 1%    14.69µ ± 3%   -61.23% <span class="o">(</span><span class="nv">p</span><span class="o">=</span>0.000 <span class="nv">n</span><span class="o">=</span>10<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ChanContended-15   37.94µ ± 4%    14.89µ ± 5%   -60.75% <span class="o">(</span><span class="nv">p</span><span class="o">=</span>0.000 <span class="nv">n</span><span class="o">=</span>10<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ChanContended-16   39.56µ ± 0%    13.89µ ± 1%   -64.89% <span class="o">(</span><span class="nv">p</span><span class="o">=</span>0.000 <span class="nv">n</span><span class="o">=</span>10<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ChanContended-17   39.56µ ± 0%    14.45µ ± 4%   -63.47% <span class="o">(</span><span class="nv">p</span><span class="o">=</span>0.000 <span class="nv">n</span><span class="o">=</span>10<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ChanContended-18   41.24µ ± 2%    13.95µ ± 3%   -66.17% <span class="o">(</span><span class="nv">p</span><span class="o">=</span>0.000 <span class="nv">n</span><span class="o">=</span>10<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ChanContended-19   42.77µ ± 5%    13.80µ ± 2%   -67.74% <span class="o">(</span><span class="nv">p</span><span class="o">=</span>0.000 <span class="nv">n</span><span class="o">=</span>10<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ChanContended-20   44.26µ ± 2%    13.74µ ± 1%   -68.96% <span class="o">(</span><span class="nv">p</span><span class="o">=</span>0.000 <span class="nv">n</span><span class="o">=</span>10<span class="o">)</span>
+</span></span><span class="line"><span class="cl">geomean            17.60µ         12.46µ        -29.22%
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p><img src="https://images.hxzhouh.com/blog-images/2025/02/d218f1783388c76053bca81e0d254ffd.png"
+	
+	
+	
+	loading="lazy"
+	
+	
+><br>
+source <a class="link" href="https://github.com/golang/go/issues/68578#issuecomment-2256792628"  target="_blank" rel="noopener"
+    >https://github.com/golang/go/issues/68578#issuecomment-2256792628</a></p>
+<p>虽然在竞争较少的情况下，性能有降低，但是在竞争比较多的地方性能提升显著。平均来说，大约获得 29%的性能提升。期待后续能够优化这种情况吧。</p>
+<p>mutex本次修改没涉及API层面改动，所以只要等 Go1.24 正式发布就能自动使用了。该特性通过<code>GOEXPERIMENT=spinbitmutex</code> 来控制，默认是开启的，也可以将它关闭，来使用原来的Mutex。</p>
+<hr>
+<ul>
+<li><a class="link" href="https://huizhou92.com/zh-cn/p/go124-mutex%E8%87%AA%E6%97%8B%E4%BC%98%E5%8C%96%E6%9C%80%E5%A4%A7%E6%8F%90%E5%8D%8770%E7%9A%84%E6%80%A7%E8%83%BD/"  target="_blank" rel="noopener"
+    >本文长期链接</a></li>
+<li>如果您觉得我的博客对你有帮助，请通过 <a class="link" href="https://huizhou92.com/index.xml"  target="_blank" rel="noopener"
+    >RSS</a>订阅我。</li>
+<li>或者在<a class="link" href="https://x.com/@piaopiaopig"  target="_blank" rel="noopener"
+    >X</a>上关注我。</li>
+<li>如果您有<a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >Medium</a>账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。</li>
+</ul>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/zh-cn/tags/golang/">Golang</a>
+        
+            <a href="/zh-cn/tags/mutex/">Mutex</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            最后更新于 Feb 11, 2025 11:16 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+<aside class="related-content--wrapper">
+    <h2 class="section-title">相关文章</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/go_fix-%E8%87%AA%E5%8A%A8%E5%8C%96%E4%BB%A3%E7%A0%81%E8%BF%81%E7%A7%BB%E7%9A%84%E5%85%A8%E6%96%B0%E5%88%A9%E5%99%A8/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2025/02/69886f43f924640d4703312dc480bdca.png" loading="lazy" data-key="go_fix-%E8%87%AA%E5%8A%A8%E5%8C%96%E4%BB%A3%E7%A0%81%E8%BF%81%E7%A7%BB%E7%9A%84%E5%85%A8%E6%96%B0%E5%88%A9%E5%99%A8" data-hash="https://images.hxzhouh.com/blog-images/2025/02/69886f43f924640d4703312dc480bdca.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">go_fix 自动化代码迁移的全新利器</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/go-124-%E7%9A%84-swiss-map%E5%85%BC%E5%AE%B9%E6%80%A7%E6%89%A9%E5%B1%95%E5%93%88%E5%B8%8C%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 1.24 的 Swiss Map：兼容性、扩展哈希与遗留问题</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/%E4%BD%BF%E7%94%A8%E5%AF%B9%E5%86%B2%E6%A8%A1%E5%BC%8F%E9%99%8D%E4%BD%8E%E9%95%BF%E5%B0%BE%E8%AF%B7%E6%B1%82/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">使用对冲模式降低长尾请求</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/%E9%AB%98%E6%95%88%E7%AE%A1%E7%90%86%E5%AE%9A%E6%97%B6%E4%BA%8B%E4%BB%B6/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2025/01/12ffa89f8829f9122cee1eb9daacc043.webp" loading="lazy" data-key="%E9%AB%98%E6%95%88%E7%AE%A1%E7%90%86%E5%AE%9A%E6%97%B6%E4%BA%8B%E4%BB%B6" data-hash="https://images.hxzhouh.com/blog-images/2025/01/12ffa89f8829f9122cee1eb9daacc043.webp"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">高效管理定时事件</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/streamlining-error-handling-in-go-exploring-the-new-proposal/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2025/02/34ac61629c8b0d315d037016a7283331.png" loading="lazy" data-key="streamlining-error-handling-in-go-exploring-the-new-proposal" data-hash="https://images.hxzhouh.com/blog-images/2025/02/34ac61629c8b0d315d037016a7283331.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 中的错误处理:新的?运算符</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+
+    
+        
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2025 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+    </section>
+    <script src="/js/adblock-detection.js" defer></script>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>
