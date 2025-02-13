@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="zh-cn" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Go 1.24 引入了许多工具方面的重要更新，这些更新让开发者在管理依赖、调试问题以及编写更高质量代码时变得更加高效。尽管人们通常会将注意力集中在标准库或语言特性上的变化，但 Go 工具生态系统的改进同样值得关注。在本文中，我们将重点探讨两个关键领域的改进：go tool和vet工具，并通过实际示例展示这些更新如何优化你的工作流程。 Go 命令的增强功能 在 Go 1.24 中，go 命令进行了多项改进，使得依赖管理和工具执行更加高效且易于使用。其中最显著的变化之一是 go.mod 文件中新增了 tool 指令，允许你直接跟踪可执行工具依赖，而无需依赖诸如空导入等不直观的解决方案。 使用 Tool 指令跟踪可执行工具依赖 我们在项目中大量使用mockery[1]（一个流行的 Mock 代码生成器），使用方式是通过brew 安装或者直接下载特定版本的exe 执行文件。但是这样有个问题，如果不同开发者使用的mockery 版本不一致，会造成非预期的代码冲突。在过去，如果您想将这样的工具作为项目的一部分，你需要创建一个文件（通常命名为\u00a0tools.go），并通过空导入来声明这些工具。比如 go-modules-by-example[2] 中的 stringer 而在 Go 1.24 中，你可以直接在 go.mod 文件中使用新的 tool 指令来显式声明这些依赖。例如： 1 #\u00a0使用新\u00a0tool\u00a0指令安装\u00a0mockery$\u00a0gotip\u00a0get\u00a0-tool\u00a0github.com/vektra/mockery/v2@v2.52.1 这条命令会在你的 go.mod 文件中添加一个 tool 指令： 1 module\u00a0huizhou92.com/tools\u00a0go\u00a01.24\u00a0tool\u00a0github.com/vektra/mockery/v2\u00a0require\u00a0(\u00a0github.com/vektra/mockery/v2\u00a0v2.52.1\u00a0// indirect\u00a0....) 现在，你可以通过 gotip install tool 安装特定版本的工具，或者直接使用下面的命令运行 mockery：">
+<meta name="keywords" content="golang, go, go:fix"><title>Go1.24: 除了标准库之外，您也许应该更加关注 Go 工具的变化</title>
+
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/go124-%E9%99%A4%E4%BA%86%E6%A0%87%E5%87%86%E5%BA%93%E4%B9%8B%E5%A4%96%E6%82%A8%E4%B9%9F%E8%AE%B8%E5%BA%94%E8%AF%A5%E6%9B%B4%E5%8A%A0%E5%85%B3%E6%B3%A8-go-%E5%B7%A5%E5%85%B7%E7%9A%84%E5%8F%98%E5%8C%96/'>
+
+<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="Go1.24: 除了标准库之外，您也许应该更加关注 Go 工具的变化">
+<meta property='og:description' content="Go 1.24 引入了许多工具方面的重要更新，这些更新让开发者在管理依赖、调试问题以及编写更高质量代码时变得更加高效。尽管人们通常会将注意力集中在标准库或语言特性上的变化，但 Go 工具生态系统的改进同样值得关注。在本文中，我们将重点探讨两个关键领域的改进：go tool和vet工具，并通过实际示例展示这些更新如何优化你的工作流程。 Go 命令的增强功能 在 Go 1.24 中，go 命令进行了多项改进，使得依赖管理和工具执行更加高效且易于使用。其中最显著的变化之一是 go.mod 文件中新增了 tool 指令，允许你直接跟踪可执行工具依赖，而无需依赖诸如空导入等不直观的解决方案。 使用 Tool 指令跟踪可执行工具依赖 我们在项目中大量使用mockery[1]（一个流行的 Mock 代码生成器），使用方式是通过brew 安装或者直接下载特定版本的exe 执行文件。但是这样有个问题，如果不同开发者使用的mockery 版本不一致，会造成非预期的代码冲突。在过去，如果您想将这样的工具作为项目的一部分，你需要创建一个文件（通常命名为\u00a0tools.go），并通过空导入来声明这些工具。比如 go-modules-by-example[2] 中的 stringer 而在 Go 1.24 中，你可以直接在 go.mod 文件中使用新的 tool 指令来显式声明这些依赖。例如： 1 #\u00a0使用新\u00a0tool\u00a0指令安装\u00a0mockery$\u00a0gotip\u00a0get\u00a0-tool\u00a0github.com/vektra/mockery/v2@v2.52.1 这条命令会在你的 go.mod 文件中添加一个 tool 指令： 1 module\u00a0huizhou92.com/tools\u00a0go\u00a01.24\u00a0tool\u00a0github.com/vektra/mockery/v2\u00a0require\u00a0(\u00a0github.com/vektra/mockery/v2\u00a0v2.52.1\u00a0// indirect\u00a0....) 现在，你可以通过 gotip install tool 安装特定版本的工具，或者直接使用下面的命令运行 mockery：">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/go124-%E9%99%A4%E4%BA%86%E6%A0%87%E5%87%86%E5%BA%93%E4%B9%8B%E5%A4%96%E6%82%A8%E4%B9%9F%E8%AE%B8%E5%BA%94%E8%AF%A5%E6%9B%B4%E5%8A%A0%E5%85%B3%E6%B3%A8-go-%E5%B7%A5%E5%85%B7%E7%9A%84%E5%8F%98%E5%8C%96/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:tag' content='go' /><meta property='article:published_time' content='2025-02-02T12:00:49&#43;08:00'/><meta property='article:modified_time' content='2025-02-02T12:00:43&#43;08:00'/>
+<meta name="twitter:site" content="@piaopiaopig">
+    <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="Go1.24: 除了标准库之外，您也许应该更加关注 Go 工具的变化">
+<meta name="twitter:description" content="Go 1.24 引入了许多工具方面的重要更新，这些更新让开发者在管理依赖、调试问题以及编写更高质量代码时变得更加高效。尽管人们通常会将注意力集中在标准库或语言特性上的变化，但 Go 工具生态系统的改进同样值得关注。在本文中，我们将重点探讨两个关键领域的改进：go tool和vet工具，并通过实际示例展示这些更新如何优化你的工作流程。 Go 命令的增强功能 在 Go 1.24 中，go 命令进行了多项改进，使得依赖管理和工具执行更加高效且易于使用。其中最显著的变化之一是 go.mod 文件中新增了 tool 指令，允许你直接跟踪可执行工具依赖，而无需依赖诸如空导入等不直观的解决方案。 使用 Tool 指令跟踪可执行工具依赖 我们在项目中大量使用mockery[1]（一个流行的 Mock 代码生成器），使用方式是通过brew 安装或者直接下载特定版本的exe 执行文件。但是这样有个问题，如果不同开发者使用的mockery 版本不一致，会造成非预期的代码冲突。在过去，如果您想将这样的工具作为项目的一部分，你需要创建一个文件（通常命名为\u00a0tools.go），并通过空导入来声明这些工具。比如 go-modules-by-example[2] 中的 stringer 而在 Go 1.24 中，你可以直接在 go.mod 文件中使用新的 tool 指令来显式声明这些依赖。例如： 1 #\u00a0使用新\u00a0tool\u00a0指令安装\u00a0mockery$\u00a0gotip\u00a0get\u00a0-tool\u00a0github.com/vektra/mockery/v2@v2.52.1 这条命令会在你的 go.mod 文件中添加一个 tool 指令： 1 module\u00a0huizhou92.com/tools\u00a0go\u00a01.24\u00a0tool\u00a0github.com/vektra/mockery/v2\u00a0require\u00a0(\u00a0github.com/vektra/mockery/v2\u00a0v2.52.1\u00a0// indirect\u00a0....) 现在，你可以通过 gotip install tool 安装特定版本的工具，或者直接使用下面的命令运行 mockery：">
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="切换菜单">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/zh-cn/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/zh-cn">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/zh-cn/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>主页</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/%E5%85%B3%E4%BA%8E/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>关于</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>归档</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>搜索</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" >English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" selected>中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>暗色模式</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">目录</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li>
+      <ol>
+        <li><a href="#go-命令的增强功能"><strong>Go 命令的增强功能</strong></a>
+          <ol>
+            <li><a href="#使用-tool-指令跟踪可执行工具依赖"><strong>使用 Tool 指令跟踪可执行工具依赖</strong></a></li>
+            <li><a href="#缓存可执行文件以加速运行-69290httpsgithubcomgolanggoissues692903">缓存可执行文件以加速运行 <a href="https://github.com/golang/go/issues/69290">#69290</a>[3]</a></li>
+          </ol>
+        </li>
+        <li><a href="#vet-工具的增强功能"><strong>Vet 工具的增强功能</strong></a>
+          <ol>
+            <li><a href="#新增-tests-分析器"><strong>新增 Tests 分析器</strong></a></li>
+            <li><a href="#改进-printf-分析器"><strong>改进 Printf 分析器</strong></a></li>
+          </ol>
+        </li>
+        <li><a href="#结论"><strong>结论</strong></a></li>
+        <li><a href="#引用链接">引用链接</a></li>
+      </ol>
+    </li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="main-article">
+    <header class="article-header">
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/zh-cn/categories/tech/" style="background-color: #2a9d8f; color: #fff;">
+                技术
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/zh-cn/p/go124-%E9%99%A4%E4%BA%86%E6%A0%87%E5%87%86%E5%BA%93%E4%B9%8B%E5%A4%96%E6%82%A8%E4%B9%9F%E8%AE%B8%E5%BA%94%E8%AF%A5%E6%9B%B4%E5%8A%A0%E5%85%B3%E6%B3%A8-go-%E5%B7%A5%E5%85%B7%E7%9A%84%E5%8F%98%E5%8C%96/">Go1.24: 除了标准库之外，您也许应该更加关注 Go 工具的变化</a>
+        </h2>
+    
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Feb 02, 2025</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    阅读时长: 2 分钟
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <p>Go 1.24 引入了许多工具方面的重要更新，这些更新让开发者在管理依赖、调试问题以及编写更高质量代码时变得更加高效。尽管人们通常会将注意力集中在标准库或语言特性上的变化，但 Go 工具生态系统的改进同样值得关注。在本文中，我们将重点探讨两个关键领域的改进：<strong>go tool</strong>和<strong>vet</strong>工具，并通过实际示例展示这些更新如何优化你的工作流程。</p>
+<h3 id="go-命令的增强功能"><strong>Go 命令的增强功能</strong>
+</h3><p>在 Go 1.24 中，<code>go</code> 命令进行了多项改进，使得依赖管理和工具执行更加高效且易于使用。其中最显著的变化之一是 <code>go.mod</code> 文件中新增了 <code>tool</code> 指令，允许你直接跟踪可执行工具依赖，而无需依赖诸如空导入等不直观的解决方案。</p>
+<h4 id="使用-tool-指令跟踪可执行工具依赖"><strong>使用 Tool 指令跟踪可执行工具依赖</strong>
+</h4><p>我们在项目中大量使用<a class="link" href="https://github.com/vektra/mockery"  target="_blank" rel="noopener"
+    ><code>mockery</code></a>[1]（一个流行的 Mock 代码生成器），使用方式是通过brew 安装或者直接下载特定版本的exe 执行文件。但是这样有个问题，如果不同开发者使用的mockery 版本不一致，会造成非预期的代码冲突。在过去，如果您想将这样的工具作为项目的一部分，你需要创建一个文件（通常命名为 <code>tools.go</code>），并通过空导入来声明这些工具。比如 <a class="link" href="https://github.com/go-modules-by-example/index/blob/master/010_tools/README.md"  target="_blank" rel="noopener"
+    ><code>go-modules-by-example</code></a>[2] 中的 <code>stringer</code><br>
+而在 Go 1.24 中，你可以直接在 <code>go.mod</code> 文件中使用新的 <code>tool</code> 指令来显式声明这些依赖。例如：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-golang" data-lang="golang"><span class="line"><span class="cl"><span class="err">#</span> <span class="nx">使用新</span> <span class="nx">tool</span> <span class="nx">指令安装</span> <span class="nx">mockery</span><span class="err">$</span> <span class="nx">gotip</span> <span class="nx">get</span> <span class="o">-</span><span class="nx">tool</span> <span class="nx">github</span><span class="p">.</span><span class="nx">com</span><span class="o">/</span><span class="nx">vektra</span><span class="o">/</span><span class="nx">mockery</span><span class="o">/</span><span class="nx">v2</span><span class="err">@</span><span class="nx">v2</span><span class="mf">.52.1</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>这条命令会在你的 <code>go.mod</code> 文件中添加一个 <code>tool</code> 指令：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">module</span> <span class="nx">huizhou92</span><span class="p">.</span><span class="nx">com</span><span class="o">/</span><span class="nx">tools</span>    <span class="k">go</span> <span class="mf">1.24</span>    <span class="nx">tool</span> <span class="nx">github</span><span class="p">.</span><span class="nx">com</span><span class="o">/</span><span class="nx">vektra</span><span class="o">/</span><span class="nx">mockery</span><span class="o">/</span><span class="nx">v2</span>    <span class="nf">require</span> <span class="p">(</span>      <span class="nx">github</span><span class="p">.</span><span class="nx">com</span><span class="o">/</span><span class="nx">vektra</span><span class="o">/</span><span class="nx">mockery</span><span class="o">/</span><span class="nx">v2</span> <span class="nx">v2</span><span class="mf">.52.1</span> <span class="c1">// indirect    ....)
+</span></span></span></code></pre></td></tr></table>
+</div>
+</div><p>现在，你可以通过 <code>gotip install tool</code> 安装特定版本的工具，或者直接使用下面的命令运行 <code>mockery</code>：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl">gotip tool github.com/vektra/mockery/v2 --all  --output ./mocks
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p><img src="https://images.hxzhouh.com/blog-images/2025/02/7d09cc710493d907cc1e93dbd08ecce2.png"
+	
+	
+	
+	loading="lazy"
+	
+	
+><br>
+我本地安装的mockery是2.32.3<br>
+<img src="https://images.hxzhouh.com/blog-images/2025/02/165bf2d809cab69b80c903110ad70c5d.png"
+	
+	
+	
+	loading="lazy"
+	
+	
+><br>
+这种方式消除了单独管理安装过程或维护专门文件的需求。</p>
+<h4 id="缓存可执行文件以加速运行-69290httpsgithubcomgolanggoissues692903">缓存可执行文件以加速运行 <a class="link" href="https://github.com/golang/go/issues/69290"  target="_blank" rel="noopener"
+    >#69290</a>[3]
+</h4><p>另一个改进是，通过诸如 <code>go run</code> 或通过 <code>go tool</code> 执行的命令生成的可执行文件，现在会被缓存到 Go 的构建缓存中（Go 1.24 之前，cmd/go 仅缓存编译后的包文件）。这一改变显著加快了重复执行的速度。但是这样会增加缓存的使用。</p>
+<blockquote>
+<p>Go 会自动清理<a class="link" href="https://github.com/golang/go/blob/2707d42966f8985a6663c93e943b9a44b9399fca/src/cmd/go/internal/cache/cache.go#L335"  target="_blank" rel="noopener"
+    >五天前</a>[4]的编译后的包文件的缓存， 对于可执行文件的缓存，这个数字可能会是 2天。</p>
+</blockquote>
+<p>如果你正在开发过程中频繁使用自定义工具或脚本，这种缓存机制能够节省宝贵时间。</p>
+<h3 id="vet-工具的增强功能"><strong>Vet 工具的增强功能</strong>
+</h3><p>Go 的静态分析工具 Vet 在 1.24 中新增了一些分析器，并改进了诊断能力，可以帮助开发者更早地发现潜在问题和常见错误。</p>
+<h4 id="新增-tests-分析器"><strong>新增 Tests 分析器</strong>
+</h4><p>一个亮点是新增了 Tests 分析器，它可以识别测试声明中的问题，例如名称格式错误、不正确的函数签名或文档化不存在标识符的问题。这些问题可能导致测试未按预期运行。</p>
+<p>例如，以下代码存在错误：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// 错误的测试函数签名（缺少 *testing.T 参数）func TestMyFunction() {    fmt.Println(&#34;This test will not run&#34;)}
+</span></span></span></code></pre></td></tr></table>
+</div>
+</div><p>运行 <code>go vet ./...</code> 将会产生如下诊断信息：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-golang" data-lang="golang"><span class="line"><span class="cl"><span class="nx">blog</span><span class="o">-</span><span class="nx">example</span><span class="o">/</span><span class="k">go</span><span class="o">/</span><span class="nx">go1</span><span class="mf">.24</span><span class="o">/</span><span class="nx">tools</span><span class="o">/</span><span class="nx">demo_test</span><span class="p">.</span><span class="k">go</span><span class="p">:</span><span class="mi">5</span><span class="p">:</span><span class="mi">1</span><span class="p">:</span> <span class="nx">wrong</span> <span class="nx">signature</span> <span class="k">for</span> <span class="nx">TestMyFunction</span><span class="p">,</span> <span class="nx">must</span> <span class="nx">be</span><span class="p">:</span> <span class="kd">func</span> <span class="nf">TestMyFunction</span><span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>通过提前捕获此类错误，可以确保所有测试都能正确运行，而不会在 CI/CD 流程中出现意外问题。</p>
+<h4 id="改进-printf-分析器"><strong>改进 Printf 分析器</strong>
+</h4><p>现有的 Printf 分析器也得到了升级，可以检测到非常量格式字符串被传递但没有附加参数的问题——这通常会导致运行时错误或意外行为。例如：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-golang" data-lang="golang"><span class="line"><span class="cl"><span class="nx">s</span> <span class="o">:=</span> <span class="s">&#34;Hello %s&#34;</span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="nx">s</span><span class="p">)</span> <span class="c1">// 如果 s 包含格式化占位符，将导致运行时问题。
+</span></span></span></code></pre></td></tr></table>
+</div>
+</div><p>Go1.23 版本不会出现错误，借助 Go 1.24 改进后的 Vet 工具诊断能力，会提示如下信息：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-golang" data-lang="golang"><span class="line"><span class="cl"><span class="err">➜</span>  <span class="nx">tools</span> <span class="nx">git</span><span class="p">:(</span><span class="nx">main</span><span class="p">)</span> <span class="err">✗</span> <span class="k">go</span> <span class="nx">vet</span> <span class="p">.</span><span class="o">/...</span><span class="err">➜</span>  <span class="nx">tools</span> <span class="nx">git</span><span class="p">:(</span><span class="nx">main</span><span class="p">)</span> <span class="err">✗</span> <span class="nx">gotip</span> <span class="nx">vet</span> <span class="p">.</span><span class="o">/...</span><span class="err">#</span> <span class="nx">blog</span><span class="o">-</span><span class="nx">example</span><span class="o">/</span><span class="k">go</span><span class="o">/</span><span class="nx">go1</span><span class="mf">.24</span><span class="o">/</span><span class="nx">tools</span><span class="err">#</span> <span class="p">[</span><span class="nx">blog</span><span class="o">-</span><span class="nx">example</span><span class="o">/</span><span class="k">go</span><span class="o">/</span><span class="nx">go1</span><span class="mf">.24</span><span class="o">/</span><span class="nx">tools</span><span class="p">].</span><span class="o">/</span><span class="nx">demo_test</span><span class="p">.</span><span class="k">go</span><span class="p">:</span><span class="mi">10</span><span class="p">:</span><span class="mi">13</span><span class="p">:</span> <span class="nx">non</span><span class="o">-</span><span class="nx">constant</span> <span class="nx">format</span> <span class="kt">string</span> <span class="nx">in</span> <span class="nx">call</span> <span class="nx">to</span> <span class="nx">fmt</span><span class="p">.</span><span class="nx">Printf</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>要修复此问题，只需将 <code>fmt.Printf(s)</code> 替换为不需要格式化参数时更合适的方法，例如：<code>fmt.Print(s)</code>。</p>
+<h3 id="结论"><strong>结论</strong>
+</h3><p>Go1.24 中还对以下工具进行了修改或者增强</p>
+<ul>
+<li> Go build支持生成伪版本号 <a class="link" href="https://github.com/golang/go/issues/50603"  target="_blank" rel="noopener"
+    >#50603</a>[5]</li>
+<li>默认使能GOCACHEPROG以支持外部缓存 <a class="link" href="https://github.com/golang/go/issues/64876"  target="_blank" rel="noopener"
+    >#64876</a>[6]</li>
+<li>go 工具链支持HTTP扩展认证：GOAUTH<a class="link" href="https://github.com/golang/go/issues/26232"  target="_blank" rel="noopener"
+    >#26232</a>[7]</li>
+<li>go build支持-json <a class="link" href="https://github.com/golang/go/issues/62067"  target="_blank" rel="noopener"
+    >#62067</a>[8]</li>
+<li>&hellip;.</li>
+</ul>
+<p>Go 1.24 中对工具生态系统的更新表明，即使是看似微小但实用性的变化，也能极大地提升开发者生产力和代码质量。通过 tool 指令直接跟踪可执行工具依赖，简化了依赖管理并减少了样板代码。而 vet 工具增强后的诊断能力，则帮助开发者更早地发现潜在 Bug 和常见错误，从而避免后续阶段的问题。</p>
+<p>随着 Go 的不断发展，密切关注这些工具方面的改进，可以确保你不仅充分利用标准库和语言特性，还能最大限度地提高开发效率与代码可靠性。</p>
+<h3 id="引用链接">引用链接
+</h3><p>[1]mockery: <em><a class="link" href="https://github.com/vektra/mockery"  target="_blank" rel="noopener"
+    >https://github.com/vektra/mockery</a></em></p>
+<p>[2]go-modules-by-example: <em><a class="link" href="https://github.com/go-modules-by-example/index/blob/master/010_tools/README.md"  target="_blank" rel="noopener"
+    >https://github.com/go-modules-by-example/index/blob/master/010_tools/README.md</a></em></p>
+<p>[3]#69290: <em><a class="link" href="https://github.com/golang/go/issues/69290"  target="_blank" rel="noopener"
+    >https://github.com/golang/go/issues/69290</a></em></p>
+<p>[4]trimLimit: <em><a class="link" href="https://github.com/golang/go/blob/2707d42966f8985a6663c93e943b9a44b9399fca/src/cmd/go/internal/cache/cache.go#L335"  target="_blank" rel="noopener"
+    >https://github.com/golang/go/blob/2707d42966f8985a6663c93e943b9a44b9399fca/src/cmd/go/internal/cache/cache.go#L335</a></em></p>
+<p>[5]#50603: <em><a class="link" href="https://github.com/golang/go/issues/50603"  target="_blank" rel="noopener"
+    >https://github.com/golang/go/issues/50603</a></em></p>
+<p>[6]#64876: <em><a class="link" href="https://github.com/golang/go/issues/64876"  target="_blank" rel="noopener"
+    >https://github.com/golang/go/issues/64876</a></em></p>
+<p>[7]#26232: <em><a class="link" href="https://github.com/golang/go/issues/26232"  target="_blank" rel="noopener"
+    >https://github.com/golang/go/issues/26232</a></em></p>
+<p>[8]#62067: <em><a class="link" href="https://github.com/golang/go/issues/62067"  target="_blank" rel="noopener"
+    >https://github.com/golang/go/issues/62067</a></em></p>
+<hr>
+<ul>
+<li><a class="link" href="https://huizhou92.com/zh-cn/p/go124-%E9%99%A4%E4%BA%86%E6%A0%87%E5%87%86%E5%BA%93%E4%B9%8B%E5%A4%96%E6%82%A8%E4%B9%9F%E8%AE%B8%E5%BA%94%E8%AF%A5%E6%9B%B4%E5%8A%A0%E5%85%B3%E6%B3%A8-go-%E5%B7%A5%E5%85%B7%E7%9A%84%E5%8F%98%E5%8C%96/"  target="_blank" rel="noopener"
+    >本文长期链接</a></li>
+<li>如果您觉得我的博客对你有帮助，请通过 <a class="link" href="https://huizhou92.com/index.xml"  target="_blank" rel="noopener"
+    >RSS</a>订阅我。</li>
+<li>或者在<a class="link" href="https://x.com/@piaopiaopig"  target="_blank" rel="noopener"
+    >X</a>上关注我。</li>
+<li>如果您有<a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >Medium</a>账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。</li>
+</ul>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/zh-cn/tags/golang/">Golang</a>
+        
+            <a href="/zh-cn/tags/go/">Go</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            最后更新于 Feb 02, 2025 12:00 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+<aside class="related-content--wrapper">
+    <h2 class="section-title">相关文章</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="">
+    <a href="/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8B-ep9-%E4%B8%A4%E4%B8%AA%E6%9C%89%E7%94%A8%E7%9A%84-golang-%E6%97%A0%E9%94%81%E7%BC%96%E7%A8%8B%E6%8A%80%E5%B7%A7/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 高性能编程 EP9: 两个有用的 Golang 无锁编程技巧</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/go124-mutex%E8%87%AA%E6%97%8B%E4%BC%98%E5%8C%96%E6%9C%80%E5%A4%A7%E6%8F%90%E5%8D%8770%E7%9A%84%E6%80%A7%E8%83%BD/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2025/02/aee1ae007540f5e7191e3ac7cd6b4f8d.png" loading="lazy" data-key="go124-mutex%E8%87%AA%E6%97%8B%E4%BC%98%E5%8C%96%E6%9C%80%E5%A4%A7%E6%8F%90%E5%8D%8770%E7%9A%84%E6%80%A7%E8%83%BD" data-hash="https://images.hxzhouh.com/blog-images/2025/02/aee1ae007540f5e7191e3ac7cd6b4f8d.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go1.24: mutex自旋优化,最大提升70%的性能</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/go_fix-%E8%87%AA%E5%8A%A8%E5%8C%96%E4%BB%A3%E7%A0%81%E8%BF%81%E7%A7%BB%E7%9A%84%E5%85%A8%E6%96%B0%E5%88%A9%E5%99%A8/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2025/02/69886f43f924640d4703312dc480bdca.png" loading="lazy" data-key="go_fix-%E8%87%AA%E5%8A%A8%E5%8C%96%E4%BB%A3%E7%A0%81%E8%BF%81%E7%A7%BB%E7%9A%84%E5%85%A8%E6%96%B0%E5%88%A9%E5%99%A8" data-hash="https://images.hxzhouh.com/blog-images/2025/02/69886f43f924640d4703312dc480bdca.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">go_fix 自动化代码迁移的全新利器</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/go-124-%E7%9A%84-swiss-map%E5%85%BC%E5%AE%B9%E6%80%A7%E6%89%A9%E5%B1%95%E5%93%88%E5%B8%8C%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 1.24 的 Swiss Map：兼容性、扩展哈希与遗留问题</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/%E4%BD%BF%E7%94%A8%E5%AF%B9%E5%86%B2%E6%A8%A1%E5%BC%8F%E9%99%8D%E4%BD%8E%E9%95%BF%E5%B0%BE%E8%AF%B7%E6%B1%82/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">使用对冲模式降低长尾请求</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+
+    
+        
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2025 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+    </section>
+    <script src="/js/adblock-detection.js" defer></script>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>
