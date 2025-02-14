@@ -17,8 +17,8 @@
     &gt;goref&lt;/a&gt;.&lt;br&gt;
 Based on Delve, goref can deeply analyze heap object references in Go programs, displaying the distribution of memory references to help developers quickly locate memory leaks or optimize garbage collection (GC) overhead. This tool supports the analysis of runtime processes and core dump files, providing Go developers with a powerful memory analysis tool.&lt;/p&gt;
 &lt;!-- more--&gt;
-&lt;h3 id=&#34;limitations-of-pprof&#34;&gt;&lt;strong&gt;Limitations Of &lt;code&gt;pprof&lt;/code&gt;&lt;/strong&gt;
-&lt;/h3&gt;&lt;p&gt;When encountering memory leaks in Go development, most people first attempt to generate a heap profile to investigate the issue. However, the heap profile flame graph often does not provide much help in troubleshooting because it only records where objects are created. In complex business scenarios, where objects are passed through multiple layers of dependencies or reused from memory pools, it becomes nearly impossible to identify the root cause based solely on the stack information of the creation.&lt;/p&gt;
+&lt;h2 id=&#34;limitations-of-pprof&#34;&gt;&lt;strong&gt;Limitations Of &lt;code&gt;pprof&lt;/code&gt;&lt;/strong&gt;
+&lt;/h2&gt;&lt;p&gt;When encountering memory leaks in Go development, most people first attempt to generate a heap profile to investigate the issue. However, the heap profile flame graph often does not provide much help in troubleshooting because it only records where objects are created. In complex business scenarios, where objects are passed through multiple layers of dependencies or reused from memory pools, it becomes nearly impossible to identify the root cause based solely on the stack information of the creation.&lt;/p&gt;
 &lt;p&gt;For example, in the following heap profile, the FastRead function stack is a deserialization function from the Kitex framework. If a business coroutine leaks a request object, it does not reflect the corresponding leaking code location but only shows that the FastRead function stack occupies memory.&lt;/p&gt;
 &lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/239158570664af753f62f917f60a488c.png&#34;
 	
@@ -33,9 +33,9 @@ Based on Delve, goref can deeply analyze heap object references in Go programs, 
 &lt;p&gt;As we know, Go is a garbage-collected language, and an object cannot be released primarily because the GC marks it as alive through reference analysis. Similarly, as a GC language, Java has more sophisticated analysis tools, such as &lt;code&gt;JProfiler&lt;/code&gt;, which can effectively display object reference relationships. Therefore, we also wanted to implement an efficient reference analysis tool in Go that can accurately and directly inform us of memory reference distribution and relationships, liberating us from the arduous task of static analysis. The good news is that we have nearly completed the development of this tool, which is open-sourced in the &lt;a class=&#34;link&#34; href=&#34;https://github.com/cloudwego/goref&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;goref repository&lt;/a&gt;, with usage instructions available in the README document.&lt;/p&gt;
 &lt;p&gt;The following sections will share the design ideas and detailed implementation of this tool.&lt;/p&gt;
-&lt;h3 id=&#34;implementation-ideas-of-goref&#34;&gt;Implementation Ideas of Goref
-&lt;/h3&gt;&lt;h4 id=&#34;gc-marking-process&#34;&gt;&lt;strong&gt;GC Marking Process&lt;/strong&gt;
-&lt;/h4&gt;&lt;p&gt;Before discussing the specific implementation, let’s review how the GC marks objects as alive.&lt;/p&gt;
+&lt;h2 id=&#34;implementation-ideas-of-goref&#34;&gt;Implementation Ideas of Goref
+&lt;/h2&gt;&lt;h3 id=&#34;gc-marking-process&#34;&gt;&lt;strong&gt;GC Marking Process&lt;/strong&gt;
+&lt;/h3&gt;&lt;p&gt;Before discussing the specific implementation, let’s review how the GC marks objects as alive.&lt;/p&gt;
 &lt;p&gt;Go employs a tiered allocation scheme similar to tcmalloc, where each heap object is assigned to an &lt;code&gt;mspan&lt;/code&gt; during allocation, with a fixed size. During GC, a heap address calls &lt;code&gt;runtime.spanOf&lt;/code&gt; to find this &lt;code&gt;mspan&lt;/code&gt; from a multi-level index, thus obtaining the base address and size of the original object.&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
 &lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
@@ -100,12 +100,12 @@ Based on Delve, goref can deeply analyze heap object references in Go programs, 
 	
 &gt;&lt;/p&gt;
 &lt;p&gt;Based on the above brief analysis, we can see that to find all live objects, the simple principle is to start from the GC Root and scan the GC bits of each object. If an address is marked as &lt;code&gt;1&lt;/code&gt;, we continue scanning downstream. Each downstream address must determine its &lt;code&gt;mspan&lt;/code&gt; to obtain the complete object base address, size, and GC bit.&lt;/p&gt;
-&lt;h4 id=&#34;dwarf-type-information&#34;&gt;&lt;strong&gt;DWARF Type Information&lt;/strong&gt;
-&lt;/h4&gt;&lt;p&gt;However, merely knowing the reference relationships of objects is almost useless for troubleshooting, as it does not output any effective variable names or type information for developers to locate issues. Therefore, another crucial step is to obtain the variable names and type information of these objects.&lt;/p&gt;
+&lt;h3 id=&#34;dwarf-type-information&#34;&gt;&lt;strong&gt;DWARF Type Information&lt;/strong&gt;
+&lt;/h3&gt;&lt;p&gt;However, merely knowing the reference relationships of objects is almost useless for troubleshooting, as it does not output any effective variable names or type information for developers to locate issues. Therefore, another crucial step is to obtain the variable names and type information of these objects.&lt;/p&gt;
 &lt;p&gt;Go is a statically typed language, and objects generally do not directly contain their type information. For instance, when we create an object using &lt;code&gt;obj=new(Object)&lt;/code&gt;, the actual memory only stores the values of fields &lt;code&gt;A/B/C&lt;/code&gt;, occupying only 32 bytes in memory. Given this, how can we obtain type information?&lt;/p&gt;
-&lt;h3 id=&#34;implementation-of-goref&#34;&gt;&lt;strong&gt;Implementation Of goref&lt;/strong&gt;
-&lt;/h3&gt;&lt;h4 id=&#34;introduction-to-delve-tool&#34;&gt;&lt;strong&gt;Introduction To Delve Tool&lt;/strong&gt;
-&lt;/h4&gt;&lt;p&gt;Those who have experience in Go development should be familiar with Delve. If you think you haven’t used it, don’t doubt yourself; the debugging functionality you use in the Goland IDE is fundamentally based on Delve. At this point, you may recall the debugging window during your debugging sessions. Indeed, the variable names, values, and types displayed in the debugging window are precisely the type information we need!&lt;/p&gt;
+&lt;h2 id=&#34;implementation-of-goref&#34;&gt;&lt;strong&gt;Implementation Of goref&lt;/strong&gt;
+&lt;/h2&gt;&lt;h3 id=&#34;introduction-to-delve-tool&#34;&gt;&lt;strong&gt;Introduction To Delve Tool&lt;/strong&gt;
+&lt;/h3&gt;&lt;p&gt;Those who have experience in Go development should be familiar with Delve. If you think you haven’t used it, don’t doubt yourself; the debugging functionality you use in the Goland IDE is fundamentally based on Delve. At this point, you may recall the debugging window during your debugging sessions. Indeed, the variable names, values, and types displayed in the debugging window are precisely the type information we need!&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
 &lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
 &lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
@@ -129,8 +129,8 @@ Based on Delve, goref can deeply analyze heap object references in Go programs, 
 &lt;li&gt;The Location attribute is a relatively complex property that records either an executable expression or a simple variable address, serving to determine a variable&amp;rsquo;s memory address or return a register&amp;rsquo;s value. During global variable parsing, Delve uses this to obtain the variable&amp;rsquo;s memory address.&lt;/li&gt;
 &lt;/ol&gt;
 &lt;p&gt;The principle for parsing local variables in goroutines is similar to that of global variables, but it is somewhat more complex. For example, it requires determining the DWARF offset based on the PC, and the location expressions are more complicated, involving register access. We will not elaborate on this here.&lt;/p&gt;
-&lt;h4 id=&#34;building-gc-analysis-metadata&#34;&gt;&lt;strong&gt;Building GC Analysis Metadata&lt;/strong&gt;
-&lt;/h4&gt;&lt;p&gt;We can also obtain memory access permissions by utilizing Delve&amp;rsquo;s process attachment and core file analysis capabilities. We mimic the GC marking process for objects, constructing the necessary metadata for the process to be analyzed in the tool&amp;rsquo;s runtime memory. This includes:&lt;/p&gt;
+&lt;h3 id=&#34;building-gc-analysis-metadata&#34;&gt;&lt;strong&gt;Building GC Analysis Metadata&lt;/strong&gt;
+&lt;/h3&gt;&lt;p&gt;We can also obtain memory access permissions by utilizing Delve&amp;rsquo;s process attachment and core file analysis capabilities. We mimic the GC marking process for objects, constructing the necessary metadata for the process to be analyzed in the tool&amp;rsquo;s runtime memory. This includes:&lt;/p&gt;
 &lt;ol&gt;
 &lt;li&gt;The address space range of each Goroutine stack in the process to be analyzed, including the &lt;code&gt;stackmap&lt;/code&gt; that stores the gcmask for each Goroutine stack, used to mark whether it may point to a live heap object.&lt;/li&gt;
 &lt;li&gt;The address space range of each &lt;code&gt;data/bss&lt;/code&gt; segment in the process to be analyzed, including the &lt;code&gt;gcmask&lt;/code&gt; for each segment, is also used to mark whether it may point to a live heap object.&lt;/li&gt;
@@ -138,8 +138,8 @@ Based on Delve, goref can deeply analyze heap object references in Go programs, 
 &lt;li&gt;The final step is to read the &lt;code&gt;mspan&lt;/code&gt; index of the process to be analyzed, along with the base, &lt;code&gt;elem&lt;/code&gt; size, &lt;code&gt;gcmask&lt;/code&gt;, and other information for each &lt;code&gt;mspan&lt;/code&gt;, restoring this index in the tool&amp;rsquo;s memory.&lt;/li&gt;
 &lt;/ol&gt;
 &lt;p&gt;These steps outline the general process, which also involves handling some detail issues, such as dealing with GC finalizer objects and special handling of allocation header features in Go version 1.22, which we will not delve into here.&lt;/p&gt;
-&lt;h4 id=&#34;dwarf-type-scanning&#34;&gt;&lt;strong&gt;DWARF Type Scanning&lt;/strong&gt;
-&lt;/h4&gt;&lt;p&gt;With everything in place, we are ready for the most critical step: &lt;strong&gt;object reference relationship&lt;/strong&gt; analysis.&lt;/p&gt;
+&lt;h3 id=&#34;dwarf-type-scanning&#34;&gt;&lt;strong&gt;DWARF Type Scanning&lt;/strong&gt;
+&lt;/h3&gt;&lt;p&gt;With everything in place, we are ready for the most critical step: &lt;strong&gt;object reference relationship&lt;/strong&gt; analysis.&lt;/p&gt;
 &lt;p&gt;We call each GC Root variable the &lt;code&gt;findRef&lt;/code&gt; function, accessing the object&amp;rsquo;s memory according to different DWARF types. If it is a pointer that may point to downstream objects, we read the pointer&amp;rsquo;s value and find this downstream object in the GC metadata. We have obtained the object&amp;rsquo;s base address, &lt;code&gt;elem size&lt;/code&gt;, &lt;code&gt;gcmask&lt;/code&gt;, and other information.&lt;/p&gt;
 &lt;p&gt;If the object is accessed, we record a mark bit to avoid re-accessing the object. By constructing a new variable with the DWARF sub-object type, we recursively call &lt;code&gt;findRef&lt;/code&gt; until all known types of objects are confirmed.&lt;/p&gt;
 &lt;p&gt;However, this reference scanning method is entirely contrary to the GC approach. The main reason is that Go has many unsafe type conversions. For instance, an object created with pointer fields may look like this:&lt;/p&gt;
@@ -174,11 +174,11 @@ Based on Delve, goref can deeply analyze heap object references in Go programs, 
 &gt;&lt;/p&gt;
 &lt;p&gt;For example, when accessing the aforementioned &lt;code&gt;Object&lt;/code&gt;, its gcmask is &lt;code&gt;1010&lt;/code&gt;. After reading field A, the gcmask changes to &lt;code&gt;1000&lt;/code&gt;. If field C is not accessed due to type conversion, it will be included in the final scan during GC marking.&lt;/p&gt;
 &lt;p&gt;In addition to type conversion, memory out-of-bounds references are also common issues. For instance, in the example code &lt;code&gt;var b *int64 = &amp;amp;echo().B&lt;/code&gt;, fields A and C belong to memory that cannot be scanned using DWARF types and will also be counted during the final scan.&lt;/p&gt;
-&lt;h4 id=&#34;final-scan&#34;&gt;&lt;strong&gt;Final Scan&lt;/strong&gt;
-&lt;/h4&gt;&lt;p&gt;The fields that were type-converted or could not be accessed due to exceeding the DWARF-defined address range, as well as variables like &lt;code&gt;unsafe.Pointer&lt;/code&gt; whose types cannot be determined, will all be marked during the final scan. Since these objects cannot be assigned specific types, we only need to record their size and count in the known reference chain.&lt;/p&gt;
+&lt;h3 id=&#34;final-scan&#34;&gt;&lt;strong&gt;Final Scan&lt;/strong&gt;
+&lt;/h3&gt;&lt;p&gt;The fields that were type-converted or could not be accessed due to exceeding the DWARF-defined address range, as well as variables like &lt;code&gt;unsafe.Pointer&lt;/code&gt; whose types cannot be determined, will all be marked during the final scan. Since these objects cannot be assigned specific types, we only need to record their size and count in the known reference chain.&lt;/p&gt;
 &lt;p&gt;In Go&amp;rsquo;s native implementation, many commonly used libraries utilize &lt;code&gt;unsafe.Pointer&lt;/code&gt;, leading to issues with sub-object identification. These types require special handling.&lt;/p&gt;
-&lt;h4 id=&#34;output-file-format&#34;&gt;&lt;strong&gt;Output File Format&lt;/strong&gt;
-&lt;/h4&gt;&lt;p&gt;After scanning all objects, the reference chains, object counts, and object memory spaces are output to a file, aligned with the pprof binary file format and encoded using protobuf.&lt;/p&gt;
+&lt;h3 id=&#34;output-file-format&#34;&gt;&lt;strong&gt;Output File Format&lt;/strong&gt;
+&lt;/h3&gt;&lt;p&gt;After scanning all objects, the reference chains, object counts, and object memory spaces are output to a file, aligned with the pprof binary file format and encoded using protobuf.&lt;/p&gt;
 &lt;ol&gt;
 &lt;li&gt;
 &lt;p&gt;&lt;strong&gt;Root Object Format:&lt;/strong&gt;&lt;/p&gt;
@@ -196,8 +196,8 @@ Based on Delve, goref can deeply analyze heap object references in Go programs, 
 &lt;/ul&gt;
 &lt;/li&gt;
 &lt;/ol&gt;
-&lt;h3 id=&#34;effect-demonstration&#34;&gt;&lt;strong&gt;Effect Demonstration&lt;/strong&gt;
-&lt;/h3&gt;&lt;p&gt;Below is a flame graph of object references sampled from a real business using the tool:&lt;/p&gt;
+&lt;h2 id=&#34;effect-demonstration&#34;&gt;&lt;strong&gt;Effect Demonstration&lt;/strong&gt;
+&lt;/h2&gt;&lt;p&gt;Below is a flame graph of object references sampled from a real business using the tool:&lt;/p&gt;
 &lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/bc938a980366ba9cf0877327496ba553.png&#34;
 	
 	
