@@ -7,7 +7,233 @@
         <generator>Hugo -- gohugo.io</generator>
         <language>en</language>
         <copyright>Copyright © 2023 huizhou92</copyright>
-        <lastBuildDate>Tue, 04 Feb 2025 18:46:54 +0800</lastBuildDate><atom:link href="https://huizhou92.com/categories/tech/index.xml" rel="self" type="application/rss+xml" /><item>
+        <lastBuildDate>Thu, 13 Feb 2025 15:05:56 +0800</lastBuildDate><atom:link href="https://huizhou92.com/categories/tech/index.xml" rel="self" type="application/rss+xml" /><item>
+        <title>Unmasking Go Memory Leaks: CloudWeGo Open Sources goref for Deep Heap Analysis</title>
+        <link>https://huizhou92.com/p/unmasking-go-memory-leaks-cloudwego-open-sources-goref-for-deep-heap-analysis/</link>
+        <pubDate>Thu, 13 Feb 2025 15:05:56 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/p/unmasking-go-memory-leaks-cloudwego-open-sources-goref-for-deep-heap-analysis/</guid>
+        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2025/02/f1e888e98523470202649a4a1fe3d769.png" alt="Featured image of post Unmasking Go Memory Leaks: CloudWeGo Open Sources goref for Deep Heap Analysis" /&gt;&lt;p&gt;In Go language development, memory leak issues are often challenging to pinpoint. While traditional pprof tools can provide some assistance, their capabilities are limited in complex scenarios. To analyze and resolve these issues more effectively, the CloudWeGo team has developed a new tool called &lt;a class=&#34;link&#34; href=&#34;https://github.com/cloudwego/goref&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;goref&lt;/a&gt;.&lt;br&gt;
+Based on Delve, goref can deeply analyze heap object references in Go programs, displaying the distribution of memory references to help developers quickly locate memory leaks or optimize garbage collection (GC) overhead. This tool supports the analysis of runtime processes and core dump files, providing Go developers with a powerful memory analysis tool.&lt;/p&gt;
+&lt;!-- more--&gt;
+&lt;h3 id=&#34;limitations-of-pprof&#34;&gt;&lt;strong&gt;Limitations Of &lt;code&gt;pprof&lt;/code&gt;&lt;/strong&gt;
+&lt;/h3&gt;&lt;p&gt;When encountering memory leaks in Go development, most people first attempt to generate a heap profile to investigate the issue. However, the heap profile flame graph often does not provide much help in troubleshooting because it only records where objects are created. In complex business scenarios, where objects are passed through multiple layers of dependencies or reused from memory pools, it becomes nearly impossible to identify the root cause based solely on the stack information of the creation.&lt;/p&gt;
+&lt;p&gt;For example, in the following heap profile, the FastRead function stack is a deserialization function from the Kitex framework. If a business coroutine leaks a request object, it does not reflect the corresponding leaking code location but only shows that the FastRead function stack occupies memory.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/239158570664af753f62f917f60a488c.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Heap Profile Example&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;As we know, Go is a garbage-collected language, and an object cannot be released primarily because the GC marks it as alive through reference analysis. Similarly, as a GC language, Java has more sophisticated analysis tools, such as &lt;code&gt;JProfiler&lt;/code&gt;, which can effectively display object reference relationships. Therefore, we also wanted to implement an efficient reference analysis tool in Go that can accurately and directly inform us of memory reference distribution and relationships, liberating us from the arduous task of static analysis. The good news is that we have nearly completed the development of this tool, which is open-sourced in the &lt;a class=&#34;link&#34; href=&#34;https://github.com/cloudwego/goref&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;goref repository&lt;/a&gt;, with usage instructions available in the README document.&lt;/p&gt;
+&lt;p&gt;The following sections will share the design ideas and detailed implementation of this tool.&lt;/p&gt;
+&lt;h3 id=&#34;implementation-ideas-of-goref&#34;&gt;Implementation Ideas of Goref
+&lt;/h3&gt;&lt;h4 id=&#34;gc-marking-process&#34;&gt;&lt;strong&gt;GC Marking Process&lt;/strong&gt;
+&lt;/h4&gt;&lt;p&gt;Before discussing the specific implementation, let’s review how the GC marks objects as alive.&lt;/p&gt;
+&lt;p&gt;Go employs a tiered allocation scheme similar to tcmalloc, where each heap object is assigned to an &lt;code&gt;mspan&lt;/code&gt; during allocation, with a fixed size. During GC, a heap address calls &lt;code&gt;runtime.spanOf&lt;/code&gt; to find this &lt;code&gt;mspan&lt;/code&gt; from a multi-level index, thus obtaining the base address and size of the original object.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// simplified code
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;spanOf&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;p&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;uintptr&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;mspan&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;ri&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;arenaIndex&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;p&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;ha&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;mheap_&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;arenas&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ri&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;l1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()][&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ri&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;l2&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()]&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;ha&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;spans&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;p&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;pageSize&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;%&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;pagesPerArena&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;By using the &lt;code&gt;runtime.heapBitsForAddr&lt;/code&gt; function, we can obtain a GC bitmap for an object address range. The GC bitmap indicates whether each 8-byte aligned address in the memory of an object is a pointer type, thus determining whether to further mark downstream objects.&lt;/p&gt;
+&lt;p&gt;For example, consider the following Go code snippet:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;type&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;Object&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;A&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;B&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int64&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;C&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[]&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;byte&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// global variables
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;var&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;a&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;echo&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;var&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;b&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;int64&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;echo&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;().&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;B&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;echo&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Object&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;bytes&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;make&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;([]&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;byte&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1024&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Object&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;A&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;bytes&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;),&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;C&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;bytes&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;When the GC scans the variable &lt;code&gt;b&lt;/code&gt;, it does not simply scan the memory of the &lt;code&gt;B int64&lt;/code&gt; field; instead, it looks up the &lt;code&gt;base&lt;/code&gt; and &lt;code&gt;elem size&lt;/code&gt; through the &lt;code&gt;mspan&lt;/code&gt; index and then scans, marking the memory of fields A and C, as well as their downstream objects, as alive.&lt;/p&gt;
+&lt;p&gt;When scanning the variable &lt;code&gt;a&lt;/code&gt;, the corresponding GC bit is &lt;code&gt;1001&lt;/code&gt;. How should we interpret this? We can consider that the addresses &lt;code&gt;base+0&lt;/code&gt; and &lt;code&gt;base+24&lt;/code&gt; are pointers, indicating that downstream objects should be scanned further. Here, both &lt;code&gt;A string&lt;/code&gt; and &lt;code&gt;C *[]byte&lt;/code&gt; contain pointers to downstream objects.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/0508442cfe2fa8bed8f129f0e12c450e.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;GC Bitmap Example&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;Based on the above brief analysis, we can see that to find all live objects, the simple principle is to start from the GC Root and scan the GC bits of each object. If an address is marked as &lt;code&gt;1&lt;/code&gt;, we continue scanning downstream. Each downstream address must determine its &lt;code&gt;mspan&lt;/code&gt; to obtain the complete object base address, size, and GC bit.&lt;/p&gt;
+&lt;h4 id=&#34;dwarf-type-information&#34;&gt;&lt;strong&gt;DWARF Type Information&lt;/strong&gt;
+&lt;/h4&gt;&lt;p&gt;However, merely knowing the reference relationships of objects is almost useless for troubleshooting, as it does not output any effective variable names or type information for developers to locate issues. Therefore, another crucial step is to obtain the variable names and type information of these objects.&lt;/p&gt;
+&lt;p&gt;Go is a statically typed language, and objects generally do not directly contain their type information. For instance, when we create an object using &lt;code&gt;obj=new(Object)&lt;/code&gt;, the actual memory only stores the values of fields &lt;code&gt;A/B/C&lt;/code&gt;, occupying only 32 bytes in memory. Given this, how can we obtain type information?&lt;/p&gt;
+&lt;h3 id=&#34;implementation-of-goref&#34;&gt;&lt;strong&gt;Implementation Of goref&lt;/strong&gt;
+&lt;/h3&gt;&lt;h4 id=&#34;introduction-to-delve-tool&#34;&gt;&lt;strong&gt;Introduction To Delve Tool&lt;/strong&gt;
+&lt;/h4&gt;&lt;p&gt;Those who have experience in Go development should be familiar with Delve. If you think you haven’t used it, don’t doubt yourself; the debugging functionality you use in the Goland IDE is fundamentally based on Delve. At this point, you may recall the debugging window during your debugging sessions. Indeed, the variable names, values, and types displayed in the debugging window are precisely the type information we need!&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-makefile&#34; data-lang=&#34;makefile&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;$&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;./dlv&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;attach&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;270&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;(dlv)&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;...&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;(dlv)&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;locals&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nv&#34;&gt;tccCli&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;se&#34;&gt;\&amp;#34;&lt;/span&gt;*code.byted.org/gopkg/tccclient.ClientV2&lt;span class=&#34;se&#34;&gt;\&amp;#34;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)(&lt;/span&gt;0xc000782240&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nv&#34;&gt;ticker&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;*time.Ticker&lt;span class=&#34;o&#34;&gt;)(&lt;/span&gt;0xc001086be0&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;So, how does Delve obtain this variable information? Delve reads the executable file path from the soft link in&lt;code&gt; /proc/&amp;lt;pid&amp;gt;/exe&lt;/code&gt; when we attach it to a process. Go generates debugging information during compilation, stored in sections with the &lt;code&gt;.debug_*&lt;/code&gt; prefix in the executable file, following the DWARF standard format. The type of information required for reference analysis for global and local variables can be parsed from this DWARF information.&lt;/p&gt;
+&lt;p&gt;For global variables, Delve iterates through all DWARF Entries, parsing those with the &lt;code&gt;Variable&lt;/code&gt; tag. These Entries contain attributes such as Location, Type, and Name.&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;The Type attribute records its type information, which can be recursively traversed in DWARF format to determine the type of each sub-object further.&lt;/li&gt;
+&lt;li&gt;The Location attribute is a relatively complex property that records either an executable expression or a simple variable address, serving to determine a variable&amp;rsquo;s memory address or return a register&amp;rsquo;s value. During global variable parsing, Delve uses this to obtain the variable&amp;rsquo;s memory address.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;The principle for parsing local variables in goroutines is similar to that of global variables, but it is somewhat more complex. For example, it requires determining the DWARF offset based on the PC, and the location expressions are more complicated, involving register access. We will not elaborate on this here.&lt;/p&gt;
+&lt;h4 id=&#34;building-gc-analysis-metadata&#34;&gt;&lt;strong&gt;Building GC Analysis Metadata&lt;/strong&gt;
+&lt;/h4&gt;&lt;p&gt;We can also obtain memory access permissions by utilizing Delve&amp;rsquo;s process attachment and core file analysis capabilities. We mimic the GC marking process for objects, constructing the necessary metadata for the process to be analyzed in the tool&amp;rsquo;s runtime memory. This includes:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;The address space range of each Goroutine stack in the process to be analyzed, including the &lt;code&gt;stackmap&lt;/code&gt; that stores the gcmask for each Goroutine stack, used to mark whether it may point to a live heap object.&lt;/li&gt;
+&lt;li&gt;The address space range of each &lt;code&gt;data/bss&lt;/code&gt; segment in the process to be analyzed, including the &lt;code&gt;gcmask&lt;/code&gt; for each segment, is also used to mark whether it may point to a live heap object.&lt;/li&gt;
+&lt;li&gt;The above two steps are necessary to obtain GC Roots.&lt;/li&gt;
+&lt;li&gt;The final step is to read the &lt;code&gt;mspan&lt;/code&gt; index of the process to be analyzed, along with the base, &lt;code&gt;elem&lt;/code&gt; size, &lt;code&gt;gcmask&lt;/code&gt;, and other information for each &lt;code&gt;mspan&lt;/code&gt;, restoring this index in the tool&amp;rsquo;s memory.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;These steps outline the general process, which also involves handling some detail issues, such as dealing with GC finalizer objects and special handling of allocation header features in Go version 1.22, which we will not delve into here.&lt;/p&gt;
+&lt;h4 id=&#34;dwarf-type-scanning&#34;&gt;&lt;strong&gt;DWARF Type Scanning&lt;/strong&gt;
+&lt;/h4&gt;&lt;p&gt;With everything in place, we are ready for the most critical step: &lt;strong&gt;object reference relationship&lt;/strong&gt; analysis.&lt;/p&gt;
+&lt;p&gt;We call each GC Root variable the &lt;code&gt;findRef&lt;/code&gt; function, accessing the object&amp;rsquo;s memory according to different DWARF types. If it is a pointer that may point to downstream objects, we read the pointer&amp;rsquo;s value and find this downstream object in the GC metadata. We have obtained the object&amp;rsquo;s base address, &lt;code&gt;elem size&lt;/code&gt;, &lt;code&gt;gcmask&lt;/code&gt;, and other information.&lt;/p&gt;
+&lt;p&gt;If the object is accessed, we record a mark bit to avoid re-accessing the object. By constructing a new variable with the DWARF sub-object type, we recursively call &lt;code&gt;findRef&lt;/code&gt; until all known types of objects are confirmed.&lt;/p&gt;
+&lt;p&gt;However, this reference scanning method is entirely contrary to the GC approach. The main reason is that Go has many unsafe type conversions. For instance, an object created with pointer fields may look like this:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-css&#34; data-lang=&#34;css&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nt&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nt&#34;&gt;echo&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;byte&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;n&#34;&gt;bytes&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;make&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;[]&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;byte&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1024&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;n&#34;&gt;obj&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;Object&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;A&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;:&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;bytes&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;),&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;C&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;:&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;bytes&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nt&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;(*&lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;byte&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)(&lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;unsafe&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nc&#34;&gt;Pointer&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;obj&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;))&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;From the GC&amp;rsquo;s perspective, although the type has been converted to &lt;code&gt;*byte&lt;/code&gt; using unsafe, it does not affect its gcmask marking. Therefore, when scanning downstream objects, we can still scan the complete &lt;code&gt;Object&lt;/code&gt; object and identify the &lt;code&gt;bytes&lt;/code&gt; downstream object, marking it as alive.&lt;/p&gt;
+&lt;p&gt;However, DWARF type scanning cannot achieve this. When it encounters the &lt;code&gt;byte&lt;/code&gt; type, it will consider it a non-pointer object and skip further scanning. Thus, the only solution is to prioritize DWARF type scanning, and for objects that cannot be scanned, we will use the GC method to mark them.&lt;/p&gt;
+&lt;p&gt;To implement this, whenever we access a pointer to an object using DWARF types, we will mark its corresponding gcmask from 1 to 0. After scanning an object, if there are still non-zero marked pointers within the object&amp;rsquo;s address space, we will record them for final marking tasks. Once all objects have been scanned using DWARF types, we will extract these final marking tasks and perform a secondary scan using the GC method.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/5cf29b2538c1bc30ed68212738da45ca.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Reference Scanning Example&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;For example, when accessing the aforementioned &lt;code&gt;Object&lt;/code&gt;, its gcmask is &lt;code&gt;1010&lt;/code&gt;. After reading field A, the gcmask changes to &lt;code&gt;1000&lt;/code&gt;. If field C is not accessed due to type conversion, it will be included in the final scan during GC marking.&lt;/p&gt;
+&lt;p&gt;In addition to type conversion, memory out-of-bounds references are also common issues. For instance, in the example code &lt;code&gt;var b *int64 = &amp;amp;echo().B&lt;/code&gt;, fields A and C belong to memory that cannot be scanned using DWARF types and will also be counted during the final scan.&lt;/p&gt;
+&lt;h4 id=&#34;final-scan&#34;&gt;&lt;strong&gt;Final Scan&lt;/strong&gt;
+&lt;/h4&gt;&lt;p&gt;The fields that were type-converted or could not be accessed due to exceeding the DWARF-defined address range, as well as variables like &lt;code&gt;unsafe.Pointer&lt;/code&gt; whose types cannot be determined, will all be marked during the final scan. Since these objects cannot be assigned specific types, we only need to record their size and count in the known reference chain.&lt;/p&gt;
+&lt;p&gt;In Go&amp;rsquo;s native implementation, many commonly used libraries utilize &lt;code&gt;unsafe.Pointer&lt;/code&gt;, leading to issues with sub-object identification. These types require special handling.&lt;/p&gt;
+&lt;h4 id=&#34;output-file-format&#34;&gt;&lt;strong&gt;Output File Format&lt;/strong&gt;
+&lt;/h4&gt;&lt;p&gt;After scanning all objects, the reference chains, object counts, and object memory spaces are output to a file, aligned with the pprof binary file format and encoded using protobuf.&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Root Object Format:&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Stack Variable Format: Package name + Function name + Stack variable name &lt;code&gt;github.com/cloudwego/kitex/client.invokeHandleEndpoint.func1.sendMsg&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;Global Variable Format: Package name + Global variable name &lt;code&gt;github.com/cloudwego/kitex/pkg/loadbalance/lbcache.balancerFactories&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Sub-object Format:&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Outputs the type name of the sub-object, such as: &lt;code&gt;net.Conn&lt;/code&gt;;&lt;/li&gt;
+&lt;li&gt;If it is a map key or value field, it is output in the form of &lt;code&gt;$mapkey. (type_name)&lt;/code&gt; or &lt;code&gt;$mapval. (type_name)&lt;/code&gt;;&lt;/li&gt;
+&lt;li&gt;If it is an element of an array, it is output in the format &lt;code&gt;[0]. (type_name)&lt;/code&gt;; for elements greater than or equal to 10, it is output as &lt;code&gt;[10+]. (type_name)&lt;/code&gt;;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h3 id=&#34;effect-demonstration&#34;&gt;&lt;strong&gt;Effect Demonstration&lt;/strong&gt;
+&lt;/h3&gt;&lt;p&gt;Below is a flame graph of object references sampled from a real business using the tool:&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/bc938a980366ba9cf0877327496ba553.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Object Reference Flame Graph&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;The graph displays the names of each root variable, along with the names and types of the fields they reference. Note: Due to the lack of support for closure type field offsets in DWARF Info before Go 1.23, the closure variable &lt;code&gt;wpool.(*Pool).GoCtx.func1.task&lt;/code&gt; cannot currently display downstream objects.&lt;/p&gt;
+&lt;p&gt;By selecting the &lt;code&gt;inuse_objects&lt;/code&gt; tag, you can also view the flame graph of object count distribution:&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/1fce789445b070cdac3aa9a0b7665479.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Object Count Distribution Flame Graph&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;hr&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/p/unmasking-go-memory-leaks-cloudwego-open-sources-goref-for-deep-heap-analysis/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Long Time Link&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;If you find my blog helpful, please subscribe to me via &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RSS&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Or follow me on &lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;X&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;If you have a &lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt; account, follow me there. My articles will be published there as soon as possible.&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+        </item>
+        <item>
         <title>DeepSeek: Disrupting the AI Landscape with Cost-Effective Innovation</title>
         <link>https://huizhou92.com/p/deepseek-disrupting-the-ai-landscape-with-cost-effective-innovation/</link>
         <pubDate>Tue, 04 Feb 2025 18:46:54 +0800</pubDate>

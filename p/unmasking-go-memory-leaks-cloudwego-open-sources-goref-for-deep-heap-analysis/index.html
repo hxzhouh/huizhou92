@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+    <head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="This article discusses the limitations of traditional pprof tools in Go and introduces goref, a new tool for efficient memory analysis.">
+<meta name="keywords" content="goref"><title>Unmasking Go Memory Leaks: CloudWeGo Open Sources goref for Deep Heap Analysis</title>
+
+<link rel='canonical' href='https://huizhou92.com/p/unmasking-go-memory-leaks-cloudwego-open-sources-goref-for-deep-heap-analysis/'>
+
+<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="Unmasking Go Memory Leaks: CloudWeGo Open Sources goref for Deep Heap Analysis">
+<meta property='og:description' content="This article discusses the limitations of traditional pprof tools in Go and introduces goref, a new tool for efficient memory analysis.">
+<meta property='og:url' content='https://huizhou92.com/p/unmasking-go-memory-leaks-cloudwego-open-sources-goref-for-deep-heap-analysis/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:tag' content='goref' /><meta property='article:published_time' content='2025-02-13T15:05:56&#43;08:00'/><meta property='article:modified_time' content='2025-02-13T15:05:54&#43;08:00'/><meta property='og:image' content='https://images.hxzhouh.com/blog-images/2025/02/f1e888e98523470202649a4a1fe3d769.png' />
+<meta name="twitter:site" content="@piaopiaopig">
+    <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="Unmasking Go Memory Leaks: CloudWeGo Open Sources goref for Deep Heap Analysis">
+<meta name="twitter:description" content="This article discusses the limitations of traditional pprof tools in Go and introduces goref, a new tool for efficient memory analysis."><meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content='https://images.hxzhouh.com/blog-images/2025/02/f1e888e98523470202649a4a1fe3d769.png' />
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="Toggle Menu">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>Home</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/about/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>About</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>Archives</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>Search</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" selected>English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" >中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>Dark Mode</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">Table of contents</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li>
+      <ol>
+        <li><a href="#limitations-of-pprof"><strong>Limitations Of <code>pprof</code></strong></a></li>
+        <li><a href="#implementation-ideas-of-goref">Implementation Ideas of Goref</a>
+          <ol>
+            <li><a href="#gc-marking-process"><strong>GC Marking Process</strong></a></li>
+            <li><a href="#dwarf-type-information"><strong>DWARF Type Information</strong></a></li>
+          </ol>
+        </li>
+        <li><a href="#implementation-of-goref"><strong>Implementation Of goref</strong></a>
+          <ol>
+            <li><a href="#introduction-to-delve-tool"><strong>Introduction To Delve Tool</strong></a></li>
+            <li><a href="#building-gc-analysis-metadata"><strong>Building GC Analysis Metadata</strong></a></li>
+            <li><a href="#dwarf-type-scanning"><strong>DWARF Type Scanning</strong></a></li>
+            <li><a href="#final-scan"><strong>Final Scan</strong></a></li>
+            <li><a href="#output-file-format"><strong>Output File Format</strong></a></li>
+          </ol>
+        </li>
+        <li><a href="#effect-demonstration"><strong>Effect Demonstration</strong></a></li>
+      </ol>
+    </li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+            
+        
+    </aside>
+
+
+            <main class="main full-width">
+    <article class="has-image main-article">
+    <header class="article-header">
+        <div class="article-image">
+            <a href="/p/unmasking-go-memory-leaks-cloudwego-open-sources-goref-for-deep-heap-analysis/">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2025/02/f1e888e98523470202649a4a1fe3d769.png" loading="lazy" alt="Featured image of post Unmasking Go Memory Leaks: CloudWeGo Open Sources goref for Deep Heap Analysis" />
+                
+            </a>
+        </div>
+    
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/categories/tech/" style="background-color: #2a9d8f; color: #ffff;">
+                tech
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/p/unmasking-go-memory-leaks-cloudwego-open-sources-goref-for-deep-heap-analysis/">Unmasking Go Memory Leaks: CloudWeGo Open Sources goref for Deep Heap Analysis</a>
+        </h2>
+    
+        
+        <h3 class="article-subtitle">
+            This article discusses the limitations of traditional pprof tools in Go and introduces goref, a new tool for efficient memory analysis.
+        </h3>
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Feb 13, 2025</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    10 minute read
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <p>In Go language development, memory leak issues are often challenging to pinpoint. While traditional pprof tools can provide some assistance, their capabilities are limited in complex scenarios. To analyze and resolve these issues more effectively, the CloudWeGo team has developed a new tool called <a class="link" href="https://github.com/cloudwego/goref"  target="_blank" rel="noopener"
+    >goref</a>.<br>
+Based on Delve, goref can deeply analyze heap object references in Go programs, displaying the distribution of memory references to help developers quickly locate memory leaks or optimize garbage collection (GC) overhead. This tool supports the analysis of runtime processes and core dump files, providing Go developers with a powerful memory analysis tool.</p>
+<!-- more-->
+<h3 id="limitations-of-pprof"><strong>Limitations Of <code>pprof</code></strong>
+</h3><p>When encountering memory leaks in Go development, most people first attempt to generate a heap profile to investigate the issue. However, the heap profile flame graph often does not provide much help in troubleshooting because it only records where objects are created. In complex business scenarios, where objects are passed through multiple layers of dependencies or reused from memory pools, it becomes nearly impossible to identify the root cause based solely on the stack information of the creation.</p>
+<p>For example, in the following heap profile, the FastRead function stack is a deserialization function from the Kitex framework. If a business coroutine leaks a request object, it does not reflect the corresponding leaking code location but only shows that the FastRead function stack occupies memory.</p>
+<p><img src="https://images.hxzhouh.com/blog-images/2025/02/239158570664af753f62f917f60a488c.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Heap Profile Example"
+	
+	
+></p>
+<p>As we know, Go is a garbage-collected language, and an object cannot be released primarily because the GC marks it as alive through reference analysis. Similarly, as a GC language, Java has more sophisticated analysis tools, such as <code>JProfiler</code>, which can effectively display object reference relationships. Therefore, we also wanted to implement an efficient reference analysis tool in Go that can accurately and directly inform us of memory reference distribution and relationships, liberating us from the arduous task of static analysis. The good news is that we have nearly completed the development of this tool, which is open-sourced in the <a class="link" href="https://github.com/cloudwego/goref"  target="_blank" rel="noopener"
+    >goref repository</a>, with usage instructions available in the README document.</p>
+<p>The following sections will share the design ideas and detailed implementation of this tool.</p>
+<h3 id="implementation-ideas-of-goref">Implementation Ideas of Goref
+</h3><h4 id="gc-marking-process"><strong>GC Marking Process</strong>
+</h4><p>Before discussing the specific implementation, let’s review how the GC marks objects as alive.</p>
+<p>Go employs a tiered allocation scheme similar to tcmalloc, where each heap object is assigned to an <code>mspan</code> during allocation, with a fixed size. During GC, a heap address calls <code>runtime.spanOf</code> to find this <code>mspan</code> from a multi-level index, thus obtaining the base address and size of the original object.</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// simplified code
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">spanOf</span><span class="p">(</span><span class="nx">p</span> <span class="kt">uintptr</span><span class="p">)</span> <span class="o">*</span><span class="nx">mspan</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">ri</span> <span class="o">:=</span> <span class="nf">arenaIndex</span><span class="p">(</span><span class="nx">p</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">ha</span> <span class="o">:=</span> <span class="nx">mheap_</span><span class="p">.</span><span class="nx">arenas</span><span class="p">[</span><span class="nx">ri</span><span class="p">.</span><span class="nf">l1</span><span class="p">()][</span><span class="nx">ri</span><span class="p">.</span><span class="nf">l2</span><span class="p">()]</span>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">ha</span><span class="p">.</span><span class="nx">spans</span><span class="p">[(</span><span class="nx">p</span><span class="o">/</span><span class="nx">pageSize</span><span class="p">)</span><span class="o">%</span><span class="nx">pagesPerArena</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>By using the <code>runtime.heapBitsForAddr</code> function, we can obtain a GC bitmap for an object address range. The GC bitmap indicates whether each 8-byte aligned address in the memory of an object is a pointer type, thus determining whether to further mark downstream objects.</p>
+<p>For example, consider the following Go code snippet:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Object</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">A</span> <span class="kt">string</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">B</span> <span class="kt">int64</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">C</span> <span class="o">*</span><span class="p">[]</span><span class="kt">byte</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="c1">// global variables
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">var</span> <span class="nx">a</span> <span class="p">=</span> <span class="nf">echo</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl"><span class="kd">var</span> <span class="nx">b</span> <span class="o">*</span><span class="kt">int64</span> <span class="p">=</span> <span class="o">&amp;</span><span class="nf">echo</span><span class="p">().</span><span class="nx">B</span>
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">echo</span><span class="p">()</span> <span class="o">*</span><span class="nx">Object</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">bytes</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">([]</span><span class="kt">byte</span><span class="p">,</span> <span class="mi">1024</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="o">&amp;</span><span class="nx">Object</span><span class="p">{</span><span class="nx">A</span><span class="p">:</span> <span class="nb">string</span><span class="p">(</span><span class="nx">bytes</span><span class="p">),</span> <span class="nx">C</span><span class="p">:</span> <span class="o">&amp;</span><span class="nx">bytes</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>When the GC scans the variable <code>b</code>, it does not simply scan the memory of the <code>B int64</code> field; instead, it looks up the <code>base</code> and <code>elem size</code> through the <code>mspan</code> index and then scans, marking the memory of fields A and C, as well as their downstream objects, as alive.</p>
+<p>When scanning the variable <code>a</code>, the corresponding GC bit is <code>1001</code>. How should we interpret this? We can consider that the addresses <code>base+0</code> and <code>base+24</code> are pointers, indicating that downstream objects should be scanned further. Here, both <code>A string</code> and <code>C *[]byte</code> contain pointers to downstream objects.</p>
+<p><img src="https://images.hxzhouh.com/blog-images/2025/02/0508442cfe2fa8bed8f129f0e12c450e.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="GC Bitmap Example"
+	
+	
+></p>
+<p>Based on the above brief analysis, we can see that to find all live objects, the simple principle is to start from the GC Root and scan the GC bits of each object. If an address is marked as <code>1</code>, we continue scanning downstream. Each downstream address must determine its <code>mspan</code> to obtain the complete object base address, size, and GC bit.</p>
+<h4 id="dwarf-type-information"><strong>DWARF Type Information</strong>
+</h4><p>However, merely knowing the reference relationships of objects is almost useless for troubleshooting, as it does not output any effective variable names or type information for developers to locate issues. Therefore, another crucial step is to obtain the variable names and type information of these objects.</p>
+<p>Go is a statically typed language, and objects generally do not directly contain their type information. For instance, when we create an object using <code>obj=new(Object)</code>, the actual memory only stores the values of fields <code>A/B/C</code>, occupying only 32 bytes in memory. Given this, how can we obtain type information?</p>
+<h3 id="implementation-of-goref"><strong>Implementation Of goref</strong>
+</h3><h4 id="introduction-to-delve-tool"><strong>Introduction To Delve Tool</strong>
+</h4><p>Those who have experience in Go development should be familiar with Delve. If you think you haven’t used it, don’t doubt yourself; the debugging functionality you use in the Goland IDE is fundamentally based on Delve. At this point, you may recall the debugging window during your debugging sessions. Indeed, the variable names, values, and types displayed in the debugging window are precisely the type information we need!</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-makefile" data-lang="makefile"><span class="line"><span class="cl"><span class="err">$</span> <span class="err">./dlv</span> <span class="err">attach</span> <span class="err">270</span>
+</span></span><span class="line"><span class="cl"><span class="err">(dlv)</span> <span class="err">...</span>
+</span></span><span class="line"><span class="cl"><span class="err">(dlv)</span> <span class="err">locals</span>
+</span></span><span class="line"><span class="cl"><span class="nv">tccCli</span> <span class="o">=</span> <span class="o">(</span><span class="se">\&#34;</span>*code.byted.org/gopkg/tccclient.ClientV2<span class="se">\&#34;</span><span class="o">)(</span>0xc000782240<span class="o">)</span>
+</span></span><span class="line"><span class="cl"><span class="nv">ticker</span> <span class="o">=</span> <span class="o">(</span>*time.Ticker<span class="o">)(</span>0xc001086be0<span class="o">)</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>So, how does Delve obtain this variable information? Delve reads the executable file path from the soft link in<code> /proc/&lt;pid&gt;/exe</code> when we attach it to a process. Go generates debugging information during compilation, stored in sections with the <code>.debug_*</code> prefix in the executable file, following the DWARF standard format. The type of information required for reference analysis for global and local variables can be parsed from this DWARF information.</p>
+<p>For global variables, Delve iterates through all DWARF Entries, parsing those with the <code>Variable</code> tag. These Entries contain attributes such as Location, Type, and Name.</p>
+<ol>
+<li>The Type attribute records its type information, which can be recursively traversed in DWARF format to determine the type of each sub-object further.</li>
+<li>The Location attribute is a relatively complex property that records either an executable expression or a simple variable address, serving to determine a variable&rsquo;s memory address or return a register&rsquo;s value. During global variable parsing, Delve uses this to obtain the variable&rsquo;s memory address.</li>
+</ol>
+<p>The principle for parsing local variables in goroutines is similar to that of global variables, but it is somewhat more complex. For example, it requires determining the DWARF offset based on the PC, and the location expressions are more complicated, involving register access. We will not elaborate on this here.</p>
+<h4 id="building-gc-analysis-metadata"><strong>Building GC Analysis Metadata</strong>
+</h4><p>We can also obtain memory access permissions by utilizing Delve&rsquo;s process attachment and core file analysis capabilities. We mimic the GC marking process for objects, constructing the necessary metadata for the process to be analyzed in the tool&rsquo;s runtime memory. This includes:</p>
+<ol>
+<li>The address space range of each Goroutine stack in the process to be analyzed, including the <code>stackmap</code> that stores the gcmask for each Goroutine stack, used to mark whether it may point to a live heap object.</li>
+<li>The address space range of each <code>data/bss</code> segment in the process to be analyzed, including the <code>gcmask</code> for each segment, is also used to mark whether it may point to a live heap object.</li>
+<li>The above two steps are necessary to obtain GC Roots.</li>
+<li>The final step is to read the <code>mspan</code> index of the process to be analyzed, along with the base, <code>elem</code> size, <code>gcmask</code>, and other information for each <code>mspan</code>, restoring this index in the tool&rsquo;s memory.</li>
+</ol>
+<p>These steps outline the general process, which also involves handling some detail issues, such as dealing with GC finalizer objects and special handling of allocation header features in Go version 1.22, which we will not delve into here.</p>
+<h4 id="dwarf-type-scanning"><strong>DWARF Type Scanning</strong>
+</h4><p>With everything in place, we are ready for the most critical step: <strong>object reference relationship</strong> analysis.</p>
+<p>We call each GC Root variable the <code>findRef</code> function, accessing the object&rsquo;s memory according to different DWARF types. If it is a pointer that may point to downstream objects, we read the pointer&rsquo;s value and find this downstream object in the GC metadata. We have obtained the object&rsquo;s base address, <code>elem size</code>, <code>gcmask</code>, and other information.</p>
+<p>If the object is accessed, we record a mark bit to avoid re-accessing the object. By constructing a new variable with the DWARF sub-object type, we recursively call <code>findRef</code> until all known types of objects are confirmed.</p>
+<p>However, this reference scanning method is entirely contrary to the GC approach. The main reason is that Go has many unsafe type conversions. For instance, an object created with pointer fields may look like this:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-css" data-lang="css"><span class="line"><span class="cl"><span class="nt">func</span> <span class="nt">echo</span><span class="o">()</span> <span class="o">*</span><span class="nt">byte</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="n">bytes</span> <span class="p">:</span><span class="o">=</span> <span class="nf">make</span><span class="p">(</span><span class="err">[]</span><span class="n">byte</span><span class="p">,</span> <span class="mi">1024</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="n">obj</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="n">Object</span><span class="err">{</span><span class="n">A</span><span class="o">:</span> <span class="nf">string</span><span class="p">(</span><span class="n">bytes</span><span class="p">),</span> <span class="n">C</span><span class="o">:</span> <span class="o">&amp;</span><span class="n">bytes</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="nt">return</span> <span class="o">(*</span><span class="nt">byte</span><span class="o">)(</span><span class="nt">unsafe</span><span class="p">.</span><span class="nc">Pointer</span><span class="o">(</span><span class="nt">obj</span><span class="o">))</span>
+</span></span><span class="line"><span class="cl"><span class="err">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>From the GC&rsquo;s perspective, although the type has been converted to <code>*byte</code> using unsafe, it does not affect its gcmask marking. Therefore, when scanning downstream objects, we can still scan the complete <code>Object</code> object and identify the <code>bytes</code> downstream object, marking it as alive.</p>
+<p>However, DWARF type scanning cannot achieve this. When it encounters the <code>byte</code> type, it will consider it a non-pointer object and skip further scanning. Thus, the only solution is to prioritize DWARF type scanning, and for objects that cannot be scanned, we will use the GC method to mark them.</p>
+<p>To implement this, whenever we access a pointer to an object using DWARF types, we will mark its corresponding gcmask from 1 to 0. After scanning an object, if there are still non-zero marked pointers within the object&rsquo;s address space, we will record them for final marking tasks. Once all objects have been scanned using DWARF types, we will extract these final marking tasks and perform a secondary scan using the GC method.</p>
+<p><img src="https://images.hxzhouh.com/blog-images/2025/02/5cf29b2538c1bc30ed68212738da45ca.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Reference Scanning Example"
+	
+	
+></p>
+<p>For example, when accessing the aforementioned <code>Object</code>, its gcmask is <code>1010</code>. After reading field A, the gcmask changes to <code>1000</code>. If field C is not accessed due to type conversion, it will be included in the final scan during GC marking.</p>
+<p>In addition to type conversion, memory out-of-bounds references are also common issues. For instance, in the example code <code>var b *int64 = &amp;echo().B</code>, fields A and C belong to memory that cannot be scanned using DWARF types and will also be counted during the final scan.</p>
+<h4 id="final-scan"><strong>Final Scan</strong>
+</h4><p>The fields that were type-converted or could not be accessed due to exceeding the DWARF-defined address range, as well as variables like <code>unsafe.Pointer</code> whose types cannot be determined, will all be marked during the final scan. Since these objects cannot be assigned specific types, we only need to record their size and count in the known reference chain.</p>
+<p>In Go&rsquo;s native implementation, many commonly used libraries utilize <code>unsafe.Pointer</code>, leading to issues with sub-object identification. These types require special handling.</p>
+<h4 id="output-file-format"><strong>Output File Format</strong>
+</h4><p>After scanning all objects, the reference chains, object counts, and object memory spaces are output to a file, aligned with the pprof binary file format and encoded using protobuf.</p>
+<ol>
+<li>
+<p><strong>Root Object Format:</strong></p>
+<ul>
+<li>Stack Variable Format: Package name + Function name + Stack variable name <code>github.com/cloudwego/kitex/client.invokeHandleEndpoint.func1.sendMsg</code></li>
+<li>Global Variable Format: Package name + Global variable name <code>github.com/cloudwego/kitex/pkg/loadbalance/lbcache.balancerFactories</code></li>
+</ul>
+</li>
+<li>
+<p><strong>Sub-object Format:</strong></p>
+<ul>
+<li>Outputs the type name of the sub-object, such as: <code>net.Conn</code>;</li>
+<li>If it is a map key or value field, it is output in the form of <code>$mapkey. (type_name)</code> or <code>$mapval. (type_name)</code>;</li>
+<li>If it is an element of an array, it is output in the format <code>[0]. (type_name)</code>; for elements greater than or equal to 10, it is output as <code>[10+]. (type_name)</code>;</li>
+</ul>
+</li>
+</ol>
+<h3 id="effect-demonstration"><strong>Effect Demonstration</strong>
+</h3><p>Below is a flame graph of object references sampled from a real business using the tool:</p>
+<p><img src="https://images.hxzhouh.com/blog-images/2025/02/bc938a980366ba9cf0877327496ba553.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Object Reference Flame Graph"
+	
+	
+></p>
+<p>The graph displays the names of each root variable, along with the names and types of the fields they reference. Note: Due to the lack of support for closure type field offsets in DWARF Info before Go 1.23, the closure variable <code>wpool.(*Pool).GoCtx.func1.task</code> cannot currently display downstream objects.</p>
+<p>By selecting the <code>inuse_objects</code> tag, you can also view the flame graph of object count distribution:</p>
+<p><img src="https://images.hxzhouh.com/blog-images/2025/02/1fce789445b070cdac3aa9a0b7665479.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Object Count Distribution Flame Graph"
+	
+	
+></p>
+<hr>
+<ul>
+<li><a class="link" href="https://huizhou92.com/p/unmasking-go-memory-leaks-cloudwego-open-sources-goref-for-deep-heap-analysis/"  target="_blank" rel="noopener"
+    >Long Time Link</a></li>
+<li>If you find my blog helpful, please subscribe to me via <a class="link" href="https://huizhou92.com/index.xml"  target="_blank" rel="noopener"
+    >RSS</a></li>
+<li>Or follow me on <a class="link" href="https://x.com/@piaopiaopig"  target="_blank" rel="noopener"
+    >X</a></li>
+<li>If you have a <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >Medium</a> account, follow me there. My articles will be published there as soon as possible.</li>
+</ul>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/tags/golang/">Golang</a>
+        
+            <a href="/tags/goref/">Goref</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            Last updated on Feb 13, 2025 15:05 CST
+        </span>
+    </section></footer>
+
+
+    
+</article>
+
+    
+
+    
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+<aside class="related-content--wrapper">
+    <h2 class="section-title">Related content</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="">
+    <a href="/p/go124-in-addition-to-the-standard-library-you-should-probably-pay-more-attention-to-changes-in-go-tools/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go1.24: In addition to the standard library, you should probably pay more attention to changes in Go tools</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/p/swiss-map-in-go-124-compatibility-extendible-hashing-and-legacy-issues/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Swiss Map in Go 1.24: Compatibility, Extendible Hashing, and Legacy Issues</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/p/use-request-hedging-to-reduce-long-tail-requests/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Use Request Hedging To Reduce Long-Tail Requests</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/p/error-handling-in-go-the-new-operator/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2025/02/34ac61629c8b0d315d037016a7283331.png" loading="lazy" data-key="error-handling-in-go-the-new-operator" data-hash="https://images.hxzhouh.com/blog-images/2025/02/34ac61629c8b0d315d037016a7283331.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Error Handling in Go: The New ? operator</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/p/htmx-first-experience/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2025/01/e6c9c9915295ea19685f460d4e7e13e5.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2025/01/e6c9c9915295ea19685f460d4e7e13e5.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">HTMX First Experience</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+
+    
+        
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2025 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        Built with <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> <br />
+        Theme <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> designed by <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a>
+    </section>
+    <script src="/js/adblock-detection.js" defer></script>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>
