@@ -116,8 +116,8 @@
 	
 	
 &gt;&lt;/p&gt;
-&lt;h1 id=&#34;一个简单的进程上下文切换开销测试实验&#34;&gt;一个简单的进程上下文切换开销测试实验
-&lt;/h1&gt;&lt;p&gt;废话不多说，我们先用个实验测试一下，到底一次上下文切换需要多长的CPU时间！实验方法是创建两个进程并在它们之间传送一个令牌。其中一个进程在读取令牌时就会引起阻塞。另一个进程发送令牌后等待其返回时也处于阻塞状态。如此往返传送一定的次数，然后统计他们的平均单次切换时间开销。&lt;br&gt;
+&lt;h2 id=&#34;一个简单的进程上下文切换开销测试实验&#34;&gt;一个简单的进程上下文切换开销测试实验
+&lt;/h2&gt;&lt;p&gt;废话不多说，我们先用个实验测试一下，到底一次上下文切换需要多长的CPU时间！实验方法是创建两个进程并在它们之间传送一个令牌。其中一个进程在读取令牌时就会引起阻塞。另一个进程发送令牌后等待其返回时也处于阻塞状态。如此往返传送一定的次数，然后统计他们的平均单次切换时间开销。&lt;br&gt;
 &lt;a class=&#34;link&#34; href=&#34;https://gist.github.com/hxzhouh/7c201a16f6dc37068fa9eefae9334b04&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;test04&lt;/a&gt;&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
@@ -128,16 +128,16 @@
 &lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
 &lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
 &lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-shell&#34; data-lang=&#34;shell&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;# gcc main.c -o main&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;# ./main./main&lt;/span&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-shell&#34; data-lang=&#34;shell&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;## gcc main.c -o main&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;## ./main./main&lt;/span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;Before Context Switch Time1565352257 s, &lt;span class=&#34;m&#34;&gt;774767&lt;/span&gt; us
 &lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;After Context SWitch Time1565352257 s, &lt;span class=&#34;m&#34;&gt;842852&lt;/span&gt; us
 &lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
 &lt;/div&gt;
 &lt;/div&gt;&lt;p&gt;每次执行的时间会有差异，多次运行后&lt;strong&gt;平均每次上下文切换耗时3.5us左右&lt;/strong&gt;。当然了这个数字因机器而异，而且建议在实机上测试。&lt;/p&gt;
 &lt;p&gt;前面我们测试系统调用的时候，最低值是200ns。可见，上下文切换开销要比系统调用的开销要大。系统调用只是在进程内将用户态切换到内核态，然后再切回来，而上下文切换可是直接从进程A切换到了进程B。显然这个上下文切换需要完成的工作量更大。&lt;/p&gt;
-&lt;h1 id=&#34;进程上下文切换开销都有哪些&#34;&gt;进程上下文切换开销都有哪些
-&lt;/h1&gt;&lt;p&gt;那么上下文切换的时候，CPU的开销都具体有哪些呢？开销分成两种，一种是直接开销、一种是间接开销。&lt;br&gt;
+&lt;h2 id=&#34;进程上下文切换开销都有哪些&#34;&gt;进程上下文切换开销都有哪些
+&lt;/h2&gt;&lt;p&gt;那么上下文切换的时候，CPU的开销都具体有哪些呢？开销分成两种，一种是直接开销、一种是间接开销。&lt;br&gt;
 直接开销就是在切换时，cpu必须做的事情，包括：&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;1、==切换页表全局目录==&lt;/li&gt;
@@ -156,8 +156,8 @@
 &lt;/ul&gt;
 &lt;p&gt;间接开销主要指的是虽然切换到一个新进程后，==由于各种缓存并不热，速度运行会慢一些==。如果进程始终都在一个CPU上调度还好一些，如果跨CPU的话，之前热起来的TLB、L1、L2、L3因为运行的进程已经变了，所以以局部性原理cache起来的代码、数据也都没有用了，导致新进程穿透到内存的IO会变多。 其实我们上面的实验并没有很好地测量到这种情况，所以实际的上下文切换开销可能比3.5us要大。&lt;br&gt;
 想了解更详细操作过程的同学请参考《深入理解Linux内核》中的第三章和第九章。&lt;/p&gt;
-&lt;h2 id=&#34;一个更为专业的测试工具-lmbench&#34;&gt;一个更为专业的测试工具-lmbench
-&lt;/h2&gt;&lt;p&gt;lmbench用于评价系统综合性能的多平台开源benchmark，能够测试包括文档读写、内存操作、进程创建销毁开销、网络等性能。使用方法简单，但就是跑有点慢，感兴趣的同学可以自己试一试。&lt;br&gt;
+&lt;h3 id=&#34;一个更为专业的测试工具-lmbench&#34;&gt;一个更为专业的测试工具-lmbench
+&lt;/h3&gt;&lt;p&gt;lmbench用于评价系统综合性能的多平台开源benchmark，能够测试包括文档读写、内存操作、进程创建销毁开销、网络等性能。使用方法简单，但就是跑有点慢，感兴趣的同学可以自己试一试。&lt;br&gt;
 这个工具的优势是是进行了多组实验，每组2个进程、8个、16个。每个进程使用的数据大小也在变，充分模拟cache miss造成的影响。我用他测了一下结果如下：&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
 &lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
@@ -176,8 +176,8 @@
 &lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
 &lt;/div&gt;
 &lt;/div&gt;&lt;p&gt;lmbench显示的进程上下文切换耗时从2.7us到5.48之间。&lt;/p&gt;
-&lt;h1 id=&#34;线程上下文切换耗时&#34;&gt;线程上下文切换耗时
-&lt;/h1&gt;&lt;p&gt;前面我们测试了进程上下文切换的开销，我们再继续在Linux测试一下线程。看看究竟比进程能不能快一些，快的话能快多少。&lt;/p&gt;
+&lt;h2 id=&#34;线程上下文切换耗时&#34;&gt;线程上下文切换耗时
+&lt;/h2&gt;&lt;p&gt;前面我们测试了进程上下文切换的开销，我们再继续在Linux测试一下线程。看看究竟比进程能不能快一些，快的话能快多少。&lt;/p&gt;
 &lt;p&gt;在Linux下其实本并没有线程，只是为了迎合开发者口味，搞了个轻量级进程出来就叫做了线程。轻量级进程和进程一样，都有自己独立的task_struct进程描述符，也都有自己独立的pid。从操作系统视角看，调度上和进程没有什么区别，都是在等待队列的双向链表里选择一个task_struct切到运行态而已。只不过轻量级进程和普通进程的区别是可以共享同一内存地址空间、代码段、全局变量、同一打开文件集合而已。&lt;/p&gt;
 &lt;blockquote&gt;
 &lt;p&gt;同一进程下的线程之所有getpid()看到的pid是一样的，其实task_struct里还有一个tgid字段。 对于多线程程序来说，getpid()系统调用获取的实际上是这个tgid，因此隶属同一进程的多线程看起来PID相同。&lt;/p&gt;
@@ -191,7 +191,7 @@
 &lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
 &lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
 &lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-css&#34; data-lang=&#34;css&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;#&lt;/span&gt; &lt;span class=&#34;nt&#34;&gt;gcc&lt;/span&gt; &lt;span class=&#34;nt&#34;&gt;-lpthread&lt;/span&gt; &lt;span class=&#34;nt&#34;&gt;main&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nc&#34;&gt;c&lt;/span&gt; &lt;span class=&#34;nt&#34;&gt;-o&lt;/span&gt; &lt;span class=&#34;nt&#34;&gt;main&lt;/span&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-css&#34; data-lang=&#34;css&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;##&lt;/span&gt; &lt;span class=&#34;nt&#34;&gt;gcc&lt;/span&gt; &lt;span class=&#34;nt&#34;&gt;-lpthread&lt;/span&gt; &lt;span class=&#34;nt&#34;&gt;main&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nc&#34;&gt;c&lt;/span&gt; &lt;span class=&#34;nt&#34;&gt;-o&lt;/span&gt; &lt;span class=&#34;nt&#34;&gt;main&lt;/span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nt&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nc&#34;&gt;508250&lt;/span&gt;  
 &lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nt&#34;&gt;4&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nc&#34;&gt;363495&lt;/span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
@@ -210,8 +210,8 @@
    (adsbygoogle = window.adsbygoogle || []).push({});
 &lt;/script&gt;
 &lt;/p&gt;
-&lt;h2 id=&#34;linux相关命令&#34;&gt;Linux相关命令
-&lt;/h2&gt;&lt;p&gt;既然我们知道了上下文切换比较的消耗CPU时间，那么我们通过什么工具可以查看一下Linux里究竟在发生多少切换呢？如果上下文切换已经影响到了系统整体性能，我们有没有办法把有问题的进程揪出来，并把它优化掉呢？&lt;/p&gt;
+&lt;h3 id=&#34;linux相关命令&#34;&gt;Linux相关命令
+&lt;/h3&gt;&lt;p&gt;既然我们知道了上下文切换比较的消耗CPU时间，那么我们通过什么工具可以查看一下Linux里究竟在发生多少切换呢？如果上下文切换已经影响到了系统整体性能，我们有没有办法把有问题的进程揪出来，并把它优化掉呢？&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
 &lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
 &lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
@@ -224,7 +224,7 @@
 &lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;8
 &lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
 &lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-text&#34; data-lang=&#34;text&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;# vmstat 1  
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-text&#34; data-lang=&#34;text&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;## vmstat 1  
 &lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;procs -----------memory---------- ---swap-- -----io---- --system-- -----cpu-----  
 &lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st  
 &lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt; 2  0      0 595504   5724 190884    0    0   295   297    0    0 14  6 75  0  4  
@@ -252,7 +252,7 @@
 &lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
 &lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
 &lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;# sar -w 1  &lt;/span&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;## sar -w 1  &lt;/span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;proc/s  
 &lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;     Total number of tasks created per second.  
 &lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;cswch/s  
@@ -279,7 +279,7 @@
 &lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
 &lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
 &lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;# pidstat -w 1  &lt;/span&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;## pidstat -w 1  &lt;/span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;11:07:56 AM       PID   cswch/s nvcswch/s  Command
 &lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;11:07:56 AM     &lt;span class=&#34;m&#34;&gt;32316&lt;/span&gt;      4.00      0.00  php-fpm  
 &lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;11:07:56 AM     &lt;span class=&#34;m&#34;&gt;32508&lt;/span&gt;    160.00     34.00  php-fpm  
@@ -301,8 +301,8 @@
 &lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;nonvoluntary_ctxt_switches:     89260
 &lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
 &lt;/div&gt;
-&lt;/div&gt;&lt;h1 id=&#34;结论&#34;&gt;结论
-&lt;/h1&gt;&lt;ul&gt;
+&lt;/div&gt;&lt;h2 id=&#34;结论&#34;&gt;结论
+&lt;/h2&gt;&lt;ul&gt;
 &lt;li&gt;上下文切换具体做哪些事情我们没有必要记，只需要记住一个结论既可，在我的工作机&lt;strong&gt;上下文切换的开销大约是2.7-5.48us左右&lt;/strong&gt;，你自己的机器可以用我提供的代码或工具进行一番测试。&lt;/li&gt;
 &lt;li&gt;可以使用 &lt;code&gt;vmstat&lt;/code&gt; &lt;code&gt;sar&lt;/code&gt; 等工具查看进程的上下文切换，进而定位性能问题。&lt;/li&gt;
 &lt;li&gt;lmbench相对更准确一些，因为考虑了切换后Cache miss导致的额外开销。&lt;/li&gt;
