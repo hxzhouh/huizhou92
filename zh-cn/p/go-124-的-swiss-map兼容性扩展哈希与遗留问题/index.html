@@ -330,34 +330,44 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
         <div class="widget--toc">
             <nav id="TableOfContents">
   <ol>
-    <li><a href="#go-124-的-swiss-map兼容性扩展哈希与遗留问题">Go 1.24 的 Swiss Map：兼容性、扩展哈希与遗留问题</a>
+    <li><a href="#兼容性无痛迁移的底层支持">兼容性：无痛迁移的底层支持</a></li>
+    <li><a href="#swissmap的数据结构">SwissMap的数据结构</a>
       <ol>
-        <li><a href="#兼容性无痛迁移的底层支持">兼容性：无痛迁移的底层支持</a></li>
-        <li><a href="#swiss-map-的数据结构">Swiss Map 的数据结构</a></li>
-        <li><a href="#extendible-hashing如何实现动态扩展">Extendible Hashing：如何实现动态扩展？</a>
-          <ol>
-            <li><a href="#dir与table的层级结构">Dir与table的层级结构</a></li>
-            <li><a href="#拆分操作">拆分操作</a></li>
-            <li><a href="#数据分配哈希掩码与比特位判定">数据分配：哈希掩码与比特位判定</a></li>
-            <li><a href="#3-目录的更新与扩展"><strong>3. 目录的更新与扩展</strong></a></li>
-            <li><a href="#示例拆分前后的地址与目录变化">示例：拆分前后的地址与目录变化</a></li>
-            <li><a href="#拆分后的数据分布">拆分后的数据分布</a></li>
-            <li><a href="#关键设计优势">关键设计优势</a></li>
-          </ol>
-        </li>
-        <li><a href="#其他优化">其他优化</a></li>
-        <li><a href="#遗留问题与挑战">遗留问题与挑战</a>
-          <ol>
-            <li><a href="#并发支持的局限性">并发支持的局限性</a></li>
-            <li><a href="#内存碎片化">内存碎片化</a></li>
-            <li><a href="#迭代器复杂度">迭代器复杂度</a></li>
-          </ol>
-        </li>
-        <li><a href="#性能测试">性能测试</a></li>
-        <li><a href="#总结">总结</a></li>
-        <li><a href="#参考资料">参考资料</a></li>
+        <li><a href="#数据插入过程">数据插入过程</a></li>
+        <li><a href="#数据查询过程">数据查询过程</a></li>
       </ol>
     </li>
+    <li><a href="#extendible-hashing如何实现动态扩展">Extendible Hashing：如何实现动态扩展？</a>
+      <ol>
+        <li><a href="#dir与table的层级结构">Dir与table的层级结构</a></li>
+        <li><a href="#拆分操作">拆分操作</a></li>
+        <li><a href="#数据分配哈希掩码与比特位判定">数据分配：哈希掩码与比特位判定</a></li>
+        <li><a href="#3-目录的更新与扩展"><strong>3. 目录的更新与扩展</strong></a>
+          <ol>
+            <li><a href="#目录扩展示例"><strong>目录扩展示例</strong></a></li>
+          </ol>
+        </li>
+        <li><a href="#示例拆分前后的地址与目录变化">示例：拆分前后的地址与目录变化</a>
+          <ol>
+            <li><a href="#初始状态"><strong>初始状态</strong></a></li>
+            <li><a href="#触发拆分"><strong>触发拆分</strong></a></li>
+          </ol>
+        </li>
+        <li><a href="#拆分后的数据分布">拆分后的数据分布</a></li>
+        <li><a href="#关键设计优势">关键设计优势</a></li>
+      </ol>
+    </li>
+    <li><a href="#其他优化">其他优化</a></li>
+    <li><a href="#遗留问题与挑战">遗留问题与挑战</a>
+      <ol>
+        <li><a href="#并发支持的局限性">并发支持的局限性</a></li>
+        <li><a href="#内存碎片化">内存碎片化</a></li>
+        <li><a href="#迭代器复杂度">迭代器复杂度</a></li>
+      </ol>
+    </li>
+    <li><a href="#性能测试">性能测试</a></li>
+    <li><a href="#总结">总结</a></li>
+    <li><a href="#参考资料">参考资料</a></li>
   </ol>
 </nav>
         </div>
@@ -446,7 +456,7 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 
 
                 <time class="article-time--reading">
-                    阅读时长: 3 分钟
+                    阅读时长: 4 分钟
                 </time>
             </div>
         
@@ -508,13 +518,13 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 	
 	
 ></p>
-<h2 id="go-124-的-swiss-map兼容性扩展哈希与遗留问题">Go 1.24 的 Swiss Map：兼容性、扩展哈希与遗留问题
-</h2><p>在 <a class="link" href="https://pub.huizhou92.com/swisstable-a-high-performance-hash-table-implementation-3e13bfe8c79b"  target="_blank" rel="noopener"
-    >上一篇</a>文章中，我介绍了<code>swiss map</code>跟 Dolthub 实现的一个Go语言版本。对于 <code>swiss map</code> 不太熟悉的读者，可以先去看看那篇文章。</p>
-<p>在即将正式发布的Go1.24中<code>swiss map</code> 将作为现有<code>map</code>的替代者正式进入gosrc。它完全兼容现有API，并且在部分<code>benchmark</code>场景下带来了超过50%的性能提升。到目前为止，<code>swiss map</code>是我对于Go1.24最期待的功能了。可是它真的有期待中的那么好嘛？本文将从<strong>兼容性</strong>、<strong>扩展哈希（Extendible Hashing</strong>的实现与优势，以及<strong>遗留问题</strong>三个方面，深入剖析这一新设计的核心逻辑。</p>
+<h1 id="go-124-的-swiss-map兼容性扩展哈希与遗留问题">Go 1.24 的 Swiss Map：兼容性、扩展哈希与遗留问题
+</h1><p>在 <a class="link" href="https://pub.huizhou92.com/swisstable-a-high-performance-hash-table-implementation-3e13bfe8c79b"  target="_blank" rel="noopener"
+    >上一篇</a>文章中，我介绍了<code>swiss map</code>以及Dolthub 实现的一个Go语言版本。对于 <code>swiss map</code> 不太熟悉的读者，可以先去看看那篇文章。</p>
+<p>在即将正式发布的Go1.24中<code>swiss map</code> 将作为现有<code>map</code>的替代者正式进入gosrc。它完全兼容现有API，并且在部分<code>benchmark</code>场景下带来了超过50%的性能提升。到目前为止，<code>swiss map</code>是我对于Go1.24最期待的功能了。可是它真的有期待中的那么好嘛？本文将从<strong>兼容性、扩展哈希（Extendible Hashing)</strong> 的实现与优势，以及<strong>遗留问题</strong>三个方面，深入剖析这一新设计的核心逻辑。</p>
 <!-- more-->
-<h3 id="兼容性无痛迁移的底层支持">兼容性：无痛迁移的底层支持
-</h3><p>Go 的<code>swiss map</code> 设计目标之一是与旧版 <code>map</code> 兼容。通过条件编译标签和类型转换，实现在新旧版本间的无缝切换。例如，在 <code>export_swiss_test.go</code> 中，<code>newTestMapType</code> 函数直接通过类型转换将旧版 <code>map</code> 的元数据转换为 <code>swiss map</code> 的类型结构：</p>
+<h2 id="兼容性无痛迁移的底层支持">兼容性：无痛迁移的底层支持
+</h2><p>Go 的<code>swiss map</code> 设计目标之一是与旧版 <code>map</code> 兼容。通过条件编译标签和类型转换，实现在新旧版本间的无缝切换。例如，在 <code>export_swiss_test.go</code> 中，<code>newTestMapType</code> 函数直接通过类型转换将旧版 <code>map</code> 的元数据转换为 <code>swiss map</code> 的类型结构：</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
@@ -538,8 +548,8 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </div><p>这种设计允许现有代码无需修改即可通过实验性标志启用 <code>swiss map</code>，同时保留了旧版哈希表的内存布局兼容性。当前gotip(go1.24-3f4164f5) 中<a class="link" href="https://github.com/golang/go/commit/99d60c24e23d4d97ce51b1ee5660b60a5651693a"  target="_blank" rel="noopener"
     >GOEXPERIMENT=swissmap</a> 编译选项已经默认打开，也就是默认使用的是<code>swiss map</code>。<br>
 如果您还是想用 原来的map可以使用 <code>GOEXPERIMENT=noswissmap</code></p>
-<h3 id="swiss-map-的数据结构">Swiss Map 的数据结构
-</h3><p><img src="https://images.hxzhouh.com/blog-images/2025/01/784e3f6a0ff90601480a2da80f3cb9d0.png"
+<h2 id="swissmap的数据结构">SwissMap的数据结构
+</h2><p><img src="https://images.hxzhouh.com/blog-images/2025/01/784e3f6a0ff90601480a2da80f3cb9d0.png"
 	
 	
 	
@@ -547,10 +557,36 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 	
 	
 ></p>
-<h3 id="extendible-hashing如何实现动态扩展">Extendible Hashing：如何实现动态扩展？
-</h3><p>与其他其他几个社区实现，除了在兼容性方面的改进之外，<code>swiss map</code>的核心创新之一是采用了<code>Extendible Hashing</code>（扩展哈希），以支持高效的增量扩容。传统哈希表在扩容时需要全量迁移数据，而 <code>Extendible Hashing</code> 通过多级目录和表拆分，将扩容开销分摊到多次操作中。</p>
-<h4 id="dir与table的层级结构">Dir与table的层级结构
-</h4><p>在 <code>map.go</code> 的 <code>Map</code> 结构体中，<code>globalDepth</code> 和 <code>directory</code> 字段是关键：</p>
+<p>跟 Map 比较大的区别是<br>
+现在数据存储在Dir中，Dir 包含若干个table，同时每个table 有若干个group。<br>
+每个group有16个solt，solt就是最终的数据。并且现在数据排列方式跟以前不一样，不是key跟key在一起，value跟value在一起，而是混合在一起。</p>
+<h3 id="数据插入过程">数据插入过程
+</h3><p>// TODO</p>
+<h3 id="数据查询过程">数据查询过程
+</h3><p>查询使用的是线性探测。首先根据 hash key 以及 globalDepth 判断在那个table。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="o">*</span><span class="nx">Map</span><span class="p">)</span> <span class="nf">directoryIndex</span><span class="p">(</span><span class="nx">hash</span> <span class="kt">uintptr</span><span class="p">)</span> <span class="kt">uintptr</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">m</span><span class="p">.</span><span class="nx">dirLen</span> <span class="o">==</span> <span class="mi">1</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="k">return</span> <span class="mi">0</span>  
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">hash</span> <span class="o">&gt;&gt;</span> <span class="p">(</span><span class="nx">m</span><span class="p">.</span><span class="nx">globalShift</span> <span class="o">&amp;</span> <span class="mi">63</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>然后在根据高位key。</p>
+<h2 id="extendible-hashing如何实现动态扩展">Extendible Hashing：如何实现动态扩展？
+</h2><p>与其他其他几个社区实现，除了在兼容性方面的改进之外，<code>swiss map</code>的核心创新之一是采用了<code>Extendible Hashing</code>（扩展哈希），以支持高效的增量扩容。传统哈希表在扩容时需要全量迁移数据，而 <code>ExtendibleHashing</code> 通过多级目录和表拆分，将扩容开销分摊到多次操作中。</p>
+<h3 id="dir与table的层级结构">Dir与table的层级结构
+</h3><p>在 <code>map.go</code> 的 <code>Map</code> 结构体中，<code>globalDepth</code> 和 <code>directory</code> 字段是关键：</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
@@ -570,9 +606,9 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </span></span></code></pre></td></tr></table>
 </div>
 </div><p>dir大小为 <code>1 &lt;&lt; globalDepth</code>，每个dir项指向一个 <code>table</code>。当某个 <code>table</code> 的负载过高时，会触发<strong>拆分</strong>（Split），而非全局扩容。</p>
-<h4 id="拆分操作">拆分操作
-</h4><p>拆分（Split）是 <code>swiss map</code>在单个表容量达到 <code>maxTableCapacity</code>（默认为 1024）时触发的动态扩容机制。其核心目标是将一个表的负载分摊到两个新表中，避免全局扩容的高延迟。以下是拆分的关键步骤与地址变化：<br>
-拆分时，原表（假设为 <code>table A</code>）会创建两个子表 <code>table Left</code> 和 <code>table Right</code>。它们的 <code>localDepth</code>（本地深度）比原表大 1，表示其哈希掩码多使用了一个高位比特。</p>
+<h3 id="拆分操作">拆分操作
+</h3><p>拆分（Split）是 <code>swiss map</code>在单个表容量达到 <code>maxTableCapacity</code>（默认为 1024）时触发的动态扩容机制。其核心目标是将一个表的负载分摊到两个新表中，避免<strong>全局扩容的高延迟</strong>。以下是拆分的关键步骤与地址变化：<br>
+拆分时，原表（假设为 <code>table A</code>）会创建两个子表 <code>table Left</code> 和 <code>table Right</code>。它们的<code>localDepth</code>（本地深度）比原表大 1，表示其哈希掩码多使用了一个高位比特。</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
@@ -596,8 +632,8 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </span></span></code></pre></td></tr></table>
 </div>
 </div><p><code>left</code> 和 <code>right</code> 是新分配的内存对象，其 <code>groups.data</code> 指向新分配的连续内存块（通过 <code>newarray</code> 函数）。</p>
-<h4 id="数据分配哈希掩码与比特位判定">数据分配：哈希掩码与比特位判定
-</h4><p>拆分时，根据哈希值的高位比特（由 <code>localDepth</code> 决定）将原表的数据分配到左表或右表。例如，若 <code>localDepth</code> 为 2，则使用哈希值的第 2 个高位比特（从最高位开始计数）作为分配依据。</p>
+<h3 id="数据分配哈希掩码与比特位判定">数据分配：哈希掩码与比特位判定
+</h3><p>拆分时，根据哈希值的高位比特（由 <code>localDepth</code> 决定）将原表的数据分配到左表或右表。例如，若 <code>localDepth</code> 为 2，则使用哈希值的第2个高位比特（从最高位开始计数）作为分配依据。</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt"> 1
@@ -632,10 +668,10 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </ul>
 </li>
 </ul>
-<h4 id="3-目录的更新与扩展"><strong>3. 目录的更新与扩展</strong>
-</h4><p>拆分完成后，需要更新全局目录（<code>Map.directory</code>），使原表的索引范围指向新的子表。如果原表的 <code>localDepth</code> 等于全局的 <code>globalDepth</code>，则目录需要扩展（翻倍）。</p>
-<h5 id="目录扩展示例"><strong>目录扩展示例</strong>
-</h5><p>假设原表 <code>table A</code> 的 <code>localDepth=1</code>，<code>globalDepth=1</code>，目录大小为 <code>2</code>（<code>1 &lt;&lt; 1</code>）。拆分后：</p>
+<h3 id="3-目录的更新与扩展"><strong>3. 目录的更新与扩展</strong>
+</h3><p>拆分完成后，需要更新全局目录（<code>Map.directory</code>），使原表的索引范围指向新的子表。如果原表的 <code>localDepth</code> 等于全局的 <code>globalDepth</code>，则目录需要扩展（翻倍）。</p>
+<h4 id="目录扩展示例"><strong>目录扩展示例</strong>
+</h4><p>假设原表 <code>table A</code> 的 <code>localDepth=1</code>，<code>globalDepth=1</code>，目录大小为 <code>2</code>（<code>1 &lt;&lt; 1</code>）。拆分后：</p>
 <ol>
 <li><strong>目录翻倍</strong>：<code>globalDepth</code> 增加到 2，目录大小变为 <code>4</code>（<code>1 &lt;&lt; 2</code>）。</li>
 <li><strong>索引重映射</strong>：原表的目录项（例如索引 <code>0-1</code>）被替换为指向 <code>left</code> 和 <code>right</code> 表。</li>
@@ -696,9 +732,9 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </ul>
 </li>
 </ul>
-<h4 id="示例拆分前后的地址与目录变化">示例：拆分前后的地址与目录变化
-</h4><h5 id="初始状态"><strong>初始状态</strong>
-</h5><ul>
+<h3 id="示例拆分前后的地址与目录变化">示例：拆分前后的地址与目录变化
+</h3><h4 id="初始状态"><strong>初始状态</strong>
+</h4><ul>
 <li><strong>全局目录</strong>：<code>globalDepth=1</code>，目录大小为 2，指向同一个表 <code>A</code>。
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
@@ -712,8 +748,8 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </div>
 </div></li>
 </ul>
-<h5 id="触发拆分"><strong>触发拆分</strong>
-</h5><ol>
+<h4 id="触发拆分"><strong>触发拆分</strong>
+</h4><ol>
 <li><strong>创建子表</strong>：<code>Left</code>（<code>localDepth=2</code>）和 <code>Right</code>（<code>localDepth=2</code>）。</li>
 <li><strong>目录扩展</strong>：<code>globalDepth</code> 增加到 2，目录大小变为 4。</li>
 <li><strong>更新目录项</strong>：
@@ -741,25 +777,25 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </ul>
 </li>
 </ul>
-<h4 id="拆分后的数据分布">拆分后的数据分布
-</h4><p>假设原表 <code>A</code> 的哈希键分布如下：</p>
+<h3 id="拆分后的数据分布">拆分后的数据分布
+</h3><p>假设原表 <code>A</code> 的哈希键分布如下：</p>
 <ul>
 <li>哈希值高位为 <code>00</code> 或 <code>01</code> → 分配到 <code>Left</code>。</li>
 <li>哈希值高位为 <code>10</code> 或 <code>11</code> → 分配到 <code>Right</code>。</li>
 </ul>
 <p>通过掩码 <code>localDepthMask(2)</code>（例如 <code>0x40000000</code>），提取哈希值的第 2 个高位比特，决定数据归属。</p>
-<h4 id="关键设计优势">关键设计优势
-</h4><ol>
+<h3 id="关键设计优势">关键设计优势
+</h3><ol start="4">
 <li><strong>局部性</strong>：仅拆分负载高的表，其他表不受影响。</li>
 <li><strong>渐进式扩容</strong>：目录按需扩展，避免一次性全量迁移。</li>
 <li><strong>地址连续性</strong>：新表的 <code>groups.data</code> 是连续内存块，利于缓存优化。</li>
 </ol>
-<h3 id="其他优化">其他优化
-</h3><p>此外，<code>swiss map</code> 针对一些特定场景也有优化，比如针对于少量元素(&lt;=8)就直接使用一个group来存储数据，尽量降低 <code>swiss map</code> 在少量数据的时候的性能劣势。</p>
-<h3 id="遗留问题与挑战">遗留问题与挑战
-</h3><p>尽管 <code>swiss map</code> 在设计与性能上迈出了一大步，但仍存在以下待优化点：</p>
-<h4 id="并发支持的局限性">并发支持的局限性
-</h4><p>当前实现通过 <code>writing</code> 标志检测并发写入，但缺乏细粒度锁：</p>
+<h2 id="其他优化">其他优化
+</h2><p>此外，<code>swiss map</code> 针对一些特定场景也有优化，比如针对于少量元素(&lt;=8)就直接使用一个group来存储数据，尽量降低 <code>swiss map</code> 在少量数据的时候的性能劣势。</p>
+<h2 id="遗留问题与挑战">遗留问题与挑战
+</h2><p>尽管 <code>swiss map</code> 在设计与性能上迈出了一大步，但仍存在以下待优化点：</p>
+<h3 id="并发支持的局限性">并发支持的局限性
+</h3><p>当前实现通过 <code>writing</code> 标志检测并发写入，但缺乏细粒度锁：</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
@@ -779,10 +815,10 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </span></span></code></pre></td></tr></table>
 </div>
 </div><p>这在多线程高并发场景下可能导致竞争条件。官方文档提到未来可能引入更复杂的同步机制，但目前仍需依赖外部锁。</p>
-<h4 id="内存碎片化">内存碎片化
-</h4><p><code>swiss map</code> 的 <code>group</code> 结构（8 控制字节 + 8 键值槽）可能导致内存对齐浪费，尤其是键值类型较小时。例如，若键为 <code>int32</code>、值为 <code>int8</code>，每个槽位将浪费 3 字节。</p>
-<h4 id="迭代器复杂度">迭代器复杂度
-</h4><p><code>Iter</code> 的实现（<code>table.go</code>）需处理目录扩展和表拆分，逻辑复杂：</p>
+<h3 id="内存碎片化">内存碎片化
+</h3><p><code>swiss map</code> 的 <code>group</code> 结构（8 控制字节 + 8 键值槽）可能导致内存对齐浪费，尤其是键值类型较小时。例如，若键为 <code>int32</code>、值为 <code>int8</code>，每个槽位将浪费 3 字节。</p>
+<h3 id="迭代器复杂度">迭代器复杂度
+</h3><p><code>Iter</code> 的实现（<code>table.go</code>）需处理目录扩展和表拆分，逻辑复杂：</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
@@ -826,8 +862,8 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 	
 ></p>
 <p>一切都要等到2月份正式发布。</p>
-<h3 id="性能测试">性能测试
-</h3><p>完整的测试代码：https://github.com/hxzhouh/gomapbench<br>
+<h2 id="性能测试">性能测试
+</h2><p>完整的测试代码：https://github.com/hxzhouh/gomapbench<br>
 go version devel go1.24-3f4164f5 Mon Jan 20 09:25:11 2025 -0800 darwin/arm64<br>
 <img src="https://images.hxzhouh.com/blog-images/2025/01/f4a1ee763ddd58e309055e616b562268.png"
 	
@@ -860,10 +896,10 @@ go version devel go1.24-3f4164f5 Mon Jan 20 09:25:11 2025 -0800 darwin/arm64<br>
 	
 ></p>
 <p>最终<code>swiss map</code> 如何，还是要看后续的演化。</p>
-<h3 id="总结">总结
-</h3><p>Go 1.24 的 <code>swiss map</code> 通过兼容性设计、Extendible Hashing 和优化的探测序列，显著提升了哈希表在高负载场景下的性能。然而，其并发模型和内存效率仍有改进空间。对于开发者而言，这一新特性值得在性能敏感的场景中尝试，但也需关注其当前限制。</p>
-<h3 id="参考资料">参考资料
-</h3><p><a class="link" href="https://tonybai.com/2024/11/14/go-map-use-swiss-table/"  target="_blank" rel="noopener"
+<h2 id="总结">总结
+</h2><p>Go 1.24 的 <code>swiss map</code> 通过兼容性设计、Extendible Hashing 和优化的探测序列，显著提升了哈希表在高负载场景下的性能。然而，其并发模型和内存效率仍有改进空间。对于开发者而言，这一新特性值得在性能敏感的场景中尝试，但也需关注其当前限制。</p>
+<h2 id="参考资料">参考资料
+</h2><p><a class="link" href="https://tonybai.com/2024/11/14/go-map-use-swiss-table/"  target="_blank" rel="noopener"
     >https://tonybai.com/2024/11/14/go-map-use-swiss-table/</a><br>
 <a class="link" href="https://github.com/golang/go/issues/54766"  target="_blank" rel="noopener"
     >https://github.com/golang/go/issues/54766</a><br>
