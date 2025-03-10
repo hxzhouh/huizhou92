@@ -1247,6 +1247,231 @@ Do you have other great ways to deal with long-tail requests?&lt;/li&gt;
 </description>
         </item>
         <item>
+        <title>Efficient Timeout Management</title>
+        <link>https://huizhou92.com/p/efficient-timeout-management/</link>
+        <pubDate>Tue, 14 Jan 2025 21:20:36 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/p/efficient-timeout-management/</guid>
+        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2025/01/12ffa89f8829f9122cee1eb9daacc043.webp" alt="Featured image of post Efficient Timeout Management" /&gt;&lt;h3 id=&#34;background&#34;&gt;Background
+&lt;/h3&gt;&lt;p&gt;Imagine a scenario with 1 million Uber drivers, where the driver client reports data every 10 minutes. If a driver does not report data within 10 minutes, the server sets that driver to an offline status and does not dispatch rides to them.&lt;br&gt;
+How can we implement this functionality?&lt;/p&gt;
+&lt;p&gt;Usually, we would use third-party components such as &lt;code&gt;redis&lt;/code&gt; &lt;code&gt;zset&lt;/code&gt; to accomplish this, but what if we don&amp;rsquo;t use third-party components? What about just using memory? There are probably several options:&lt;/p&gt;
+&lt;!-- more--&gt;
+&lt;h3 id=&#34;using-a-timer&#34;&gt;Using a Timer
+&lt;/h3&gt;&lt;ol&gt;
+&lt;li&gt;Utilize a &lt;code&gt;Map&amp;lt;uid, last_time&amp;gt;&lt;/code&gt; to track the last report time for each UID.&lt;/li&gt;
+&lt;li&gt;Update this &lt;code&gt;Map&lt;/code&gt; in real-time whenever a user with UID reports data.&lt;/li&gt;
+&lt;li&gt;Start a timer that periodically scans this &lt;code&gt;Map&lt;/code&gt; to check if each UID&amp;rsquo;s last report time exceeds 30 seconds. If it does, execute a timeout handling process.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;14
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;15
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;16
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;17
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;var&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;userMap&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;sync&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Map&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;timeout&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;10&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;time&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Minute&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;checkTimeout&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;now&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;time&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Now&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;().&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Unix&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;userMap&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Range&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;key&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;value&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;any&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;bool&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;nx&#34;&gt;uid&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;key&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.(&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;nx&#34;&gt;lastTime&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;value&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.(&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;int64&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;k&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;now&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;-&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;lastTime&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;&amp;gt;&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;int64&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;timeout&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;            &lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Printf&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;User %s timed out. Last reported at %d\n&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;uid&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;lastTime&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;            &lt;span class=&#34;nx&#34;&gt;userMap&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Delete&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;uid&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; 
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;kc&#34;&gt;true&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;p&#34;&gt;})&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;&lt;strong&gt;Drawback&lt;/strong&gt;: This method is inefficient since it requires periodically scanning the entire map, resulting in high time complexity.&lt;/p&gt;
+&lt;h3 id=&#34;using-goroutine-management&#34;&gt;Using Goroutine Management
+&lt;/h3&gt;&lt;p&gt;Another approach is to allocate a Goroutine for each driver to manage their heartbeat timeout.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;14
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nx&#34;&gt;timer&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;time&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;NewTimer&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;timeout&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;time&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Second&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;select&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;case&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;lt;-&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;heartbeat&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// Received heartbeat signal
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;        &lt;span class=&#34;k&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;!&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;timer&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Stop&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;            &lt;span class=&#34;o&#34;&gt;&amp;lt;-&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;timer&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;C&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;nx&#34;&gt;timer&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Reset&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;timeout&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;time&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Second&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;case&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;lt;-&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;timer&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;C&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// Timeout
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;        &lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Printf&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;Driver %s timed out.\n&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;uid&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;k&#34;&gt;break&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nx&#34;&gt;userMap&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Delete&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;uid&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;&lt;strong&gt;Drawback&lt;/strong&gt;: Although this eliminates polling, creating a Goroutine for each driver consumes significant memory when the number of drivers is very high. Additionally, creating and deleting timers operates at O(log n) time complexity, impacting efficiency.&lt;/p&gt;
+&lt;p&gt;After this groundwork, we finally arrive at our main subject: the &lt;strong&gt;Time Wheel&lt;/strong&gt;.&lt;/p&gt;
+&lt;h3 id=&#34;time-wheel-algorithm&#34;&gt;Time Wheel Algorithm
+&lt;/h3&gt;&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/3dd09d201f36757e8aa9b8280ee35476.webp&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Schematic of the timing wheel algorithm&#34;
+	
+	
+&gt;&lt;br&gt;
+The Time Wheel is an interesting algorithm, first presented in a &lt;a class=&#34;link&#34; href=&#34;https://dl.acm.org/doi/pdf/10.1145/37499.37504&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;paper&lt;/a&gt; by George Varghese and Tony Lauck. Its core logic involves:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Using a fixed-size array to represent the time wheel, where each slot corresponds to a time interval.&lt;/li&gt;
+&lt;li&gt;Each slot contains a slice to hold tasks expected to expire in that time period, along with a &lt;code&gt;Map&amp;lt;uid, slot&amp;gt;&lt;/code&gt; to track which UID corresponds to which slot.&lt;/li&gt;
+&lt;li&gt;A timer periodically advances the time wheel one position (interval), processing all tasks in the current slot.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;In this case, we can set the interval to 1 second and the time wheel to have 600 slots. When a driver reports data, the record is inserted into the slot corresponding to the current position minus one.&lt;br&gt;
+Here’s a simple demo:&lt;br&gt;
+&lt;a class=&#34;link&#34; href=&#34;https://gist.github.com/hxzhouh/5e2cedc633bae0a7cf27d9f5d47bef01&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;https://gist.github.com/hxzhouh/5e2cedc633bae0a7cf27d9f5d47bef01&lt;/a&gt;&lt;/p&gt;
+&lt;h4 id=&#34;advantages&#34;&gt;Advantages
+&lt;/h4&gt;&lt;ul&gt;
+&lt;li&gt;Adding tasks using the time wheel has a time complexity of O(1).&lt;/li&gt;
+&lt;li&gt;The number of slots is fixed, ensuring memory usage remains manageable.&lt;/li&gt;
+&lt;li&gt;It’s suitable for handling a large number of scheduled tasks.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h4 id=&#34;disadvantages&#34;&gt;Disadvantages
+&lt;/h4&gt;&lt;ul&gt;
+&lt;li&gt;The size of the interval limits the time wheel&amp;rsquo;s precision.&lt;/li&gt;
+&lt;li&gt;Deleting tasks can degrade to O(n) complexity if tasks are unevenly distributed.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Thus, the time wheel is particularly suited for:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Rapid insertion of many tasks.&lt;/li&gt;
+&lt;li&gt;Scenarios with low precision requirements.&lt;/li&gt;
+&lt;li&gt;A reasonably uniform distribution of tasks.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;optimization-of-the-time-wheel&#34;&gt;Optimization of the time Wheel
+&lt;/h3&gt;&lt;h4 id=&#34;simple-time-wheel&#34;&gt;Simple Time Wheel
+&lt;/h4&gt;&lt;p&gt;This maintains a fixed-length array corresponding to all tasks&amp;rsquo; maximum expiration values (intervals). For example, if there are 10 tasks with expiration times of 1s, 3s, and 100s, an array of length 100 is created, where each index corresponds to each task&amp;rsquo;s expiration. As the clock ticks, expired tasks are identified and processed.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;To schedule a task, Convert it to its expiration value and place it in the relevant array index (O(1)).&lt;/li&gt;
+&lt;li&gt;When the clock ticks, pull and execute tasks from that index (O(1)).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h4 id=&#34;hash-ordered-time-wheel&#34;&gt;Hash Ordered Time Wheel
+&lt;/h4&gt;&lt;p&gt;While the simple time wheel is efficient, maintaining an extensive array with very high expiration times can consume a lot of memory. An improved version uses a hash scheme to map tasks into a fixed-size array, maintaining a &amp;lsquo;bucket&amp;rsquo; for each index that contains tasks sorted by absolute expiration time.&lt;br&gt;
+Yet this approach can still face challenges, especially when task lists grow long, leading to performance issues.&lt;/p&gt;
+&lt;h4 id=&#34;hierarchical-time-wheel&#34;&gt;Hierarchical Time Wheel
+&lt;/h4&gt;&lt;p&gt;This approach employs multiple time wheels, each managing different time intervals, and can effectively mitigate issues seen in simple or hash-ordered time wheels.&lt;br&gt;
+Refer to Kafka&amp;rsquo;s &lt;a class=&#34;link&#34; href=&#34;https://www.confluent.io/blog/apache-kafka-purgatory-hierarchical-timing-wheels/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Purgatory&lt;/a&gt; for a cascading time wheel implementation:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;The first level of the time wheel is predetermined, while overflow levels are created dynamically as needed.&lt;/li&gt;
+&lt;li&gt;Tasks initially allocated to higher-level wheels are divided into lower-level wheels as time elapses.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;summary&#34;&gt;Summary
+&lt;/h3&gt;&lt;p&gt;Here&amp;rsquo;s a comparison of various algorithms&amp;rsquo; performance&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Algorithm&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;&lt;strong&gt;Task Deletion Complexity&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;&lt;strong&gt;Memory Overhead&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;&lt;strong&gt;Applicable Scenarios&lt;/strong&gt;&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Single Timer&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;O(1)&lt;/td&gt;
+&lt;td&gt;Low&lt;/td&gt;
+&lt;td&gt;Suitable for few tasks with high precision requirements.&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Multi Timer&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;O(log n)&lt;/td&gt;
+&lt;td&gt;Medium&lt;/td&gt;
+&lt;td&gt;Suitable for moderate numbers with independent tasks, but higher memory usage.&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Simple Timing Wheel&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;O(n)&lt;/td&gt;
+&lt;td&gt;High&lt;/td&gt;
+&lt;td&gt;Works for evenly distributed tasks with lower timing precision requirements.&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Hash Timing Wheel&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;O(n)&lt;/td&gt;
+&lt;td&gt;Medium&lt;/td&gt;
+&lt;td&gt;Suitable for large numbers of tasks with uneven distribution and higher tolerance for precision.&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Hierarchical Timing Wheel&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;O(log n)&lt;/td&gt;
+&lt;td&gt;Low to Medium&lt;/td&gt;
+&lt;td&gt;Ideal for large-scale tasks, complex hierarchical management, and long-lifetime scheduling (e.g., Kafka and Netty).&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h3 id=&#34;references&#34;&gt;References
+&lt;/h3&gt;&lt;ol&gt;
+&lt;li&gt;Real-world implementations of time wheels:
+&lt;ul&gt;
+&lt;li&gt;Netty&amp;rsquo;s &lt;a class=&#34;link&#34; href=&#34;https://netty.io/4.0/api/io/netty/util/HashedWheelTimer.html&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;HashedWheelTimer&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Kafka&amp;rsquo;s [Purgatory](&lt;a class=&#34;link&#34; href=&#34;https://www.confluent.io/blog/apache-kafka-purgatory-hierarchical-timing-wheels/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;https://www.confluent.io/blog/apache-kafka-purgatory-hierarchical-timing-wheels/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;go-zero&lt;/code&gt;&amp;rsquo;s &lt;a class=&#34;link&#34; href=&#34;https://github.com/zeromicro/go-zero/blob/12071d17b40f4b58ba541747cab9eda30955c18c/core/collection/timingwheel.go#L66&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;NewTimingWheel&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://paulcavallaro.com/blog/hashed-and-hierarchical-timing-wheels/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Hashed and Hierarchical Timing Wheels&lt;/a&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;hr&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/p/efficient-timeout-management/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Long Time Link&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;If you find my blog helpful, please subscribe to me via &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RSS&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Or follow me on &lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;X&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;If you have a &lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt; account, follow me there. My articles will be published there as soon as possible.&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+        </item>
+        <item>
         <title>Error Handling in Go: The New ? operator</title>
         <link>https://huizhou92.com/p/error-handling-in-go-the-new-operator/</link>
         <pubDate>Sat, 11 Jan 2025 19:35:01 +0800</pubDate>
@@ -1432,87 +1657,6 @@ It feels more like it was forced by public opinion and pressure from the Go comm
 &lt;hr&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/p/error-handling-in-go-the-new-operator/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Long Time Link&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;If you find my blog helpful, please subscribe to me via &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;RSS&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;Or follow me on &lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;X&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;If you have a &lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Medium&lt;/a&gt; account, follow me there. My articles will be published there as soon as possible.&lt;/li&gt;
-&lt;/ul&gt;
-</description>
-        </item>
-        <item>
-        <title>Big Tech Is Killing Their Customers</title>
-        <link>https://huizhou92.com/p/big-tech-is-killing-their-customers/</link>
-        <pubDate>Thu, 09 Jan 2025 16:02:38 +0800</pubDate>
-        
-        <guid>https://huizhou92.com/p/big-tech-is-killing-their-customers/</guid>
-        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2025/01/589319fe1c17cafde315ff3dab8b3f24.webp" alt="Featured image of post Big Tech Is Killing Their Customers" /&gt;&lt;p&gt;Recently, &lt;a class=&#34;link&#34; href=&#34;https://pod.geraspora.de/people/4ce5b01a9e3a1b18d700000a&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Dennis Schubert&lt;/a&gt; posted a fiery update about a crisis in the “diaspora*” project. The platform&amp;rsquo;s network infrastructure was collapsing due to heavy traffic. But what caused this overload? Shockingly, &lt;strong&gt;70% of the requests came from LLM (Large Language Model) bots operated by major tech companies&lt;/strong&gt;. These bots ignored &lt;code&gt;robots.txt&lt;/code&gt; directives, relentlessly scraping every data they could access.&lt;/p&gt;
-&lt;!-- more--&gt;
-&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/3cbeeac63070c2d3d19c34cc21828f43.webp&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-	
-&gt;&lt;/p&gt;
-&lt;p&gt;Dennis discovered that &lt;code&gt;ChatGPT&lt;/code&gt; and &lt;code&gt;Amazon&lt;/code&gt; bots even went as far as to scrape &lt;strong&gt;the entire edit history of Wiki pages&lt;/strong&gt;—every single revision. He couldn’t help but ask:&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;“What are they trying to achieve? Are they analyzing how text evolves?”&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;This data hoarding significantly strained diaspora*’s servers, slowing the platform for legitimate users. Dennis tried several countermeasures:&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;Updating robots.txt&lt;/strong&gt;: Useless, as the bots ignored it.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Rate-limiting&lt;/strong&gt;: Failed because the bots rotated their IP addresses.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Blocking User Agents&lt;/strong&gt;: Ineffective, as the bots disguised themselves as regular browsers.&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;Frustrated, Dennis likened the situation to a &lt;strong&gt;DDoS attack on the entire internet&lt;/strong&gt;.&lt;/p&gt;
-&lt;h2 id=&#34;why-does-big-tech-need-our-data&#34;&gt;Why Does Big Tech Need Our Data?
-&lt;/h2&gt;&lt;p&gt;The answer lies in &lt;strong&gt;AI’s insatiable hunger for training data&lt;/strong&gt;.&lt;br&gt;
-High-quality datasets are the backbone of AI models, and the industry is running out of fresh material to train on. As OpenAI engineer James Betker once wrote:&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;As I’ve spent these hours observing the effects of tweaking various model configurations and hyperparameters, one thing that has struck me is the similarities between all the training runs.&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;It’s becoming clear to me that these models are truly approximating their datasets to an incredible degree&lt;/p&gt;
-&lt;p&gt;To stay ahead in the AI arms race, tech giants are aggressively scraping data from every corner of the web—personal blogs, independent wikis, and small projects. They don’t just scrape; they &lt;strong&gt;strip the internet bare&lt;/strong&gt;.&lt;/p&gt;
-&lt;h2 id=&#34;can-we-fight-back&#34;&gt;Can We Fight Back?
-&lt;/h2&gt;&lt;p&gt;Big Tech has teams of experts balancing web scraping and user experience, but small websites and independent projects lack these resources. For individuals, it’s an uphill battle.&lt;/p&gt;
-&lt;p&gt;Dennis suggested two unconventional methods to fend off bots:&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;Tarpit Strategy&lt;/strong&gt;: Generate meaningless random text to trick bots into wasting resources on irrelevant data.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;JavaScript Traps&lt;/strong&gt;: Serve bot-detected requests with JavaScript-heavy content, embedding scripts that only bots would execute, such as crypto mining code.&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;While these approaches might work, they’re expensive and technically demanding.&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id=&#34;the-zero-click-internet&#34;&gt;The Zero-Click Internet
-&lt;/h2&gt;&lt;p&gt;What’s Big Tech’s ultimate goal?&lt;br&gt;
-To &lt;strong&gt;trap users within their ecosystems&lt;/strong&gt;. By leveraging AI to generate “the best content,” they eliminate the need for users to visit other websites. No more outbound links, no more exploring—their AI serves everything directly, with ads seamlessly integrated.&lt;/p&gt;
-&lt;p&gt;For individual creators, this means:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;SEO doesn’t matter anymore.&lt;/li&gt;
-&lt;li&gt;High-quality content won’t reach users.&lt;/li&gt;
-&lt;li&gt;Revenue dries up.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;Your work is more than fuel for Big Tech’s data engines in this new reality.&lt;/p&gt;
-&lt;h2 id=&#34;the-inevitable-decline-of-the-open-web&#34;&gt;The Inevitable Decline of the Open Web
-&lt;/h2&gt;&lt;p&gt;Big Tech is reshaping the internet, exploiting data while squeezing value out of independent creators. Fighting back is nearly impossible for small websites. The shift is already happening, and it’s irreversible. Ironically, the open web is dying, and the companies that built it are killing it.&lt;/p&gt;
-&lt;h3 id=&#34;references&#34;&gt;References
-&lt;/h3&gt;&lt;ul&gt;
-&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://pod.geraspora.de/posts/17342163&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Dennis Schubert’s Post&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://nonint.com/2023/06/10/the-it-in-ai-models-is-the-dataset/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;The IT in AI Models is the Dataset&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://www.techspot.com/article/2908-the-zero-click-internet/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;TechSpot: The Zero-Click Internet&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;hr&gt;
-&lt;p&gt;This version maintains the original tone while aligning with Medium’s concise, conversational style. It’s structured for readability and flows logically to keep readers engaged.&lt;/p&gt;
-&lt;hr&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/p/big-tech-is-killing-their-customers/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;Long Time Link&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;If you find my blog helpful, please subscribe to me via &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;RSS&lt;/a&gt;&lt;/li&gt;

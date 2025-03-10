@@ -7,7 +7,112 @@
         <generator>Hugo -- gohugo.io</generator>
         <language>zh-cn</language>
         <copyright>Copyright © 2023 huizhou92</copyright>
-        <lastBuildDate>Sat, 29 Jun 2024 21:38:00 +0000</lastBuildDate><atom:link href="https://huizhou92.com/zh-cn/tags/grpc/index.xml" rel="self" type="application/rss+xml" /><item>
+        <lastBuildDate>Wed, 17 Jul 2024 09:35:37 +0800</lastBuildDate><atom:link href="https://huizhou92.com/zh-cn/tags/grpc/index.xml" rel="self" type="application/rss+xml" /><item>
+        <title>【译】gRPC:坏的部分</title>
+        <link>https://huizhou92.com/zh-cn/p/%E8%AF%91grpc%E5%9D%8F%E7%9A%84%E9%83%A8%E5%88%86/</link>
+        <pubDate>Wed, 17 Jul 2024 09:35:37 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/zh-cn/p/%E8%AF%91grpc%E5%9D%8F%E7%9A%84%E9%83%A8%E5%88%86/</guid>
+        <description>&lt;p&gt;原文链接🔗: &lt;a class=&#34;link&#34; href=&#34;https://kmcd.dev/posts/grpc-the-bad-parts/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;https://kmcd.dev/posts/grpc-the-bad-parts/&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;gRPC 作为一款高性能的 RPC 框架，在 Google 内部取得了巨大成功，并显著改变了我们部署 API 的方式。然而，它并非完美无缺。创建一个支持代码生成和多语言的 RPC 框架，必然会面临诸多挑战。笔者使用 gRPC 已近十年，在此有必要反思其有待改进之处。&lt;/p&gt;
+&lt;h2 id=&#34;学习曲线术语与复杂性&#34;&gt;&lt;strong&gt;学习曲线：术语与复杂性&lt;/strong&gt;
+&lt;/h2&gt;&lt;p&gt;首先，我们从一些细节入手。“一元请求”（Unary Request）是指客户端向服务器发送单个请求并接收单个响应的调用。为何 gRPC 必须使用如此晦涩的术语？每次使用都需解释，实在令人困扰。&lt;br&gt;
+&lt;img src=&#34;https://kmcd.dev/posts/grpc-the-bad-parts/meme.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;说到一元请求，gRPC 的实现也显得过于复杂。尽管 gRPC 的流式接口功能强大，但对于简单的 RPC 调用，它引入了不必要的复杂性。这增加了调试 gRPC 调用的难度，因为即使是一元请求也需要分帧，这本是流式传输的特性。Protobuf 编码已足够复杂，无需在非必要之处增加额外的 gRPC 分帧。此外，对于 Web API 而言，使用 cURL 示例来解释 gRPC 的使用方式非常困难。“需要启用服务器反射吗？”这句话我已说过无数次。&lt;/p&gt;
+&lt;p&gt;这种复杂性也体现在工具层面，尤其是强制的代码生成步骤。对于重视运行时灵活性的动态语言而言，这可能是一个障碍。此外，一些开发者可能会对需要额外构建步骤的技术望而却步。现代 Web 开发已包含众多构建步骤，再增加一个往往令人犹豫。&lt;/p&gt;
+&lt;h2 id=&#34;web-兼容性http2-与-http3&#34;&gt;&lt;strong&gt;Web 兼容性：HTTP/2 与 HTTP/3&lt;/strong&gt;
+&lt;/h2&gt;&lt;p&gt;对 HTTP/2 的依赖最初限制了 gRPC 的普及，因为并非所有平台和浏览器都完全支持它。尽管情况有所改善，但在某些环境下仍是挑战。即使支持 HTTP/2，浏览器也缺乏处理 HTTP Trailers 的能力，因此目前浏览器仍无法“原生”使用 gRPC。gRPC-Web 通过避免使用 Trailers 解决了这个问题，但通常需要额外的代理支持，这非常麻烦。&lt;/p&gt;
+&lt;p&gt;延迟采用 HTTP/3 协议可能阻碍了 gRPC 充分利用其性能和效率优势。笔者深受 HTTP/2 的“&lt;a class=&#34;link&#34; href=&#34;https://http3-explained.haxx.se/en/why-quic/why-tcphol&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;队头阻塞”&lt;/a&gt;（Head-of-line blocking）问题困扰，而 HTTP/3 本可彻底解决这一问题。一个大力推广 HTTP/2 的框架，却在 HTTP/3 支持上如此挣扎，着实令人费解。&lt;/p&gt;
+&lt;h2 id=&#34;json-映射与-prototext标准化缺失&#34;&gt;&lt;strong&gt;JSON 映射与 Prototext：标准化缺失&lt;/strong&gt;
+&lt;/h2&gt;&lt;p&gt;早期缺乏标准化的 &lt;code&gt;JSON&lt;/code&gt; 映射是另一个失误。这使得习惯于 JSON API 的开发者难以接受 &lt;code&gt;gRPC&lt;/code&gt;，我认为 &lt;code&gt;gRPC&lt;/code&gt; 从未摆脱这种负面印象。Protobuf 类型与 JSON 之间的映射简化了与现有工具和系统的集成与互操作。当你说“是的，这是一种高效的二进制格式……但如果你想调试，可以设置这个标志来返回 JSON”时，Web 开发者会非常高兴。总之，现在 Protobuf 已有标准的 JSON 映射规则（以及反向），而 Protobuf 文本格式（Prototext）则显得多余。既然有了 JSON，文本格式便不再必要。不如将其废弃。如果大家同意，我愿意假装它从未存在过。&lt;/p&gt;
+&lt;h2 id=&#34;消息大小限制分块的必要性&#34;&gt;&lt;strong&gt;消息大小限制：分块的必要性&lt;/strong&gt;
+&lt;/h2&gt;&lt;p&gt;大多数 Protobuf 编码器/解码器都期望完全解析整个消息，然后将完整响应提供给消费者，但内存有限，有时我们需要处理更大的消息。有时，我们希望将这些大消息分段传输到其他地方，而不是将其全部保存在内存中。&lt;/p&gt;
+&lt;p&gt;因此，如果需要上传大型文件，我们需要实现某种文件分块机制。尽管分块是处理大文件的合理方案，但 gRPC 缺乏标准化的方法，可能导致实现不一致，增加开发工作量。&lt;/p&gt;
+&lt;p&gt;例如，以下是使用 gRPC 上传文件的示例：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;14
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;15
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;16
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-protobuf&#34; data-lang=&#34;protobuf&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;n&#34;&gt;syntax&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;#34;proto3&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;&lt;span class=&#34;kn&#34;&gt;package&lt;/span&gt; &lt;span class=&#34;nn&#34;&gt;file_service&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;service&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;FileService&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;  &lt;span class=&#34;k&#34;&gt;rpc&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;Upload&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;stream&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;UploadRequest&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;k&#34;&gt;returns&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;UploadResponse&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;);&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;message&lt;/span&gt; &lt;span class=&#34;nc&#34;&gt;UploadRequest&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;  &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;file_name&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;  &lt;span class=&#34;kt&#34;&gt;bytes&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;chunk&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;2&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;message&lt;/span&gt; &lt;span class=&#34;nc&#34;&gt;UploadResponse&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;  &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;etag&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;这既是 Protobuf 的优势，也是劣势。在 Protobuf 中定义这个概念非常容易，但实际实现却可能繁琐且容易出错。尽管 gRPC 的创建者 Google 已为其 API 找到了解决方案，但缺乏标准化的方法，让其他人需要重复造轮子。&lt;/p&gt;
+&lt;p&gt;你可能会想：“Google 在其大多数 API 中使用 gRPC，显然他们已经解决了这个问题。” 你是对的。他们确实有一个 gRPC 和 HTTP 版本用于下载（可能很大的）文件。我们可以直接比较 &lt;a class=&#34;link&#34; href=&#34;https://github.com/googleapis/google-cloud-go/blob/v0.114.0/storage/grpc_client.go#L996-L1152&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;gRPC&lt;/a&gt;和&lt;a class=&#34;link&#34; href=&#34;https://github.com/googleapis/google-cloud-go/blob/v0.114.0/storage/http_client.go#L888-L911&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;HTTP&lt;/a&gt;版本，gRPC 版本明显更复杂。&lt;/p&gt;
+&lt;h2 id=&#34;社区活跃度依赖管理之殇&#34;&gt;&lt;strong&gt;社区活跃度：依赖管理之殇&lt;/strong&gt;
+&lt;/h2&gt;&lt;p&gt;我发现 gRPC/Protobuf 社区的活跃度不高。一些网站缺乏明显的活动，可能会让人觉得 gRPC 停滞不前或维护不力。这可能会阻碍潜在的采用者，并减缓社区的增长。这可能是因为选择太多，导致人们难以在 GitHub 问题之外找到愿意讨论 gRPC 的人。&lt;/p&gt;
+&lt;p&gt;很长一段时间里，每当看到一个代码库使用 Protobuf，我都会发现一个奇怪的脚本，用于下载随机的 Protobuf 文件，以高度自定义的方式放置它们，并执行一系列极其复杂的 &lt;code&gt;protoc&lt;/code&gt; 调用。只有 Google 才会认为不解决依赖管理问题就是解决依赖管理问题。Google 有自己的依赖管理方式，我们只能望其项背。&lt;/p&gt;
+&lt;h2 id=&#34;持续改进未来可期&#34;&gt;&lt;strong&gt;持续改进：未来可期&lt;/strong&gt;
+&lt;/h2&gt;&lt;p&gt;尽管我对 gRPC 提出了批评，但我希望这些评论是建设性的。读到这里的人应该知道，许多问题已经或正在得到解决：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;一些 gRPC 实现已支持 HTTP/3。ConnectRPC 让使用 HTTP/3 的 gRPC 变得非常容易。&lt;/li&gt;
+&lt;li&gt;由于 Protobuf 规范已包含&lt;a class=&#34;link&#34; href=&#34;https://protobuf.dev/programming-guides/proto3/#json&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;标准的JSON 映射&lt;/a&gt;，我不再需要担心文本格式。&lt;/li&gt;
+&lt;li&gt;如果你知道去哪里寻找，gRPC 社区其实非常活跃。例如，&lt;a class=&#34;link&#34; href=&#34;https://buf.build/links/slack&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Buf Slack&lt;/a&gt; 是一个很好的资源。&lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://buf.build/docs/ecosystem/cli-overview&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Buf CLI &lt;/a&gt;是一款出色的 gRPC 工具。它完全取代了 &lt;code&gt;protoc&lt;/code&gt;，并增加了 linting、破坏性变更检测、gRPC 版 cURL、与 Buf Schema Registry 的集成（真正的依赖管理！）等功能。此外，越来越多的工具开始支持 gRPC，例如 Postman、Insomnia 和 k6。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;结论&#34;&gt;结论
+&lt;/h2&gt;&lt;p&gt;尽管 gRPC 取得了不可否认的成功，但承认其不足之处至关重要，这有助于其持续发展和改进。通过解决学习曲线、兼容性、标准化和社区参与等方面的问题，我们可以释放 gRPC 的全部潜力，使其成为所有开发者都能轻松使用的工具&lt;/p&gt;
+&lt;h2 id=&#34;延伸阅读&#34;&gt;延伸阅读
+&lt;/h2&gt;&lt;p&gt;&lt;a class=&#34;link&#34; href=&#34;https://taoshu.in/grpc-trailers.html&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;再谈 gRPC 的 Trailers 设计&lt;/a&gt;&lt;/p&gt;
+&lt;hr&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/%E8%AF%91grpc%E5%9D%8F%E7%9A%84%E9%83%A8%E5%88%86/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;本文长期链接&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;如果您觉得我的博客对你有帮助，请通过 &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RSS&lt;/a&gt;订阅我。&lt;/li&gt;
+&lt;li&gt;或者在&lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;X&lt;/a&gt;上关注我。&lt;/li&gt;
+&lt;li&gt;如果您有&lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt;账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+        </item>
+        <item>
         <title>gRPC中的错误处理</title>
         <link>https://huizhou92.com/zh-cn/p/go-action-error-handling-in-grpc/</link>
         <pubDate>Sat, 29 Jun 2024 21:38:00 +0000</pubDate>
@@ -230,8 +335,8 @@ HTTP/2可以简单用一个图片来介绍：&lt;br&gt;
 &lt;p&gt;来自：&lt;a class=&#34;link&#34; href=&#34;https://hpbn.co/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;https://hpbn.co/&lt;/a&gt;&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;HTTP/1里的header对应HTTP/2里的 HEADERS frame&lt;/li&gt;
-&lt;li&gt;HTTP/1里的payload对应HTTP/2里的 DATA frame&lt;br&gt;
+&lt;li&gt;HTTP/1 里的header对应HTTP/2里的 HEADERS frame&lt;/li&gt;
+&lt;li&gt;HTTP/1 里的payload对应HTTP/2里的 DATA frame&lt;br&gt;
 在Chrome浏览器里，打开&lt;code&gt;chrome://net-internals/#http2&lt;/code&gt;，可以看到http2链接的信息。&lt;br&gt;
 &lt;img src=&#34;https://images.yixiao9206.cn/blog-images/2024/05/01dd6bce8fde7de2b3a8f9ee06158978.png&#34;
 	
@@ -331,11 +436,12 @@ HTTP/2里的Stream还可以设置优先级，尽管在rpc里可能用的比较�
 &lt;/h3&gt;&lt;p&gt;尽管HPAC可以压缩HTTP Header，但是对于rpc来说，确定一个函数调用，可以简化为一个int，只要两端去协商过一次，后面直接查表就可以了，不需要像HPAC那样编码解码。&lt;br&gt;
 可以考虑专门对gRPC做一个优化过的HTTP/2解析器，减少一些通用的处理，感觉可以提升性能。&lt;/p&gt;
 &lt;h3 id=&#34;http2-里一次grpc调用需要解码两次&#34;&gt;HTTP/2 里一次gRPC调用需要解码两次
-&lt;/h3&gt;&lt;p&gt;一次是HEADERS frame，一次是DATA frame。&lt;/p&gt;
-&lt;p&gt;HTTP/2 标准本身是只有一个TCP连接，但是实际在gRPC里是会有多个TCP连接，使用时需要注意。&lt;br&gt;
-gRPC选择基于HTTP/2，那么它的性能肯定不会是最顶尖的。&lt;strong&gt;但是对于rpc来说中庸的qps可以接受&lt;/strong&gt;，通用和兼容性才是最重要的事情。我们可以参考一下官方的benchmark：&lt;a class=&#34;link&#34; href=&#34;https://grpc.io/docs/guides/benchmarking.html&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;https://grpc.io/docs/guides/benchmarking.html&lt;/a&gt;&lt;/p&gt;
+&lt;/h3&gt;&lt;p&gt;一次是HEADERS frame，一次是DATA frame。&lt;br&gt;
+HTTP/2 标准本身是只有一个TCP连接，但是实际在gRPC里是会有多个TCP连接，使用时需要注意。&lt;br&gt;
+gRPC选择基于HTTP/2，那么它的性能肯定不会是最顶尖的。&lt;strong&gt;但是对于rpc来说中庸的qps可以接受&lt;/strong&gt;，通用和兼容性才是最重要的事情。我们可以参考一下官方的benchmark：&lt;/p&gt;
 &lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://grpc.io/docs/guides/benchmarking.html&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;https://grpc.io/docs/guides/benchmarking.html&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://github.com/hank-whu/rpc-benchmark&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;https://github.com/hank-whu/rpc-benchmark&lt;/a&gt;&lt;br&gt;
 如果您的场景是搞&lt;/li&gt;
@@ -353,8 +459,8 @@ gRPC选择基于HTTP/2，那么它的性能肯定不会是最顶尖的。&lt;str
 &lt;/ul&gt;
 &lt;p&gt;&lt;strong&gt;gRPC目前是k8s生态里的事实标准。 gRPC是否会成为更多地方，更大领域的RPC标准？&lt;/strong&gt;&lt;/p&gt;
 &lt;h2 id=&#34;为什么会出现grpc&#34;&gt;为什么会出现gRPC
-&lt;/h2&gt;&lt;p&gt;准确来说为什么会出现基于HTTP/2的RPC？&lt;/p&gt;
-&lt;p&gt;个人认为一个重要的原因是，在Cloud Native的潮流下，开放互通的需求必然会产生基于HTTP/2的RPC。即使没有gRPC，也会有其它基于HTTP/2的RPC。&lt;/p&gt;
+&lt;/h2&gt;&lt;p&gt;准确来说为什么会出现基于HTTP/2的RPC？&lt;br&gt;
+个人认为一个重要的原因是，在Cloud Native的潮流下，开放互通的需求必然会产生基于HTTP/2的RPC。即使没有gRPC，也会有其它基于HTTP/2的RPC。&lt;/p&gt;
 &lt;p&gt;gRPC在Google的内部也是先用在Google Cloud Platform和公开的API上：&lt;a class=&#34;link&#34; href=&#34;https://opensource.google.com/projects/grpc&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;https://opensource.google.com/projects/grpc&lt;/a&gt;&lt;/p&gt;
 &lt;h2 id=&#34;总结&#34;&gt;总结
