@@ -7,7 +7,204 @@
         <generator>Hugo -- gohugo.io</generator>
         <language>zh-cn</language>
         <copyright>Copyright © 2023 huizhou92</copyright>
-        <lastBuildDate>Wed, 17 Jul 2024 09:35:37 +0800</lastBuildDate><atom:link href="https://huizhou92.com/zh-cn/tags/grpc/index.xml" rel="self" type="application/rss+xml" /><item>
+        <lastBuildDate>Wed, 12 Mar 2025 10:32:24 +0800</lastBuildDate><atom:link href="https://huizhou92.com/zh-cn/tags/grpc/index.xml" rel="self" type="application/rss+xml" /><item>
+        <title>【译】grpc:好的部分</title>
+        <link>https://huizhou92.com/zh-cn/p/%E8%AF%91grpc%E5%A5%BD%E7%9A%84%E9%83%A8%E5%88%86/</link>
+        <pubDate>Wed, 12 Mar 2025 10:32:24 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/zh-cn/p/%E8%AF%91grpc%E5%A5%BD%E7%9A%84%E9%83%A8%E5%88%86/</guid>
+        <description>&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/03/4d500118b2f1f53be2e1f5651b0a7773.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+	
+&gt;
+原文地址: &lt;a class=&#34;link&#34; href=&#34;https://kmcd.dev/posts/grpc-the-good-parts/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;https://kmcd.dev/posts/grpc-the-good-parts/&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;虽然 REST API 仍是 Web 服务开发的主流选择，但 gRPC 正凭借其卓越的性能、效率和开发体验，受到越来越多的青睐。你可能看过我的文章《&lt;a class=&#34;link&#34; href=&#34;https://kmcd.dev/posts/grpc-the-bad-parts/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;gRPC 的不足之处&lt;/a&gt;》，其中提到了我对 gRPC 的一些不满。根据那篇文章的众多反馈，我本可以再写一篇续集来继续吐槽。但今天，我们换个角度，来探讨 gRPC &lt;strong&gt;优秀&lt;/strong&gt; 的一面。&lt;br&gt;
+显然，许多人没有读完上篇文章的结尾——我曾指出，文中提到的许多问题如今已不复存在。因此，我决定专门写一篇文章，聚焦 gRPC 的优势。&lt;br&gt;
+让我们深入探讨 gRPC 在现代 Web 开发中的关键价值。&lt;/p&gt;
+&lt;h2 id=&#34;性能&#34;&gt;性能
+&lt;/h2&gt;&lt;p&gt;这一点可能会引发争议，但 &lt;a class=&#34;link&#34; href=&#34;https://protobuf.dev/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Protocol Buffers&lt;/a&gt; 确实比 JSON 和 XML 更高效。&lt;a class=&#34;link&#34; href=&#34;https://streamdal.com/blog/ptotobuf-vs-json-for-your-event-driven-architecture/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;多项测试&lt;/a&gt;都证明了这一点。Protobuf 的高效性主要体现在以下几个方面：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;字段名不包含在消息中&lt;/strong&gt;：Protobuf 使用数字标识字段，而 JSON 需要存储完整的字段名。通常，Protobuf 的字段编号仅占 1-2 字节，而 JSON 的字段名可能远超这个大小。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/%E8%A7%A3%E6%9E%90go-varint-%E7%9A%84%E4%BD%BF%E7%94%A8%E4%B8%8E%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;VARINT 类型优化&lt;/a&gt;&lt;/strong&gt;：小整数即使声明为 int64 也只需 1 字节。在大多数应用场景中，我们很少使用大整数，这种优化能显著减少数据占用，相比 ASCII 编码的数字更加高效。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;压缩优化&lt;/strong&gt;：虽然 Protobuf 在字符串和字节数组方面并无特别优势，但 gRPC 支持数据压缩，使其至少能与 HTTP/JSON 方案持平。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;在实际应用中，改用 Protobuf 编码后，我亲眼见证了数据传输量&lt;strong&gt;减少 50%&lt;/strong&gt; 的效果。&lt;br&gt;
+当然，仍然有人&lt;a class=&#34;link&#34; href=&#34;https://reasonablypolymorphic.com/blog/protos-are-wrong/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;质疑 Protobuf&lt;/a&gt;。对我而言，最“致命”的缺陷是「map 的值不能是另一个 map」。从实现角度来看，这本应是可行的，但实际上并不被支持。例如：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;7
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-protobuf&#34; data-lang=&#34;protobuf&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;message&lt;/span&gt; &lt;span class=&#34;nc&#34;&gt;MapMessage&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;  &lt;span class=&#34;n&#34;&gt;map&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;MapValue&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;&amp;gt;&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;values&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;message&lt;/span&gt; &lt;span class=&#34;nc&#34;&gt;MapValue&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;  &lt;span class=&#34;n&#34;&gt;map&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;&amp;gt;&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;nested&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;最令人困惑的是，我不明白为什么 &lt;code&gt;value_type&lt;/code&gt; 不能是 map。最终只能通过包装类型来嵌套 map，虽然可行，但略显繁琐。这类问题在 gRPC 中时有发生。哎，这明明是一篇夸奖 gRPC 的文章，我们回到正题。&lt;/p&gt;
+&lt;p&gt;总的来说，Protobuf 在许多方面优于 JSON。当然，如果你更喜欢 JSON，&lt;a class=&#34;link&#34; href=&#34;https://protobuf.dev/programming-guides/proto3/#json&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;gRPC 也完全支持 JSON&lt;/a&gt;。虽然 gRPC 消息前会有少量二进制帧字节（不可读），但如果你真的在意这些，可以参考下文 &lt;a class=&#34;link&#34; href=&#34;https://kmcd.dev/posts/grpc-the-good-parts/#connectrpc&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;ConnectRPC&lt;/a&gt; 章节。&lt;/p&gt;
+&lt;p&gt;此外，大多数 gRPC 实现都支持自定义编码，因此你甚至可以采用自定义的序列化方案。&lt;/p&gt;
+&lt;h2 id=&#34;api-契约&#34;&gt;API 契约
+&lt;/h2&gt;&lt;p&gt;告别松散的 API 类型推测。gRPC 依靠 &lt;code&gt;protobuf&lt;/code&gt; 定义，提供了严谨的客户端-服务端契约，带来诸多优势：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;更少错误&lt;/strong&gt;：明确的数据类型要求减少了数据不匹配的风险。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;更好的代码生成&lt;/strong&gt;：支持多语言客户端/服务端代码自动生成，节省开发时间。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;更顺畅的 API 演进&lt;/strong&gt;：有了稳定的契约，API 迭代时不易破坏已有客户端。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;自动化文档生成&lt;/strong&gt;：API 定义即文档，始终与实现保持同步。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;API 契约的强大之处，在我的另一篇文章《&lt;a class=&#34;link&#34; href=&#34;https://kmcd.dev/posts/api-contracts/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;用契约构建 API&lt;/a&gt;》中有更深入的讨论。&lt;/p&gt;
+&lt;h2 id=&#34;流式通信&#34;&gt;流式通信
+&lt;/h2&gt;&lt;p&gt;gRPC 提供了一流的流式通信支持，消除了许多场景下的轮询需求，特别适用于：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;实时聊天应用&lt;/strong&gt;：支持双向消息流，确保低延迟。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;实时更新&lt;/strong&gt;：无需轮询，服务器可主动推送数据。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;需要持续通信的场景&lt;/strong&gt;：如游戏、金融数据传输等。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;如果你来自网络开发领域，可能知道基于 gRPC 的 gNMI 已取代 SNMP。通过 gNMI 订阅计数器更新，无需每分钟轮询网络设备。更多讨论可见《&lt;a class=&#34;link&#34; href=&#34;https://kmcd.dev/posts/gnmi/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;2024 年为何要选择 gNMI 而非 SNMP&lt;/a&gt;》。&lt;/p&gt;
+&lt;h2 id=&#34;跨语言支持&#34;&gt;跨语言支持
+&lt;/h2&gt;&lt;p&gt;gRPC 天然支持多语言，几乎涵盖所有主流编程语言。借助代码生成工具，你可以在不同技术栈之间无缝集成。&lt;/p&gt;
+&lt;p&gt;这一特性极大提升了团队协作效率，也让开发者能自由选择最适合的工具。&lt;/p&gt;
+&lt;h2 id=&#34;推动-http2-发展&#34;&gt;推动 HTTP/2 发展
+&lt;/h2&gt;&lt;p&gt;gRPC 是 HTTP/2 普及的有力推动者，借助 HTTP/2 提供：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;多路复用&lt;/strong&gt;：单连接支持多个请求/响应，提升传输效率。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;头部压缩&lt;/strong&gt;：减少冗余数据，提高传输速度。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;整体性能优化&lt;/strong&gt;：HTTP/2 是更现代的 Web 通信方式。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;http3-进展&#34;&gt;HTTP/3 进展
+&lt;/h3&gt;&lt;p&gt;gRPC 正在推进对 HTTP/3 的支持。尽管官方进展缓慢，但已有多个社区实现，如：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;.NET 的 dotnet-grpc&lt;/li&gt;
+&lt;li&gt;Rust 的 Tonic（基于 Hyper）&lt;/li&gt;
+&lt;li&gt;Go 语言的 ConnectRPC 与 quic-go&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;HTTP/3 进一步优化了连接建立速度、解决了&lt;a class=&#34;link&#34; href=&#34;https://blog.cloudflare.com/the-road-to-quic#headoflineblocking&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;队头阻塞&lt;/a&gt;问题，并改善了丢包恢复能力。&lt;/p&gt;
+&lt;h2 id=&#34;逐步替换&#34;&gt;逐步替换
+&lt;/h2&gt;&lt;p&gt;若想逐步采用 gRPC 或需支持现有 REST 客户端，当前已有成熟方案：&lt;/p&gt;
+&lt;h3 id=&#34;jsonhttp-转码&#34;&gt;JSON/HTTP 转码
+&lt;/h3&gt;&lt;p&gt;使用 &lt;a class=&#34;link&#34; href=&#34;https://github.com/grpc-ecosystem/grpc-gateway&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;gRPC-Gateway&lt;/a&gt;、&lt;a class=&#34;link&#34; href=&#34;https://cloud.google.com/endpoints&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Google Cloud Endpoints&lt;/a&gt; 或 &lt;a class=&#34;link&#34; href=&#34;https://www.envoyproxy.io/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Envoy&lt;/a&gt; 等工具，可以在后端享受 gRPC 优势的同时暴露 REST 风格接口。例如定义如下服务：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;7
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-protobuf&#34; data-lang=&#34;protobuf&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;service&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;Greeter&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;  &lt;span class=&#34;k&#34;&gt;rpc&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;SayHello&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;HelloRequest&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;k&#34;&gt;returns&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;HelloResponse&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;    &lt;span class=&#34;k&#34;&gt;option&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;google.api.http&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;      &lt;span class=&#34;n&#34;&gt;get&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;:&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;#34;/v1/greeter/{name}&amp;#34;&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;    &lt;span class=&#34;p&#34;&gt;};&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;  &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;即可通过 REST 端点访问：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;curl http://localhost:8080/v1/greeter/world
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;这种自动转换能大幅减少支持多种 API 格式的工作量。&lt;/p&gt;
+&lt;h3 id=&#34;grpc-web&#34;&gt;gRPC-Web
+&lt;/h3&gt;&lt;p&gt;由于浏览器对 HTTP trailers 的支持限制，传统 gRPC 无法直接在 Web 使用。gRPC-Web 协议解决了这个问题，使浏览器也能使用 gRPC，并为仍在使用 HTTP/1.1 的平台（如某些 &lt;a class=&#34;link&#34; href=&#34;https://forum.unity.com/threads/support-for-http-2-with-unitywebrequest.1030510/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Unity&lt;/a&gt; 版本）提供支持。&lt;/p&gt;
+&lt;h3 id=&#34;connectrpc&#34;&gt;ConnectRPC
+&lt;/h3&gt;&lt;p&gt;&lt;a class=&#34;link&#34; href=&#34;https://connectrpc.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;ConnectRPC&lt;/a&gt; 能够从 gRPC 定义自动生成 JSON/HTTP API，同时保持与 gRPC/gRPC-Web 兼容。&lt;a class=&#34;link&#34; href=&#34;https://connectrpc.com/docs/protocol/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Connect 协议&lt;/a&gt;更严格遵循 HTTP 标准，支持如下直观的 curl 调用：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;curl &lt;span class=&#34;se&#34;&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;se&#34;&gt;&lt;/span&gt;    --header &lt;span class=&#34;s2&#34;&gt;&amp;#34;Content-Type: application/json&amp;#34;&lt;/span&gt; &lt;span class=&#34;se&#34;&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;se&#34;&gt;&lt;/span&gt;    --data &lt;span class=&#34;s1&#34;&gt;&amp;#39;{&amp;#34;name&amp;#34;: &amp;#34;world&amp;#34;}&amp;#39;&lt;/span&gt; &lt;span class=&#34;se&#34;&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;se&#34;&gt;&lt;/span&gt;    http://localhost:8080/greeter.v1.GreeterService/SayHello
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;h3 id=&#34;twirp&#34;&gt;Twirp
+&lt;/h3&gt;&lt;p&gt;&lt;a class=&#34;link&#34; href=&#34;https://twitchtv.github.io/twirp/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Twirp&lt;/a&gt; 由 Twitch 开发，采用类似思路。&lt;a class=&#34;link&#34; href=&#34;https://twitchtv.github.io/twirp/docs/spec_v7.html&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;其规范&lt;/a&gt;通过 protobuf 生成更符合 HTTP 惯例的 API，但不直接支持 gRPC 协议，需要额外工作实现互操作。&lt;/p&gt;
+&lt;h2 id=&#34;工具生态&#34;&gt;工具生态
+&lt;/h2&gt;&lt;p&gt;虽然官方工具链仍有不足，但社区生态蓬勃发展：&lt;/p&gt;
+&lt;h3 id=&#34;buf-cli&#34;&gt;Buf CLI
+&lt;/h3&gt;&lt;p&gt;&lt;a class=&#34;link&#34; href=&#34;https://buf.build/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Buf&lt;/a&gt; 公司推出的 &lt;a class=&#34;link&#34; href=&#34;https://buf.build/product/cli&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Buf CLI&lt;/a&gt; 完全取代了官方的 protoc 编译器。它通过配置化管理 proto 文件依赖和代码生成，提供：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;lint 检查&lt;/strong&gt;：强制代码规范&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;破坏性变更检测&lt;/strong&gt;：防止协议不兼容修改&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;简化工作流&lt;/strong&gt;：替代 Makefile 等临时方案&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;第三方插件与工具&#34;&gt;第三方插件与工具
+&lt;/h3&gt;&lt;p&gt;gRPC 拥有丰富的插件体系，比如:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;&lt;a class=&#34;link&#34; href=&#34;https://github.com/pseudomuto/protoc-gen-doc&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;protoc-gen-doc&lt;/a&gt;&lt;/strong&gt;：多格式文档生成，支持自定义模板&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;a class=&#34;link&#34; href=&#34;https://github.com/sudorandom/protoc-gen-connect-openapi&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;protoc-gen-connect-openapi&lt;/a&gt;&lt;/strong&gt;（作者自荐）：为 ConnectRPC 生成 OpenAPI 规范&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;a class=&#34;link&#34; href=&#34;https://github.com/bufbuild/protovalidate&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;protovalidate&lt;/a&gt;&lt;/strong&gt;：直接在 proto 中定义验证规则，期待其 &lt;a class=&#34;link&#34; href=&#34;https://github.com/bufbuild/protovalidate/issues/67&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;TypeScript 支持&lt;/a&gt;实现前后端验证逻辑共享&lt;br&gt;
+此外，Postman、Insomnia、k6 等主流工具都已加入 gRPC 支持阵营。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;结语&#34;&gt;结语
+&lt;/h2&gt;&lt;p&gt;gRPC 以卓越的性能、强类型契约、流式通信、跨语言能力和 HTTP/2 基础，成为现代 Web 开发的强大工具。无论你是要优化 API 交互，还是构建高效可扩展的系统，gRPC 都值得一试。
+随着生态的持续发展，gRPC 的未来充满可能。如果你追求快速、可靠的 API 设计，不妨深入了解并尝试 gRPC，它或许能彻底改变你的开发方式。&lt;/p&gt;
+&lt;hr&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/%E8%AF%91grpc%E5%A5%BD%E7%9A%84%E9%83%A8%E5%88%86/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;本文长期链接&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;如果您觉得我的博客对你有帮助，请通过 &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RSS&lt;/a&gt;订阅我。&lt;/li&gt;
+&lt;li&gt;或者在&lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;X&lt;/a&gt;上关注我。&lt;/li&gt;
+&lt;li&gt;如果您有&lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt;账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+        </item>
+        <item>
         <title>【译】gRPC:坏的部分</title>
         <link>https://huizhou92.com/zh-cn/p/%E8%AF%91grpc%E5%9D%8F%E7%9A%84%E9%83%A8%E5%88%86/</link>
         <pubDate>Wed, 17 Jul 2024 09:35:37 +0800</pubDate>
