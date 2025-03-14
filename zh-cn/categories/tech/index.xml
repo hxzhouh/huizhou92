@@ -7,7 +7,260 @@
         <generator>Hugo -- gohugo.io</generator>
         <language>zh-cn</language>
         <copyright>Copyright © 2023 huizhou92</copyright>
-        <lastBuildDate>Wed, 12 Mar 2025 10:32:24 +0800</lastBuildDate><atom:link href="https://huizhou92.com/zh-cn/categories/tech/index.xml" rel="self" type="application/rss+xml" /><item>
+        <lastBuildDate>Fri, 14 Mar 2025 09:59:10 +0800</lastBuildDate><atom:link href="https://huizhou92.com/zh-cn/categories/tech/index.xml" rel="self" type="application/rss+xml" /><item>
+        <title>【译】：gRPC丑陋的部分</title>
+        <link>https://huizhou92.com/zh-cn/p/%E8%AF%91grpc%E4%B8%91%E9%99%8B%E7%9A%84%E9%83%A8%E5%88%86/</link>
+        <pubDate>Fri, 14 Mar 2025 09:59:10 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/zh-cn/p/%E8%AF%91grpc%E4%B8%91%E9%99%8B%E7%9A%84%E9%83%A8%E5%88%86/</guid>
+        <description>&lt;p&gt;原文链接：https://kmcd.dev/posts/grpc-the-ugly-parts/&lt;br&gt;
+这篇文章是&lt;a class=&#34;link&#34; href=&#34;https://kmcd.dev/series/grpc-the-good-and-the-bad/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;gRPC：好与坏&lt;/a&gt;系列的一部分。&lt;/p&gt;
+&lt;p&gt;gRPC无疑是微服务领域中的一把利器，它带来了效率和性能上的优势，但gRPC也有其丑陋的一面。作为一个在gRPC上花费了大量时间的人，我想揭示这项技术的一些不那么美好的方面。我已经讨论过gRPC的&lt;a class=&#34;link&#34; href=&#34;https://kmcd.dev/posts/grpc-the-good-parts&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;优点&lt;/a&gt;和&lt;a class=&#34;link&#34; href=&#34;https://kmcd.dev/posts/grpc-the-bad-parts&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;缺点&lt;/a&gt;，现在让我们来谈谈它的丑陋之处。&lt;/p&gt;
+&lt;h2 id=&#34;代码生成&#34;&gt;代码生成
+&lt;/h2&gt;&lt;p&gt;首先，我不得不说一下从&lt;code&gt;protobuf&lt;/code&gt;生成的代码有多么丑陋。这些代码通常很冗长、复杂且难以阅读。尽管它并不是为了手动编辑而设计的，但这会影响代码的可读性和可维护性，尤其是在将gRPC集成到大型项目中时。最近在大多数语言中，这种情况已经有所改善，但仍然存在一些粗糙的地方。&lt;/p&gt;
+&lt;h3 id=&#34;语言特定的怪癖&#34;&gt;语言特定的怪癖
+&lt;/h3&gt;&lt;p&gt;&lt;code&gt;protobuf&lt;/code&gt;和&lt;code&gt;gRPC&lt;/code&gt;的初始实现常常偏离语言特定的规范，尤其是在HTTP处理方面。这在一定程度上源于强制支持&lt;code&gt;HTTP/2&lt;/code&gt;的决定，这一决定后来被证明限制了&lt;code&gt;gRPC&lt;/code&gt;在前端的应用。我们现在从&lt;code&gt;gRPC-Web&lt;/code&gt;中了解到，&lt;code&gt;trailer&lt;/code&gt;并不是像gRPC这样的协议的硬性要求。在这一决定之后，我们现在需要改进&lt;code&gt;protobuf&lt;/code&gt;和&lt;code&gt;gRPC&lt;/code&gt;的语言实现，使其更符合每种语言的习惯。&lt;/p&gt;
+&lt;p&gt;对于Go语言来说，避免使用&lt;code&gt;net/http&lt;/code&gt;包是一个艰难的决定，因为这使得在与其他类型的HTTP API一起使用gRPC端点时变得更加困难，并且难以复用HTTP中间件。他们最终在grpc-go中添加了一个&lt;a class=&#34;link&#34; href=&#34;https://pkg.go.dev/google.golang.org/grpc#Server.ServeHTTP&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;&lt;code&gt;ServeHTTP()&lt;/code&gt;&lt;/a&gt;接口，作为使用Go标准库中的HTTP服务器的一种实验性方法，但使用这种方法会导致&lt;a class=&#34;link&#34; href=&#34;https://kmcd.dev/posts/benchmarking-go-grpc/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;显著的性能损失&lt;/a&gt;。也许他们这样做是出于性能考虑？如果是这样，这无疑是一个将gRPC与Go生态系统其他部分割裂的权衡。&lt;/p&gt;
+&lt;p&gt;有时，语言特定的怪癖实际上会影响你如何设计protobuf类型。如果你遵循&lt;a class=&#34;link&#34; href=&#34;https://buf.build/docs/best-practices/style-guide&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Buf&lt;/a&gt;的风格建议，枚举的名称应该以枚举名的大写蛇形版本作为前缀，就像这样：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-protobuf&#34; data-lang=&#34;protobuf&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;enum&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;FooBar&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;  &lt;span class=&#34;n&#34;&gt;FOO_BAR_UNSPECIFIED&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;  &lt;span class=&#34;n&#34;&gt;FOO_BAR_FIRST_VALUE&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;  &lt;span class=&#34;n&#34;&gt;FOO_BAR_SECOND_VALUE&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;2&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;这在&lt;a class=&#34;link&#34; href=&#34;https://buf.build/docs/lint/rules#enum_value_prefix&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;buf的lint规则描述&lt;/a&gt;中有更好的解释，但这种风格指南之所以如此，是因为C++的枚举作用域规则，这使得在同一包中无法有两个具有相同枚举值名称的枚举值。虽然这种约定源于C++的作用域规则，但它影响了你应该如何设计所有的protobuf文件。为什么枚举内部的作用域不足以让C++编译器生成唯一的名称？为什么这种缺陷会影响风格指南，并进而影响所有目标语言？对我来说，这有点丑陋，因为某些语言实现的怪癖以不直观的方式冒了出来。&lt;/p&gt;
+&lt;h3 id=&#34;生成的代码甚至不够快&#34;&gt;生成的代码甚至不够快
+&lt;/h3&gt;&lt;p&gt;生成代码的一个好处是，你可以生成一些正常人不会写的代码，以获得一些性能优化。然而，如果你查看一些从protobuf生成的代码，你会发现大量使用了运行时反射。为什么？在某种程度上，我是在说生成的代码&lt;strong&gt;不够丑陋&lt;/strong&gt;。让我们看一个具体的例子。请注意，这将是一个非常Go特定的部分，因为我大部分关于protobuf的经验都是在Go中。然而，相同的策略已经应用于大多数语言。&lt;/p&gt;
+&lt;p&gt;让我们来看一个Go中的超级简单示例。以下是protobuf：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-protobuf&#34; data-lang=&#34;protobuf&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;message&lt;/span&gt; &lt;span class=&#34;nc&#34;&gt;Hello&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;  &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;name&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;这是由protoc生成的类型：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;type&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;Hello&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;state&lt;/span&gt;         &lt;span class=&#34;nx&#34;&gt;protoimpl&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;MessageState&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;sizeCache&lt;/span&gt;     &lt;span class=&#34;nx&#34;&gt;protoimpl&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;SizeCache&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;unknownFields&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;protoimpl&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;UnknownFields&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;Name&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;`protobuf:&amp;#34;bytes,1,opt,name=name,proto3&amp;#34; json:&amp;#34;name,omitempty&amp;#34;`&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// With these methods, contents are stripped
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Hello&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;Reset&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Hello&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;String&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Hello&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;ProtoMessage&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Hello&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;ProtoReflect&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;protoreflect&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Message&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;实际上，并没有为这个类型定义专门的&lt;code&gt;Marshal()&lt;/code&gt;或&lt;code&gt;Unmarshal()&lt;/code&gt;函数。这意味着序列化是通过运行时反射来实现的。反射通常被认为较慢，因为它&lt;strong&gt;确实&lt;/strong&gt;较慢。我觉得奇怪的是，没有为Go生成优化的、类型特定的序列化代码。话虽如此，你可以通过使用一个名为&lt;a class=&#34;link&#34; href=&#34;https://github.com/planetscale/vtprotobuf&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;vtprotobuf&lt;/a&gt;的单独protoc插件来获得这一点，该插件将为每个protobuf类型生成专门的marshal和unmarshal函数。它还允许使用类型特定的内存池，这也有助于减少分配并提高性能。根据我的&lt;a class=&#34;link&#34; href=&#34;https://kmcd.dev/posts/benchmarking-go-grpc/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;测试&lt;/a&gt;，只需添加&lt;code&gt;vtprotobuf&lt;/code&gt;而不做任何代码更改，就可以将性能提高2-4%。这基本上是“免费”的2-4%，所以我觉得很奇怪，这竟然不是标准编译器的一部分。&lt;a class=&#34;link&#34; href=&#34;https://github.com/sudorandom/go-grpc-bench/blob/v0.0.1/gen/flex_vtproto.pb.go#L573&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;你可能不喜欢它，但这就是峰值性能的样子&lt;/a&gt;。无论如何，这个项目需要更多的关注和支持。&lt;/p&gt;
+&lt;p&gt;请注意，还有其他一些项目声称在标准protobuf库的基础上取得了惊人的性能提升。他们确实通过做出一些权衡来实现这些性能提升，但很多时候，额外的复杂性是值得的。&lt;/p&gt;
+&lt;p&gt;你可能会读到这一部分并想：“好吧，这会增加生成的代码量，增加二进制文件或包的大小，在某些环境中，你可能不希望这样。”这是事实，这就是为什么protobuf有一个&lt;code&gt;optimize_for&lt;/code&gt;选项，所以你可以注释以下之一：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;option optimize_for = SPEED;&lt;/code&gt; - 更冗长、更快的代码&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;option optimize_for = CODE_SIZE;&lt;/code&gt; - 更小的代码&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;option optimize_for = LITE_RUNTIME;&lt;/code&gt; - 旨在在较小的运行时上运行，省略了描述符和反射等功能。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;请参阅&lt;a class=&#34;link&#34; href=&#34;https://protobuf.dev/programming-guides/proto3/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;官方protobuf文档&lt;/a&gt;中关于&lt;code&gt;optimize_for&lt;/code&gt;的完整描述。虽然这些选项存在，但它们实际上并没有用于大多数目标语言。将来，我完全希望看到大部分&lt;code&gt;vtprotobuf&lt;/code&gt;被整合到Go的标准protobuf编译器中，并在&lt;code&gt;optimize_for = SPEED&lt;/code&gt;时使用。将类似&lt;code&gt;vtprotobuf&lt;/code&gt;的优化整合到标准protobuf编译器中，可以为Go带来显著的性能提升，其他语言也可能存在类似的机会。&lt;/p&gt;
+&lt;h2 id=&#34;必填字段&#34;&gt;必填字段
+&lt;/h2&gt;&lt;p&gt;Protobuf的维护者在必填字段方面学到了一些艰难的教训。他们觉得自己犯了一个严重的错误，以至于他们推出了一个新版本的protobuf，即proto3，只是为了从规范中删除必填字段。为什么？“必填字段有害”宣言的作者在&lt;a class=&#34;link&#34; href=&#34;https://news.ycombinator.com/item?id=18190005&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;一篇冗长的Hacker News评论&lt;/a&gt;中谈到了这一点，但重要的是：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;现实世界的实践也表明，许多最初被认为是“必填”的字段随着时间的推移往往会变成可选的，因此有了“必填字段有害”的宣言。在实践中，你希望将所有字段声明为可选的，以便为变化提供最大的灵活性。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;这一点在&lt;a class=&#34;link&#34; href=&#34;https://protobuf.dev/programming-guides/dos-donts/#add-required&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;官方protobuf风格指南&lt;/a&gt;中得到了呼应，他们建议添加注释来指示某个字段是必填的。如果我们讨论的是将消息从A传递到B，我完全同意这种思路。然而，仅仅因为某些字段被认为是“必填”的会随着时间的推移而变化，并不意味着必填字段不存在。仍然需要代码来强制执行这一要求，老实说，我不想编写这些代码。因此，我认为在不编写大量空检查的情况下处理必填字段的最佳方法是使用&lt;a class=&#34;link&#34; href=&#34;https://github.com/bufbuild/protovalidate&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;protovalidate&lt;/a&gt;或类似的库，这些库具有protobuf选项，允许你注释哪些字段是必填的。然后在服务器和/或客户端上有代码可以使用库来强制执行这些要求。在我看来，这兼具了两者的优点：你仍然可以以不会完全破坏消息完整性的方式声明必填字段。&lt;/p&gt;
+&lt;p&gt;我不喜欢这样：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-protobuf&#34; data-lang=&#34;protobuf&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;message&lt;/span&gt; &lt;span class=&#34;nc&#34;&gt;User&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;  &lt;span class=&#34;kt&#34;&gt;int32&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;age&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// required.
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;我喜欢这样：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-protobuf&#34; data-lang=&#34;protobuf&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;message&lt;/span&gt; &lt;span class=&#34;nc&#34;&gt;User&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;  &lt;span class=&#34;kt&#34;&gt;int32&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;age&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;[(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;buf.validate.field&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;required&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;kc&#34;&gt;true&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;];&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;我是&lt;a class=&#34;link&#34; href=&#34;https://github.com/bufbuild/protovalidate&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;protovalidate&lt;/a&gt;的忠实粉丝，我已经多次使用它并为其做出了贡献。一般来说，我认为protobuf字段的&lt;a class=&#34;link&#34; href=&#34;https://protobuf.dev/programming-guides/proto3/#customoptions&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;自定义选项&lt;/a&gt;是protobuf的一个未被充分利用的超能力。&lt;/p&gt;
+&lt;h2 id=&#34;难以入门&#34;&gt;难以入门
+&lt;/h2&gt;&lt;p&gt;尽管gRPC具有不可否认的优势，但其学习曲线可能很陡峭。对于新手来说，开始使用&lt;code&gt;protobuf&lt;/code&gt;、理解工具链以及设置必要的基础设施可能会让人望而生畏，这使得初始采用的障碍比使用更简单的基于JSON的API更高。为什么它如此陡峭？嗯，它在大多数语言中引入了非惯用的工具链。有一些语言支持的例子使得protobuf生成变得无缝。&lt;a class=&#34;link&#34; href=&#34;https://learn.microsoft.com/en-us/aspnet/core/grpc/basics&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Grpc.Tools&lt;/a&gt; for &lt;code&gt;.NET&lt;/code&gt;就是一个闪亮的例子，展示了如何将protobuf工具链更紧密地集成到标准语言工具链中。我们需要更多这样的例子。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://kmcd.dev/posts/grpc-the-ugly-parts/learning-curve.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;当许多使用和依赖protobuf和gRPC的人积极不希望gRPC扩展到前端，并认为推动这一方向会导致不了解情况的人侵入后端领域时，陡峭的学习曲线并没有帮助，他们认为只有他们足够聪明才能在后端工作。这是精英主义的守门行为，不幸的是，这种行业普遍存在。我相信gRPC在Web前端中与在微服务中一样有其地位。&lt;/p&gt;
+&lt;p&gt;我通过帮助其他人使用protobuf学到了很多。你可能会在&lt;a class=&#34;link&#34; href=&#34;https://buf.build/links/slack&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Buf的Slack频道&lt;/a&gt;或相关讨论中看到我，因为我确实从中受益匪浅。许多文章的想法直接来自于在那里回答问题。如果我看到某个问题出现的频率足够高，我可能会写一篇文章来讨论它。我认为protobuf和gRPC社区需要更多这种态度。&lt;/p&gt;
+&lt;p&gt;我相信陡峭的学习曲线（可以通过工具链来缓解），加上一些后端开发者的抵制（可以通过……同理心来缓解？），已经减缓了它在Web开发中的广泛采用。&lt;/p&gt;
+&lt;h2 id=&#34;grpc有其历史&#34;&gt;gRPC有其历史
+&lt;/h2&gt;&lt;p&gt;gRPC最初专注于微服务，并且与HTTP/2的紧密联系阻碍了它在Web开发中的广泛采用。即使有了&lt;a class=&#34;link&#34; href=&#34;https://grpc.io/blog/state-of-grpc-web/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;gRPC-Web的出现&lt;/a&gt;，仍然有一种看法认为它在前端生态系统中并不是一等公民。与&lt;a class=&#34;link&#34; href=&#34;https://tanstack.com/query/latest&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;TanStack Query&lt;/a&gt;等流行前端库缺乏强大的集成进一步巩固了这种看法。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://kmcd.dev/posts/grpc-the-ugly-parts/bad-blood.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;我认为通过改进工具链，有真正的机会让更多前端开发者对gRPC感到兴奋。目前，整个行业正在围绕“前端”和“后端”之间的界限进行一场巨大的讨论，我认为无论结果如何，我们都会看到更多使用gRPC的TypeScript代码。&lt;/p&gt;
+&lt;h2 id=&#34;grpc中的g&#34;&gt;gRPC中的“g”
+&lt;/h2&gt;&lt;p&gt;虽然&lt;a class=&#34;link&#34; href=&#34;https://grpc.io/docs/what-is-grpc/faq/#what-does-grpc-stand-for&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;gRPC项目声称&lt;/a&gt; gRPC中的“g”是一个&lt;a class=&#34;link&#34; href=&#34;https://en.wikipedia.org/wiki/Backronym&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;反向缩略词&lt;/a&gt;，代表“gRPC”，但它最初代表Google，因为是Google开发并发布了protobuf和gRPC。&lt;br&gt;
+&lt;img src=&#34;https://kmcd.dev/posts/grpc-the-ugly-parts/google.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;google 的墓碑&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;关于Google对gRPC和protobuf的长期承诺，始终存在一个悬而未决的问题。他们会继续投资于这些开源项目，还是会在优先级发生变化时突然撤资？请记住，Google&lt;a class=&#34;link&#34; href=&#34;https://techcrunch.com/2024/05/01/google-lays-off-staff-from-flutter-dart-python-weeks-before-its-developer-conference/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;最近裁掉了Flutter、Dart和Python团队的大部分成员&lt;/a&gt;。Protobuf社区正在发展，但它是否足够自给自足以应对这种情况？&lt;/p&gt;
+&lt;h2 id=&#34;它尚未完成&#34;&gt;它尚未完成
+&lt;/h2&gt;&lt;p&gt;其他人说gRPC不成熟，不是因为它的年龄，而是因为它的生态系统发展程度。我倾向于同意，因为它缺少我期望在一个成熟生态系统中看到的功能和工具。&lt;/p&gt;
+&lt;h3 id=&#34;缺少包管理器&#34;&gt;缺少包管理器
+&lt;/h3&gt;&lt;p&gt;在没有专门工具的情况下，跨多个项目或仓库共享protobuf定义是一个持续的挑战。虽然像&lt;a class=&#34;link&#34; href=&#34;https://bazel.build/reference/be/protocol-buffer&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Bazel&lt;/a&gt;、&lt;a class=&#34;link&#34; href=&#34;https://www.pantsbuild.org/2.21/docs/go/integrations/protobuf&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Pants&lt;/a&gt;和&lt;a class=&#34;link&#34; href=&#34;https://buf.build/product/bsr&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Buf的BSR&lt;/a&gt;这样的解决方案存在，但我在“现实世界”中使用protobuf的经验……参差不齐。有一些由Google开发的开源项目，它们使用bash脚本拼凑在一起，在手动调用&lt;code&gt;protoc&lt;/code&gt;之前下载依赖项。想象一下，一个编程语言没有管理依赖项的解决方案。这太疯狂了。我认为&lt;a class=&#34;link&#34; href=&#34;https://grpc.io/blog/bazel-rules-protobuf/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Bazel&lt;/a&gt;和&lt;a class=&#34;link&#34; href=&#34;https://buf.build/docs/ecosystem/cli-overview&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Buf工具链&lt;/a&gt;很好地解决了这个问题，但我只是感到沮丧，我遇到的每个使用protobuf的仓库都以最定制化的方式解决了这个问题。社区需要团结起来改进这一点。有一个名为&lt;a class=&#34;link&#34; href=&#34;https://github.com/helsing-ai/buffrs&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Buffrs&lt;/a&gt;的开源仓库似乎正在解决这个问题。我还没有亲自使用过它，但到目前为止它看起来还不错。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://kmcd.dev/posts/grpc-the-ugly-parts/build.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;关于依赖项，我想指出的是，&lt;a class=&#34;link&#34; href=&#34;https://protobuf.dev/reference/protobuf/google.protobuf/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Google的“众所周知的”protobuf类型&lt;/a&gt;享有被内置到protoc中的特权。虽然这些类型非常有用且无价，但它们的特权使得其他有用的protobuf类型库难以存在和繁荣。仅仅将这些protobuf定义内置到protoc（和其他工具链中）是对没有真正和一致的依赖管理故事的逃避。&lt;/p&gt;
+&lt;h3 id=&#34;编辑器支持&#34;&gt;编辑器支持
+&lt;/h3&gt;&lt;p&gt;Protobuf代码生成的编辑器集成还有很多不足之处。如果编辑器能够智能地将生成的代码链接回其protobuf源，那将非常有帮助。这将提供更无缝的体验，但工具链还不够智能。此外，我认为每个人都应该使用&lt;a class=&#34;link&#34; href=&#34;https://buf.build/docs/editor-integration&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Buf的编辑器支持&lt;/a&gt;。如今，开发者期望在编辑器中内置linter和自动格式化工具。而对于protobuf来说，有&lt;a class=&#34;link&#34; href=&#34;https://buf.build/docs/lint/rules&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;非常真实的原因&lt;/a&gt;需要遵循linter的建议。&lt;/p&gt;
+&lt;p&gt;像&lt;a class=&#34;link&#34; href=&#34;https://trpc.io/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;tRPC&lt;/a&gt;这样的项目展示了紧密集成和意见化设计选择的好处——这是protobuf由于其性质无法完全复制的。然而，我仍然希望protobuf生态系统能够发展，提供类似的简化开发者体验。&lt;/p&gt;
+&lt;h3 id=&#34;丑陋的文档&#34;&gt;丑陋的文档
+&lt;/h3&gt;&lt;p&gt;我从未见过从protobuf生成的文档不是超级丑陋的。我认为，由于gRPC历来是后端服务，后端开发者从未真正努力使用protoc插件生成漂亮的文档输出。我通过&lt;a class=&#34;link&#34; href=&#34;https://github.com/sudorandom/protoc-gen-connect-openapi&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;制作一个protoc插件&lt;/a&gt;解决了这个问题，该插件可以从给定的protobuf文件生成OpenAPI。然后我使用众多漂亮的工具之一来显示OpenAPI规范。这远比让我设计一个像样的文档容易得多。从protobuf生成OpenAPI的另一个附带好处是能够利用该生态系统，因为它不仅仅是文档。&lt;/p&gt;
+&lt;p&gt;让我们看一个真实的例子。这是使用少数几个从protobuf生成文档的工具之一，&lt;a class=&#34;link&#34; href=&#34;https://github.com/pseudomuto/protoc-gen-doc&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;protoc-gen-doc&lt;/a&gt;生成的文档：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://kmcd.dev/posts/grpc-the-ugly-parts/protoc-gen-doc.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;将其与一些OpenAPI工具链进行比较。这是使用&lt;a class=&#34;link&#34; href=&#34;https://github.com/stoplightio/elements&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Elements&lt;/a&gt;生成的，但还有许多其他同样精美的替代方案：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://kmcd.dev/posts/grpc-the-ugly-parts/elements.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;指责单个插件并说默认模板不如OpenAPI替代品好看有点不公平，因为实际上你确实在protoc-gen-doc中有更多的灵活性。它允许你指定自己的模板，因此它可以像你希望的那样漂亮。然而，这确实符合我的观点：在REST世界中，工具链比gRPC更完善和精致。这是一个可以解决的问题，但我们需要让前端开发者和设计师对gRPC感到兴奋，或者后端工程师需要开始磨练他们的设计技能。&lt;/p&gt;
+&lt;p&gt;我还想指出，OpenAPI/Swagger接口通常有一种方法可以直接从文档网站测试端点。这在gRPC世界中的等效工具中是完全缺失的。此外，使用大多数OpenAPI文档工具，你可以清楚地看到哪些字段是必填的，并会显示具有约束的字段。因此，它不仅更漂亮，而且功能也更强大。&lt;/p&gt;
+&lt;h2 id=&#34;结论&#34;&gt;结论
+&lt;/h2&gt;&lt;p&gt;gRPC虽然在许多方面是一个强大的工具，但仍然有成长的空间。生成代码的不理想之处，加上依赖项管理和protobuf模式演变的挑战，可能会给开发者带来摩擦。缺乏直观的编辑器集成以及历史上对后端服务的关注，也阻碍了它在Web开发中的广泛采用。&lt;/p&gt;
+&lt;p&gt;然而，我认为gRPC的未来是光明的，并且可以变得不那么丑陋。社区正在积极应对这些挑战，开发诸如&lt;a class=&#34;link&#34; href=&#34;https://buf.build/product/cli&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;buf CLI&lt;/a&gt;、&lt;a class=&#34;link&#34; href=&#34;https://github.com/bufbuild/protovalidate&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;protovalidate&lt;/a&gt;和&lt;a class=&#34;link&#34; href=&#34;https://github.com/sudorandom/protoc-gen-connect-openapi&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;protoc-gen-connect-openapi&lt;/a&gt;等工具来弥合差距并增强开发者体验。随着gRPC的成熟和&lt;a class=&#34;link&#34; href=&#34;https://trends.google.com/trends/explore?date=all&amp;amp;q=%2Fm%2F04dzxdz,%2Fg%2F11cp5mklv8,RESTful&amp;amp;hl=en&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;其生态系统的扩展&lt;/a&gt;，我们可以期待改进的工具链、更好的编辑器支持以及更顺畅地融入前端世界。&lt;/p&gt;
+&lt;hr&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/%E8%AF%91grpc%E4%B8%91%E9%99%8B%E7%9A%84%E9%83%A8%E5%88%86/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;本文长期链接&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;如果您觉得我的博客对你有帮助，请通过 &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RSS&lt;/a&gt;订阅我。&lt;/li&gt;
+&lt;li&gt;或者在&lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;X&lt;/a&gt;上关注我。&lt;/li&gt;
+&lt;li&gt;如果您有&lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt;账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+        </item>
+        <item>
         <title>【译】grpc:好的部分</title>
         <link>https://huizhou92.com/zh-cn/p/%E8%AF%91grpc%E5%A5%BD%E7%9A%84%E9%83%A8%E5%88%86/</link>
         <pubDate>Wed, 12 Mar 2025 10:32:24 +0800</pubDate>
@@ -20,7 +273,7 @@
 	loading=&#34;lazy&#34;
 	
 	
-&gt;
+&gt;&lt;br&gt;
 原文地址: &lt;a class=&#34;link&#34; href=&#34;https://kmcd.dev/posts/grpc-the-good-parts/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;https://kmcd.dev/posts/grpc-the-good-parts/&lt;/a&gt;&lt;/p&gt;
 &lt;p&gt;虽然 REST API 仍是 Web 服务开发的主流选择，但 gRPC 正凭借其卓越的性能、效率和开发体验，受到越来越多的青睐。你可能看过我的文章《&lt;a class=&#34;link&#34; href=&#34;https://kmcd.dev/posts/grpc-the-bad-parts/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
@@ -189,7 +442,7 @@
 此外，Postman、Insomnia、k6 等主流工具都已加入 gRPC 支持阵营。&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id=&#34;结语&#34;&gt;结语
-&lt;/h2&gt;&lt;p&gt;gRPC 以卓越的性能、强类型契约、流式通信、跨语言能力和 HTTP/2 基础，成为现代 Web 开发的强大工具。无论你是要优化 API 交互，还是构建高效可扩展的系统，gRPC 都值得一试。
+&lt;/h2&gt;&lt;p&gt;gRPC 以卓越的性能、强类型契约、流式通信、跨语言能力和 HTTP/2 基础，成为现代 Web 开发的强大工具。无论你是要优化 API 交互，还是构建高效可扩展的系统，gRPC 都值得一试。&lt;br&gt;
 随着生态的持续发展，gRPC 的未来充满可能。如果你追求快速、可靠的 API 设计，不妨深入了解并尝试 gRPC，它或许能彻底改变你的开发方式。&lt;/p&gt;
 &lt;hr&gt;
 &lt;ul&gt;
@@ -1807,135 +2060,6 @@ go version devel go1.24-3f4164f5 Mon Jan 20 09:25:11 2025 -0800 darwin/arm64&lt;
 &lt;ul&gt;
 &lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/go-124-%E7%9A%84-swiss-map%E5%85%BC%E5%AE%B9%E6%80%A7%E6%89%A9%E5%B1%95%E5%93%88%E5%B8%8C%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;本文长期链接&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;如果您觉得我的博客对你有帮助，请通过 &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;RSS&lt;/a&gt;订阅我。&lt;/li&gt;
-&lt;li&gt;或者在&lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;X&lt;/a&gt;上关注我。&lt;/li&gt;
-&lt;li&gt;如果您有&lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Medium&lt;/a&gt;账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。&lt;/li&gt;
-&lt;/ul&gt;
-</description>
-        </item>
-        <item>
-        <title>使用对冲模式降低长尾请求</title>
-        <link>https://huizhou92.com/zh-cn/p/%E4%BD%BF%E7%94%A8%E5%AF%B9%E5%86%B2%E6%A8%A1%E5%BC%8F%E9%99%8D%E4%BD%8E%E9%95%BF%E5%B0%BE%E8%AF%B7%E6%B1%82/</link>
-        <pubDate>Thu, 16 Jan 2025 14:44:41 +0800</pubDate>
-        
-        <guid>https://huizhou92.com/zh-cn/p/%E4%BD%BF%E7%94%A8%E5%AF%B9%E5%86%B2%E6%A8%A1%E5%BC%8F%E9%99%8D%E4%BD%8E%E9%95%BF%E5%B0%BE%E8%AF%B7%E6%B1%82/</guid>
-        <description>&lt;p&gt;对冲请求模式出现在论文&lt;a class=&#34;link&#34; href=&#34;https://research.google/pubs/pub40801/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;The Tail At Scale&lt;/a&gt;中，是Google 解决微服务长尾效应的一个办法.也是&lt;a class=&#34;link&#34; href=&#34;https://grpc.io/docs/guides/request-hedging/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;gRPC&lt;/a&gt;中两种重试模式之一。&lt;br&gt;
-&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/bc5c635fafbf4cdf41447c0469eb67a7.svg&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-		alt=&#34;source: https://grpc.io/img/basic_hedge.svg&#34;
-	
-	
-&gt;&lt;br&gt;
-对冲请求客户端将同一个请求发送到不同的节点，一旦收到第一个结果，客户端就会取消剩余的未处理请求。&lt;br&gt;
-这种模式主要作用是为了实现可以预测的延迟。假设我们的服务的一个调用链路是20个节点，每个节点的P99是1s，从概率上讲，一定有 18.2% 的请求时间大于1s。&lt;br&gt;
-&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/8a3dde08bd12375f9b9a8dc12ece10f6.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-	
-&gt;&lt;/p&gt;
-&lt;p&gt;通过对冲模式，我们每次都是从最快的节点那里得到结果，所以不会存在不可预测的长尾延迟(服务故障不在考虑范围之内)  。&lt;br&gt;
-在Golang中，我们可以使用context很方便的实现对冲请求，比如在下面的例子中：对于同一个后端服务，我们发起五次请求，只取最先返回的那次。&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;14
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;15
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;16
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;17
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;18
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;19
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;20
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;21
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;22
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;23
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;24
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;hedgedRequest&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;ch&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;make&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;chan&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// chan used to abort other requests
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;	&lt;span class=&#34;nx&#34;&gt;ctx&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;cancel&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;context&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;WithCancel&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;context&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Background&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;())&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;5&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;++&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;k&#34;&gt;go&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ctx&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;context&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Context&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;ch&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;chan&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;			&lt;span class=&#34;nx&#34;&gt;log&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;in goroutine: &amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;			&lt;span class=&#34;k&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;request&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ctx&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;#34;http://localhost:8090&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;				&lt;span class=&#34;nx&#34;&gt;ch&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;lt;-&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Sprintf&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;finsh [from %v]&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;				&lt;span class=&#34;nx&#34;&gt;log&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;completed goroutine: &amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;			&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;p&#34;&gt;}(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ctx&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;ch&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;k&#34;&gt;select&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;k&#34;&gt;case&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;s&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;lt;-&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ch&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;nf&#34;&gt;cancel&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;nx&#34;&gt;log&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;cancelled all inflight requests&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;s&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;k&#34;&gt;case&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;lt;-&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;time&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;After&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;5&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;time&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Second&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;):&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;nf&#34;&gt;cancel&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;#34;all requests timeout after 5 secs&amp;#34;&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/057e494e9b15eb730d465905c66b75ad.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-	
-&gt;&lt;/p&gt;
-&lt;p&gt;完整的代码 请访问：https://go.dev/play/p/fY9Lj_M7ZYE&lt;br&gt;
-这样做的好处就是，我们可以规避服务的长尾延迟，使服务的之间的延迟控制在可控的范围内。不过直接这么实现会造成额外的多倍负载。需要仔细设计。&lt;/p&gt;
-&lt;h3 id=&#34;为什么会出现长尾延迟&#34;&gt;为什么会出现长尾延迟？
-&lt;/h3&gt;&lt;p&gt;出现长尾延迟的原因有很多，比如&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;现在混合部署已经成为主流，意味着一台物理机上有很多人跟你抢夺关键资源，所以可能会因为关键资源调度，导致长尾效应&lt;/li&gt;
-&lt;li&gt;GC，这个不需要过多解释，Golang的 &lt;code&gt;STW&lt;/code&gt;会放大长尾延迟&lt;/li&gt;
-&lt;li&gt;排队, 包括 消息队列、 网络等。&lt;/li&gt;
-&lt;li&gt;&amp;hellip;.&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;有什么办法可以避免对冲请求模式造成的 请求放大嘛？&lt;a class=&#34;link&#34; href=&#34;https://pub.huizhou92.com/go-high-performance-programming-ep7-use-singleflight-to-merge-the-same-request-692bafe0940b&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Go High-Performance Programming EP7: Use singleflight To Merge The Same Request&lt;/a&gt; 中详细介绍了如何使用 &lt;code&gt;SingleFlight&lt;/code&gt; 来合并相同的请求。这个场景下面，使用&lt;code&gt;SingleFlight&lt;/code&gt; 能够一定程度的缓解重复请求。&lt;/p&gt;
-&lt;p&gt;还有一种做法是只发送一个请求, 到P95的时候，如果还没有收到返回，那么就立即向第二个节点发送请求。这样做的好处就是将重复请求缩小到5%。并且大大缩短了长尾请求。&lt;/p&gt;
-&lt;p&gt;在这篇&lt;a class=&#34;link&#34; href=&#34;https://research.google/pubs/pub40801/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;论文&lt;/a&gt;中，还有一些方法可以用来解决，长尾请求&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;服务分级 &amp;amp;&amp;amp; 优先级队列(Differentiating service classes and&lt;br&gt;
-higher-level queuing)&lt;/strong&gt;。差异化服务类别可以用来优先调度用户正在等待的请求，而不是非交互式请求。保持低级队列较短，以便更高级别的策略更快生效。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;减少队头阻塞&lt;/strong&gt; ，将耗费时间比较多的请求，转换成比较小的请求。Web性能优化的时候有时候也会使用这种方式。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;微分区(Micro-partition)&lt;/strong&gt; 以细粒度来调整负载便可以尽量降低负载不均导致的延迟影响。&lt;/li&gt;
-&lt;li&gt;对于性能比较差的机器，采用熔断。&lt;/li&gt;
-&lt;li&gt;&amp;hellip;&amp;hellip;&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;你还有其他处理长尾请求的好方法吗？&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/%E4%BD%BF%E7%94%A8%E5%AF%B9%E5%86%B2%E6%A8%A1%E5%BC%8F%E9%99%8D%E4%BD%8E%E9%95%BF%E5%B0%BE%E8%AF%B7%E6%B1%82/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;本文长期连接&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;如果您觉得我的博客对你有帮助，请通过 &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;RSS&lt;/a&gt;订阅我。&lt;/li&gt;
 &lt;li&gt;或者在&lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
