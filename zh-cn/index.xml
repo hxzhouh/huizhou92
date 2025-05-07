@@ -7,7 +7,136 @@
         <generator>Hugo -- gohugo.io</generator>
         <language>zh-cn</language>
         <copyright>Copyright © 2023 huizhou92</copyright>
-        <lastBuildDate>Wed, 26 Mar 2025 19:17:56 +0800</lastBuildDate><atom:link href="https://huizhou92.com/zh-cn/index.xml" rel="self" type="application/rss+xml" /><item>
+        <lastBuildDate>Mon, 05 May 2025 16:30:26 +0800</lastBuildDate><atom:link href="https://huizhou92.com/zh-cn/index.xml" rel="self" type="application/rss+xml" /><item>
+        <title>Green Tea GC: Golang 的 ZGC？</title>
+        <link>https://huizhou92.com/zh-cn/p/green-tea-gc-golang-%E7%9A%84-zgc/</link>
+        <pubDate>Mon, 05 May 2025 16:30:26 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/zh-cn/p/green-tea-gc-golang-%E7%9A%84-zgc/</guid>
+        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2025/05/fb6313678681ee8e97a05ee521bd0e20.png" alt="Featured image of post Green Tea GC: Golang 的 ZGC？" /&gt;&lt;p&gt;近年来，Go 语言的垃圾回收（GC）机制虽然经历了多个版本优化，但它的性能瓶颈，尤其在高并发与大规模内存场景下，依然是开发者关注的重点。最近，Go 官方在 GitHub 上提出的 &lt;strong&gt;Green Tea GC&lt;/strong&gt;（#73581）引发了热议：它能否进一步解决 Go GC 的耗时问题？本文将深入解析 Go GC 的设计、缺点、实测表现，并带你了解 Green Tea GC 的技术突破。&lt;/p&gt;
+&lt;!-- more--&gt;
+&lt;h2 id=&#34;-go-gc-的设计与实现&#34;&gt;📦 Go GC 的设计与实现
+&lt;/h2&gt;&lt;p&gt;自 Go 1.5 起，Go 使用并发标记-清除（concurrent mark-sweep）算法，结合“三色标记”模型与 Yuasa 写屏障。&lt;/p&gt;
+&lt;p&gt;简而言之，Go GC 会在后台并发地遍历堆内存，标记可达对象，并逐步清除未被引用的内存块。整个回收过程中，Go 追求&lt;strong&gt;低延迟、低停顿&lt;/strong&gt;：&lt;/p&gt;
+&lt;p&gt;✅ 并发标记、并发清除&lt;br&gt;
+✅ 不会移动对象（即 no compaction）&lt;br&gt;
+✅ 按 span（内存块）分批清扫，减少单次 STW（Stop-the-World）时长&lt;/p&gt;
+&lt;p&gt;这种设计的直接好处是：应用大部分时间能与 GC 并行工作，最大停顿时间通常低于毫秒级。&lt;/p&gt;
+&lt;h2 id=&#34;-go-gc-的已知问题&#34;&gt;🚧 Go GC 的已知问题
+&lt;/h2&gt;&lt;p&gt;虽然 Go GC 的延迟表现优秀，但它在耗时和扩展性上仍有几个硬伤，尤其体现在：&lt;/p&gt;
+&lt;p&gt;1️⃣ &lt;strong&gt;内存访问低效&lt;/strong&gt;&lt;br&gt;
+GC 的标记阶段会跨对象跳跃，导致 CPU 频繁 cache miss、等待内存，约 35% 的 GC CPU 周期被耗在“等内存”。这在 NUMA 架构或多核大内存机器上尤为明显。&lt;/p&gt;
+&lt;p&gt;2️⃣ &lt;strong&gt;缺乏分代收集&lt;/strong&gt;&lt;br&gt;
+Go GC 没有分代机制，所有对象一视同仁，这在高分配率场景下显得笨重。Pinterest 工程师曾指出，内存压力一旦增大，GC 就会暴增 CPU 消耗，引发延迟激增。&lt;/p&gt;
+&lt;p&gt;3️⃣ &lt;strong&gt;频繁 GC 带来的 CPU 占用&lt;/strong&gt;&lt;br&gt;
+Twitch 工程团队曾报告：即便在中小堆内存下（&amp;lt;450 MiB），系统稳态下每秒会触发 8–10 次 GC，每分钟累计 400–600 次，GC 占用约 &lt;strong&gt;30% 的 CPU 时间&lt;/strong&gt;。这直接挤压了业务线程的执行空间。&lt;/p&gt;
+&lt;h2 id=&#34;-性能测试gc-对-go-程序的影响&#34;&gt;📊 性能测试：GC 对 Go 程序的影响
+&lt;/h2&gt;&lt;p&gt;我们来看几个实际基准的变化：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Go 1.3/1.4（并发 GC 前）&lt;/strong&gt;&lt;br&gt;
+大堆（10GB+）上的 GC 停顿：以秒计算。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Go 1.5（并发 GC 引入后）&lt;/strong&gt;&lt;br&gt;
+相同条件下，GC 停顿压缩到 &amp;lt;1ms。&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/05/8d6a9563ad431b76e34d31077cbcd82b.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20250504161704&#34;
+	
+	
+&gt;&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Go 1.6–1.8&lt;/strong&gt;&lt;br&gt;
+最大堆 200GB，GC 停顿控制在 20ms 以下，甚至常态 1ms。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这些进步非常亮眼，但注意：&lt;br&gt;
+✅ 延迟控制好了&lt;br&gt;
+⚠️ 总耗时和 CPU 消耗依然显著，特别是高负载或高分配场景。&lt;/p&gt;
+&lt;h2 id=&#34;-green-tea-gc全新优化方案&#34;&gt;🌿 Green Tea GC：全新优化方案
+&lt;/h2&gt;&lt;p&gt;面对这些问题，Go 官方提出了 Green Tea GC。它的核心优化点是：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;从单对象扫描，升级为按 span（内存块）批量扫描。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;具体来说：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;小对象（≤512B）标记由单个对象粒度提升为 span 粒度。&lt;/li&gt;
+&lt;li&gt;每个 span 中，只有首次标记的对象会将整个 span 推入扫描队列。&lt;/li&gt;
+&lt;li&gt;GC 扫描阶段批量处理整个 span，极大提升了内存访问局部性。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;此外，Green Tea 改进了并行队列管理，采用类似 Go 调度器的工作窃取机制，进一步提高了多核扩展性。&lt;/p&gt;
+&lt;h2 id=&#34;-green-tea-gc-实测表现&#34;&gt;⚡ Green Tea GC 实测表现
+&lt;/h2&gt;&lt;p&gt;从初步基准来看，Green Tea GC 带来了有选择性的性能提升：&lt;/p&gt;
+&lt;p&gt;✅ &lt;strong&gt;Tile38 基准（高扇出树结构）&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;GC 开销降低约 35%&lt;/li&gt;
+&lt;li&gt;吞吐、延迟、内存使用全面优化&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;⚠ &lt;strong&gt;bleve-index 基准（低扇出、频繁变异）&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;对象分布散乱，内存局部性差&lt;/li&gt;
+&lt;li&gt;Green Tea 与常规 GC 性能相近，有时略低&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;总结：Green Tea 并非“银弹”，但在内存局部性良好、多核扩展场景下，它展现了明显优势，并为未来 SIMD 加速等硬件优化奠定了基础。&lt;/p&gt;
+&lt;h2 id=&#34;-总结&#34;&gt;🏁 总结
+&lt;/h2&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;比较项&lt;/th&gt;
+&lt;th&gt;当前 Go GC&lt;/th&gt;
+&lt;th&gt;Green Tea GC&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;标记粒度&lt;/td&gt;
+&lt;td&gt;单对象&lt;/td&gt;
+&lt;td&gt;span（批量）&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;内存局部性&lt;/td&gt;
+&lt;td&gt;差，随机跳跃&lt;/td&gt;
+&lt;td&gt;高，同 span 内批量&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;多核扩展性&lt;/td&gt;
+&lt;td&gt;受限&lt;/td&gt;
+&lt;td&gt;改进，采用工作窃取队列&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;性能提升&lt;/td&gt;
+&lt;td&gt;已接近低延迟上限&lt;/td&gt;
+&lt;td&gt;某些场景下 GC 耗时降 35%&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;应用适用范围&lt;/td&gt;
+&lt;td&gt;普通场景&lt;/td&gt;
+&lt;td&gt;内存局部性好、分配密集场景&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;对于追求极限性能的开发者，Green Tea GC 提供了一个值得关注的新方向。想要试验 Green Tea，可以在 Go 1.25+ 开启实验标志体验。&lt;/p&gt;
+&lt;p&gt;📝 &lt;strong&gt;参考资料&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/73581&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;GitHub Issue #73581&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://stackoverflow.com/questions/31684862/how-fast-is-the-go-1-5-gc-with-terabytes-of-ram&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;https://stackoverflow.com/questions/31684862/how-fast-is-the-go-1-5-gc-with-terabytes-of-ram&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/green-tea-gc-golang-%E7%9A%84-zgc/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;本文长期链接&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;如果您觉得我的博客对你有帮助，请通过 &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RSS&lt;/a&gt;订阅我。&lt;/li&gt;
+&lt;li&gt;或者在&lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;X&lt;/a&gt;上关注我。&lt;/li&gt;
+&lt;li&gt;如果您有&lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt;账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+        </item>
+        <item>
         <title>软件工程师的身份危机 by  Annie Vella</title>
         <link>https://huizhou92.com/zh-cn/p/%E8%BD%AF%E4%BB%B6%E5%B7%A5%E7%A8%8B%E5%B8%88%E7%9A%84%E8%BA%AB%E4%BB%BD%E5%8D%B1%E6%9C%BA-by-annie-vella/</link>
         <pubDate>Wed, 26 Mar 2025 19:17:56 +0800</pubDate>
@@ -1679,186 +1808,6 @@ source &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/
 &lt;hr&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/deepseekai-%E7%AB%9E%E8%B5%9B%E4%B8%AD%E7%9A%84%E9%BB%91%E5%A4%A9%E9%B9%85zh-cn/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;本文长期链接&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;如果您觉得我的博客对你有帮助，请通过 &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;RSS&lt;/a&gt;订阅我。&lt;/li&gt;
-&lt;li&gt;或者在&lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;X&lt;/a&gt;上关注我。&lt;/li&gt;
-&lt;li&gt;如果您有&lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Medium&lt;/a&gt;账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。&lt;/li&gt;
-&lt;/ul&gt;
-</description>
-        </item>
-        <item>
-        <title>Go1.24: 除了标准库之外，您也许应该更加关注 Go 工具的变化</title>
-        <link>https://huizhou92.com/zh-cn/p/go124-%E9%99%A4%E4%BA%86%E6%A0%87%E5%87%86%E5%BA%93%E4%B9%8B%E5%A4%96%E6%82%A8%E4%B9%9F%E8%AE%B8%E5%BA%94%E8%AF%A5%E6%9B%B4%E5%8A%A0%E5%85%B3%E6%B3%A8-go-%E5%B7%A5%E5%85%B7%E7%9A%84%E5%8F%98%E5%8C%96/</link>
-        <pubDate>Sun, 02 Feb 2025 12:00:49 +0800</pubDate>
-        
-        <guid>https://huizhou92.com/zh-cn/p/go124-%E9%99%A4%E4%BA%86%E6%A0%87%E5%87%86%E5%BA%93%E4%B9%8B%E5%A4%96%E6%82%A8%E4%B9%9F%E8%AE%B8%E5%BA%94%E8%AF%A5%E6%9B%B4%E5%8A%A0%E5%85%B3%E6%B3%A8-go-%E5%B7%A5%E5%85%B7%E7%9A%84%E5%8F%98%E5%8C%96/</guid>
-        <description>&lt;p&gt;Go 1.24 引入了许多工具方面的重要更新，这些更新让开发者在管理依赖、调试问题以及编写更高质量代码时变得更加高效。尽管人们通常会将注意力集中在标准库或语言特性上的变化，但 Go 工具生态系统的改进同样值得关注。在本文中，我们将重点探讨两个关键领域的改进：&lt;strong&gt;go tool&lt;/strong&gt;和&lt;strong&gt;vet&lt;/strong&gt;工具，并通过实际示例展示这些更新如何优化你的工作流程。&lt;/p&gt;
-&lt;h2 id=&#34;go-命令的增强功能&#34;&gt;&lt;strong&gt;Go 命令的增强功能&lt;/strong&gt;
-&lt;/h2&gt;&lt;p&gt;在 Go 1.24 中，&lt;code&gt;go&lt;/code&gt; 命令进行了多项改进，使得依赖管理和工具执行更加高效且易于使用。其中最显著的变化之一是 &lt;code&gt;go.mod&lt;/code&gt; 文件中新增了 &lt;code&gt;tool&lt;/code&gt; 指令，允许你直接跟踪可执行工具依赖，而无需依赖诸如空导入等不直观的解决方案。&lt;/p&gt;
-&lt;h3 id=&#34;使用-tool-指令跟踪可执行工具依赖&#34;&gt;&lt;strong&gt;使用 Tool 指令跟踪可执行工具依赖&lt;/strong&gt;
-&lt;/h3&gt;&lt;p&gt;我们在项目中大量使用&lt;a class=&#34;link&#34; href=&#34;https://github.com/vektra/mockery&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;&lt;code&gt;mockery&lt;/code&gt;&lt;/a&gt;[1]（一个流行的 Mock 代码生成器），使用方式是通过brew 安装或者直接下载特定版本的exe 执行文件。但是这样有个问题，如果不同开发者使用的mockery 版本不一致，会造成非预期的代码冲突。在过去，如果您想将这样的工具作为项目的一部分，你需要创建一个文件（通常命名为 &lt;code&gt;tools.go&lt;/code&gt;），并通过空导入来声明这些工具。比如 &lt;a class=&#34;link&#34; href=&#34;https://github.com/go-modules-by-example/index/blob/master/010_tools/README.md&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;&lt;code&gt;go-modules-by-example&lt;/code&gt;&lt;/a&gt;[2] 中的 &lt;code&gt;stringer&lt;/code&gt;&lt;br&gt;
-而在 Go 1.24 中，你可以直接在 &lt;code&gt;go.mod&lt;/code&gt; 文件中使用新的 &lt;code&gt;tool&lt;/code&gt; 指令来显式声明这些依赖。例如：&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-golang&#34; data-lang=&#34;golang&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;#&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;使用新&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;tool&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;指令安装&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;mockery&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;$&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;gotip&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;get&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;-&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;tool&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;github&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;com&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;vektra&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;mockery&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;v2&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;@&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;v2&lt;/span&gt;&lt;span class=&#34;mf&#34;&gt;.52.1&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;这条命令会在你的 &lt;code&gt;go.mod&lt;/code&gt; 文件中添加一个 &lt;code&gt;tool&lt;/code&gt; 指令：&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nx&#34;&gt;module&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;your&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;-&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;project&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;com&lt;/span&gt;  
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;k&#34;&gt;go&lt;/span&gt; &lt;span class=&#34;mf&#34;&gt;1.24&lt;/span&gt;  
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nx&#34;&gt;tool&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;github&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;com&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;vektra&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;mockery&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;v2&lt;/span&gt;  
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nf&#34;&gt;require&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;  
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;github&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;com&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;vektra&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;mockery&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;v2&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;v2&lt;/span&gt;&lt;span class=&#34;mf&#34;&gt;.52.1&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// indirect  
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;    &lt;span class=&#34;o&#34;&gt;...&lt;/span&gt;  
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;现在，你可以通过 &lt;code&gt;gotip install tool&lt;/code&gt; 安装特定版本的工具，或者直接使用下面的命令运行 &lt;code&gt;mockery&lt;/code&gt;：&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-shell&#34; data-lang=&#34;shell&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;gotip tool github.com/vektra/mockery/v2 --all  --output ./mocks
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/7d09cc710493d907cc1e93dbd08ecce2.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-	
-&gt;&lt;br&gt;
-我本地安装的mockery是2.32.3&lt;br&gt;
-&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/165bf2d809cab69b80c903110ad70c5d.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-	
-&gt;&lt;br&gt;
-这种方式消除了单独管理安装过程或维护专门文件的需求。&lt;/p&gt;
-&lt;h3 id=&#34;缓存可执行文件以加速运行-69290httpsgithubcomgolanggoissues692903&#34;&gt;缓存可执行文件以加速运行 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/69290&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;#69290&lt;/a&gt;[3]
-&lt;/h3&gt;&lt;p&gt;另一个改进是，通过诸如 &lt;code&gt;go run&lt;/code&gt; 或通过 &lt;code&gt;go tool&lt;/code&gt; 执行的命令生成的可执行文件，现在会被缓存到 Go 的构建缓存中（Go 1.24 之前，cmd/go 仅缓存编译后的包文件）。这一改变显著加快了重复执行的速度。但是这样会增加缓存的使用。&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;Go 会自动清理&lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/blob/2707d42966f8985a6663c93e943b9a44b9399fca/src/cmd/go/internal/cache/cache.go#L335&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;五天前&lt;/a&gt;[4]的编译后的包文件的缓存， 对于可执行文件的缓存，这个数字可能会是 2天。&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;如果你正在开发过程中频繁使用自定义工具或脚本，这种缓存机制能够节省宝贵时间。&lt;/p&gt;
-&lt;h2 id=&#34;vet-工具的增强功能&#34;&gt;&lt;strong&gt;Vet 工具的增强功能&lt;/strong&gt;
-&lt;/h2&gt;&lt;p&gt;Go 的静态分析工具 Vet 在 1.24 中新增了一些分析器，并改进了诊断能力，可以帮助开发者更早地发现潜在问题和常见错误。&lt;/p&gt;
-&lt;h3 id=&#34;新增-tests-分析器&#34;&gt;&lt;strong&gt;新增 Tests 分析器&lt;/strong&gt;
-&lt;/h3&gt;&lt;p&gt;一个亮点是新增了 Tests 分析器，它可以识别测试声明中的问题，例如名称格式错误、不正确的函数签名或文档化不存在标识符的问题。这些问题可能导致测试未按预期运行。&lt;/p&gt;
-&lt;p&gt;例如，以下代码存在错误：&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// 错误的测试函数签名（缺少 *testing.T 参数）
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;TestMyFunction&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;This test will not run&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;运行 &lt;code&gt;go vet ./...&lt;/code&gt; 将会产生如下诊断信息：&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nx&#34;&gt;blog&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;-&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;example&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;go&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;go1&lt;/span&gt;&lt;span class=&#34;mf&#34;&gt;.24&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;tools&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;demo_test&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;go&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;5&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;wrong&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;signature&lt;/span&gt; &lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;TestMyFunction&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;must&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;be&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;TestMyFunction&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;t&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;testing&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;T&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;通过提前捕获此类错误，可以确保所有测试都能正确运行，而不会在 CI/CD 流程中出现意外问题。&lt;/p&gt;
-&lt;h3 id=&#34;改进-printf-分析器&#34;&gt;&lt;strong&gt;改进 Printf 分析器&lt;/strong&gt;
-&lt;/h3&gt;&lt;p&gt;现有的 Printf 分析器也得到了升级，可以检测到非常量格式字符串被传递但没有附加参数的问题——这通常会导致运行时错误或意外行为。例如：&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nx&#34;&gt;s&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;#34;Hello %s&amp;#34;&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Printf&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;s&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// 如果 s 包含格式化占位符，将导致运行时问题。
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;Go1.23 版本不会出现错误，借助 Go 1.24 改进后的 Vet 工具诊断能力，会提示如下信息：&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;➜&lt;/span&gt;  &lt;span class=&#34;nx&#34;&gt;tools&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;git&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;main&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;✗&lt;/span&gt; &lt;span class=&#34;k&#34;&gt;go&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;vet&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/...&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;➜&lt;/span&gt;  &lt;span class=&#34;nx&#34;&gt;tools&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;git&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;main&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;✗&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;gotip&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;vet&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/...&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;#&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;blog&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;-&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;example&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;go&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;go1&lt;/span&gt;&lt;span class=&#34;mf&#34;&gt;.24&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;tools&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;#&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;blog&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;-&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;example&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;go&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;go1&lt;/span&gt;&lt;span class=&#34;mf&#34;&gt;.24&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;tools&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;].&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;demo_test&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;go&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;10&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;13&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;non&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;-&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;constant&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;format&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;in&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;call&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;to&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Printf&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;要修复此问题，只需将 &lt;code&gt;fmt.Printf(s)&lt;/code&gt; 替换为不需要格式化参数时更合适的方法，例如：&lt;code&gt;fmt.Print(s)&lt;/code&gt;。&lt;/p&gt;
-&lt;h2 id=&#34;结论&#34;&gt;&lt;strong&gt;结论&lt;/strong&gt;
-&lt;/h2&gt;&lt;p&gt;Go1.24 中还对以下工具进行了修改或者增强&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt; Go build支持生成伪版本号 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/50603&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;#50603&lt;/a&gt;[5]&lt;/li&gt;
-&lt;li&gt;默认使能GOCACHEPROG以支持外部缓存 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/64876&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;#64876&lt;/a&gt;[6]&lt;/li&gt;
-&lt;li&gt;go 工具链支持HTTP扩展认证：GOAUTH&lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/26232&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;#26232&lt;/a&gt;[7]&lt;/li&gt;
-&lt;li&gt;go build支持-json &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/62067&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;#62067&lt;/a&gt;[8]&lt;/li&gt;
-&lt;li&gt;&amp;hellip;.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;Go 1.24 中对工具生态系统的更新表明，即使是看似微小但实用性的变化，也能极大地提升开发者生产力和代码质量。通过 tool 指令直接跟踪可执行工具依赖，简化了依赖管理并减少了样板代码。而 vet 工具增强后的诊断能力，则帮助开发者更早地发现潜在 Bug 和常见错误，从而避免后续阶段的问题。&lt;/p&gt;
-&lt;p&gt;随着 Go 的不断发展，密切关注这些工具方面的改进，可以确保你不仅充分利用标准库和语言特性，还能最大限度地提高开发效率与代码可靠性。&lt;/p&gt;
-&lt;h2 id=&#34;引用链接&#34;&gt;引用链接
-&lt;/h2&gt;&lt;p&gt;[1]mockery: &lt;em&gt;&lt;a class=&#34;link&#34; href=&#34;https://github.com/vektra/mockery&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;https://github.com/vektra/mockery&lt;/a&gt;&lt;/em&gt;&lt;/p&gt;
-&lt;p&gt;[2]go-modules-by-example: &lt;em&gt;&lt;a class=&#34;link&#34; href=&#34;https://github.com/go-modules-by-example/index/blob/master/010_tools/README.md&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;https://github.com/go-modules-by-example/index/blob/master/010_tools/README.md&lt;/a&gt;&lt;/em&gt;&lt;/p&gt;
-&lt;p&gt;[3]#69290: &lt;em&gt;&lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/69290&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;https://github.com/golang/go/issues/69290&lt;/a&gt;&lt;/em&gt;&lt;/p&gt;
-&lt;p&gt;[4]trimLimit: &lt;em&gt;&lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/blob/2707d42966f8985a6663c93e943b9a44b9399fca/src/cmd/go/internal/cache/cache.go#L335&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;https://github.com/golang/go/blob/2707d42966f8985a6663c93e943b9a44b9399fca/src/cmd/go/internal/cache/cache.go#L335&lt;/a&gt;&lt;/em&gt;&lt;/p&gt;
-&lt;p&gt;[5]#50603: &lt;em&gt;&lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/50603&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;https://github.com/golang/go/issues/50603&lt;/a&gt;&lt;/em&gt;&lt;/p&gt;
-&lt;p&gt;[6]#64876: &lt;em&gt;&lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/64876&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;https://github.com/golang/go/issues/64876&lt;/a&gt;&lt;/em&gt;&lt;/p&gt;
-&lt;p&gt;[7]#26232: &lt;em&gt;&lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/26232&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;https://github.com/golang/go/issues/26232&lt;/a&gt;&lt;/em&gt;&lt;/p&gt;
-&lt;p&gt;[8]#62067: &lt;em&gt;&lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/62067&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;https://github.com/golang/go/issues/62067&lt;/a&gt;&lt;/em&gt;&lt;/p&gt;
-&lt;hr&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/go124-%E9%99%A4%E4%BA%86%E6%A0%87%E5%87%86%E5%BA%93%E4%B9%8B%E5%A4%96%E6%82%A8%E4%B9%9F%E8%AE%B8%E5%BA%94%E8%AF%A5%E6%9B%B4%E5%8A%A0%E5%85%B3%E6%B3%A8-go-%E5%B7%A5%E5%85%B7%E7%9A%84%E5%8F%98%E5%8C%96/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;本文长期链接&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;如果您觉得我的博客对你有帮助，请通过 &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;RSS&lt;/a&gt;订阅我。&lt;/li&gt;

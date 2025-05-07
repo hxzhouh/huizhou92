@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="zh-cn" dir="ltr">
+    <head>
+
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="本文深入解析 Go 语言垃圾回收（GC）机制的设计与不足，从并发标记-清除、内存局部性问题到高 CPU 占用，透彻剖析了 Go GC 在高并发、大内存场景下的挑战。文章重点介绍了最新的 Green Tea GC 优化方案——通过 span 批量扫描提升内存访问效率和多核扩展性，实现部分场景下 GC 耗时降低 35%，为极限性能优化和未来硬件加速提供了新思路。关键词包括 Go 垃圾回收优化、Green Tea GC、并发GC、高负载场景等。">
+<title>Green Tea GC: Golang 的 ZGC？</title>
+
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/green-tea-gc-golang-%E7%9A%84-zgc/'>
+
+<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="Green Tea GC: Golang 的 ZGC？">
+<meta property='og:description' content="本文深入解析 Go 语言垃圾回收（GC）机制的设计与不足，从并发标记-清除、内存局部性问题到高 CPU 占用，透彻剖析了 Go GC 在高并发、大内存场景下的挑战。文章重点介绍了最新的 Green Tea GC 优化方案——通过 span 批量扫描提升内存访问效率和多核扩展性，实现部分场景下 GC 耗时降低 35%，为极限性能优化和未来硬件加速提供了新思路。关键词包括 Go 垃圾回收优化、Green Tea GC、并发GC、高负载场景等。">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/green-tea-gc-golang-%E7%9A%84-zgc/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='go' /><meta property='article:published_time' content='2025-05-05T16:30:26&#43;08:00'/><meta property='article:modified_time' content='2025-05-05T16:30:22&#43;08:00'/><meta property='og:image' content='https://images.hxzhouh.com/blog-images/2025/05/fb6313678681ee8e97a05ee521bd0e20.png' />
+<meta name="twitter:site" content="@piaopiaopig">
+    <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="Green Tea GC: Golang 的 ZGC？">
+<meta name="twitter:description" content="本文深入解析 Go 语言垃圾回收（GC）机制的设计与不足，从并发标记-清除、内存局部性问题到高 CPU 占用，透彻剖析了 Go GC 在高并发、大内存场景下的挑战。文章重点介绍了最新的 Green Tea GC 优化方案——通过 span 批量扫描提升内存访问效率和多核扩展性，实现部分场景下 GC 耗时降低 35%，为极限性能优化和未来硬件加速提供了新思路。关键词包括 Go 垃圾回收优化、Green Tea GC、并发GC、高负载场景等。"><meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content='https://images.hxzhouh.com/blog-images/2025/05/fb6313678681ee8e97a05ee521bd0e20.png' />
+    <link rel="shortcut icon" href="/favicon.png" />
+
+  
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+    
+  
+
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="切换菜单">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/zh-cn/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/zh-cn">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/zh-cn/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>主页</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/%E5%85%B3%E4%BA%8E/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>关于</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>归档</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>搜索</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" >English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" selected>中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>暗色模式</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">目录</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#-go-gc-的设计与实现">📦 Go GC 的设计与实现</a></li>
+    <li><a href="#-go-gc-的已知问题">🚧 Go GC 的已知问题</a></li>
+    <li><a href="#-性能测试gc-对-go-程序的影响">📊 性能测试：GC 对 Go 程序的影响</a></li>
+    <li><a href="#-green-tea-gc全新优化方案">🌿 Green Tea GC：全新优化方案</a></li>
+    <li><a href="#-green-tea-gc-实测表现">⚡ Green Tea GC 实测表现</a></li>
+    <li><a href="#-总结">🏁 总结</a></li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+            
+        
+              
+              <section class="widget">
+                 
+                <div class="widget-content">
+                    <iframe frameborder="0"
+                        src="https://support.nodeget.com/page/promotion?id=30795"
+                        style="border-radius:8px; height: 270px; width: 100%; display: block;"></iframe>
+                        
+                </div>
+            </section>
+    </aside>
+  
+
+
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+
+            <main class="main full-width">
+    <article class="has-image main-article">
+    <header class="article-header">
+        <div class="article-image">
+            <a href="/zh-cn/p/green-tea-gc-golang-%E7%9A%84-zgc/">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2025/05/fb6313678681ee8e97a05ee521bd0e20.png" loading="lazy" alt="Featured image of post Green Tea GC: Golang 的 ZGC？" />
+                
+            </a>
+        </div>
+    
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/zh-cn/categories/tech/" style="background-color: #2a9d8f; color: #fff;">
+                技术
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/zh-cn/p/green-tea-gc-golang-%E7%9A%84-zgc/">Green Tea GC: Golang 的 ZGC？</a>
+        </h2>
+    
+        
+        <h3 class="article-subtitle">
+            本文深入解析 Go 语言垃圾回收（GC）机制的设计与不足，从并发标记-清除、内存局部性问题到高 CPU 占用，透彻剖析了 Go GC 在高并发、大内存场景下的挑战。文章重点介绍了最新的 Green Tea GC 优化方案——通过 span 批量扫描提升内存访问效率和多核扩展性，实现部分场景下 GC 耗时降低 35%，为极限性能优化和未来硬件加速提供了新思路。关键词包括 Go 垃圾回收优化、Green Tea GC、并发GC、高负载场景等。
+        </h3>
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">May 05, 2025</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    阅读时长: 2 分钟
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+        <footer class="article-translations">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+            <div>
+                
+                    <a href="https://huizhou92.com/p/a-deep-dive-into-gos-garbage-collector-bottlenecks-benchmarks-and-green-tea-gc-improvements/" class="link">English</a>
+                
+            </div>
+        </footer>
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <p>近年来，Go 语言的垃圾回收（GC）机制虽然经历了多个版本优化，但它的性能瓶颈，尤其在高并发与大规模内存场景下，依然是开发者关注的重点。最近，Go 官方在 GitHub 上提出的 <strong>Green Tea GC</strong>（#73581）引发了热议：它能否进一步解决 Go GC 的耗时问题？本文将深入解析 Go GC 的设计、缺点、实测表现，并带你了解 Green Tea GC 的技术突破。</p>
+<!-- more-->
+<h2 id="-go-gc-的设计与实现">📦 Go GC 的设计与实现
+</h2><p>自 Go 1.5 起，Go 使用并发标记-清除（concurrent mark-sweep）算法，结合“三色标记”模型与 Yuasa 写屏障。</p>
+<p>简而言之，Go GC 会在后台并发地遍历堆内存，标记可达对象，并逐步清除未被引用的内存块。整个回收过程中，Go 追求<strong>低延迟、低停顿</strong>：</p>
+<p>✅ 并发标记、并发清除<br>
+✅ 不会移动对象（即 no compaction）<br>
+✅ 按 span（内存块）分批清扫，减少单次 STW（Stop-the-World）时长</p>
+<p>这种设计的直接好处是：应用大部分时间能与 GC 并行工作，最大停顿时间通常低于毫秒级。</p>
+<h2 id="-go-gc-的已知问题">🚧 Go GC 的已知问题
+</h2><p>虽然 Go GC 的延迟表现优秀，但它在耗时和扩展性上仍有几个硬伤，尤其体现在：</p>
+<p>1️⃣ <strong>内存访问低效</strong><br>
+GC 的标记阶段会跨对象跳跃，导致 CPU 频繁 cache miss、等待内存，约 35% 的 GC CPU 周期被耗在“等内存”。这在 NUMA 架构或多核大内存机器上尤为明显。</p>
+<p>2️⃣ <strong>缺乏分代收集</strong><br>
+Go GC 没有分代机制，所有对象一视同仁，这在高分配率场景下显得笨重。Pinterest 工程师曾指出，内存压力一旦增大，GC 就会暴增 CPU 消耗，引发延迟激增。</p>
+<p>3️⃣ <strong>频繁 GC 带来的 CPU 占用</strong><br>
+Twitch 工程团队曾报告：即便在中小堆内存下（&lt;450 MiB），系统稳态下每秒会触发 8–10 次 GC，每分钟累计 400–600 次，GC 占用约 <strong>30% 的 CPU 时间</strong>。这直接挤压了业务线程的执行空间。</p>
+<h2 id="-性能测试gc-对-go-程序的影响">📊 性能测试：GC 对 Go 程序的影响
+</h2><p>我们来看几个实际基准的变化：</p>
+<ul>
+<li><strong>Go 1.3/1.4（并发 GC 前）</strong><br>
+大堆（10GB+）上的 GC 停顿：以秒计算。</li>
+<li><strong>Go 1.5（并发 GC 引入后）</strong><br>
+相同条件下，GC 停顿压缩到 &lt;1ms。<br>
+<img src="https://images.hxzhouh.com/blog-images/2025/05/8d6a9563ad431b76e34d31077cbcd82b.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Pasted image 20250504161704"
+	
+	
+></li>
+<li><strong>Go 1.6–1.8</strong><br>
+最大堆 200GB，GC 停顿控制在 20ms 以下，甚至常态 1ms。</li>
+</ul>
+<p>这些进步非常亮眼，但注意：<br>
+✅ 延迟控制好了<br>
+⚠️ 总耗时和 CPU 消耗依然显著，特别是高负载或高分配场景。</p>
+<h2 id="-green-tea-gc全新优化方案">🌿 Green Tea GC：全新优化方案
+</h2><p>面对这些问题，Go 官方提出了 Green Tea GC。它的核心优化点是：</p>
+<blockquote>
+<p><strong>从单对象扫描，升级为按 span（内存块）批量扫描。</strong></p>
+</blockquote>
+<p>具体来说：</p>
+<ul>
+<li>小对象（≤512B）标记由单个对象粒度提升为 span 粒度。</li>
+<li>每个 span 中，只有首次标记的对象会将整个 span 推入扫描队列。</li>
+<li>GC 扫描阶段批量处理整个 span，极大提升了内存访问局部性。</li>
+</ul>
+<p>此外，Green Tea 改进了并行队列管理，采用类似 Go 调度器的工作窃取机制，进一步提高了多核扩展性。</p>
+<h2 id="-green-tea-gc-实测表现">⚡ Green Tea GC 实测表现
+</h2><p>从初步基准来看，Green Tea GC 带来了有选择性的性能提升：</p>
+<p>✅ <strong>Tile38 基准（高扇出树结构）</strong></p>
+<ul>
+<li>GC 开销降低约 35%</li>
+<li>吞吐、延迟、内存使用全面优化</li>
+</ul>
+<p>⚠ <strong>bleve-index 基准（低扇出、频繁变异）</strong></p>
+<ul>
+<li>对象分布散乱，内存局部性差</li>
+<li>Green Tea 与常规 GC 性能相近，有时略低</li>
+</ul>
+<p>总结：Green Tea 并非“银弹”，但在内存局部性良好、多核扩展场景下，它展现了明显优势，并为未来 SIMD 加速等硬件优化奠定了基础。</p>
+<h2 id="-总结">🏁 总结
+</h2><div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>比较项</th>
+<th>当前 Go GC</th>
+<th>Green Tea GC</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>标记粒度</td>
+<td>单对象</td>
+<td>span（批量）</td>
+</tr>
+<tr>
+<td>内存局部性</td>
+<td>差，随机跳跃</td>
+<td>高，同 span 内批量</td>
+</tr>
+<tr>
+<td>多核扩展性</td>
+<td>受限</td>
+<td>改进，采用工作窃取队列</td>
+</tr>
+<tr>
+<td>性能提升</td>
+<td>已接近低延迟上限</td>
+<td>某些场景下 GC 耗时降 35%</td>
+</tr>
+<tr>
+<td>应用适用范围</td>
+<td>普通场景</td>
+<td>内存局部性好、分配密集场景</td>
+</tr>
+</tbody>
+</table></div>
+<p>对于追求极限性能的开发者，Green Tea GC 提供了一个值得关注的新方向。想要试验 Green Tea，可以在 Go 1.25+ 开启实验标志体验。</p>
+<p>📝 <strong>参考资料</strong></p>
+<ul>
+<li><a class="link" href="https://github.com/golang/go/issues/73581"  target="_blank" rel="noopener"
+    >GitHub Issue #73581</a></li>
+<li><a class="link" href="https://stackoverflow.com/questions/31684862/how-fast-is-the-go-1-5-gc-with-terabytes-of-ram"  target="_blank" rel="noopener"
+    >https://stackoverflow.com/questions/31684862/how-fast-is-the-go-1-5-gc-with-terabytes-of-ram</a></li>
+</ul>
+<hr>
+<ul>
+<li><a class="link" href="https://huizhou92.com/zh-cn/p/green-tea-gc-golang-%E7%9A%84-zgc/"  target="_blank" rel="noopener"
+    >本文长期链接</a></li>
+<li>如果您觉得我的博客对你有帮助，请通过 <a class="link" href="https://huizhou92.com/index.xml"  target="_blank" rel="noopener"
+    >RSS</a>订阅我。</li>
+<li>或者在<a class="link" href="https://x.com/@piaopiaopig"  target="_blank" rel="noopener"
+    >X</a>上关注我。</li>
+<li>如果您有<a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >Medium</a>账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。</li>
+</ul>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/zh-cn/tags/go/">Go</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            最后更新于 May 05, 2025 16:30 CST
+        </span>
+    </section></footer>
+
+
+    
+        <link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI&#43;WdtXRGWt2kTvGFasHpSy3SV"crossorigin="anonymous"
+            ><script 
+                src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG&#43;vnGctmUb0ZY0l8"crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"integrity="sha384-&#43;VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4&#43;/RRE05"crossorigin="anonymous"
+                defer
+                >
+            </script><script>
+    window.addEventListener("DOMContentLoaded", () => {
+        renderMathInElement(document.body, {
+            delimiters: [
+                { left: "$$", right: "$$", display: true },
+                { left: "$", right: "$", display: false },
+                { left: "\\(", right: "\\)", display: false },
+                { left: "\\[", right: "\\]", display: true }
+            ],
+            ignoredClasses: ["gist"]
+        });})
+</script>
+    
+</article>
+
+    
+
+    
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+<aside class="related-content--wrapper">
+    <h2 class="section-title">相关文章</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="">
+    <a href="/zh-cn/p/%E8%AF%91grpc%E4%B8%91%E9%99%8B%E7%9A%84%E9%83%A8%E5%88%86/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">【译】：gRPC丑陋的部分</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/go124-%E9%99%A4%E4%BA%86%E6%A0%87%E5%87%86%E5%BA%93%E4%B9%8B%E5%A4%96%E6%82%A8%E4%B9%9F%E8%AE%B8%E5%BA%94%E8%AF%A5%E6%9B%B4%E5%8A%A0%E5%85%B3%E6%B3%A8-go-%E5%B7%A5%E5%85%B7%E7%9A%84%E5%8F%98%E5%8C%96/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go1.24: 除了标准库之外，您也许应该更加关注 Go 工具的变化</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/go1.24-%E6%96%B0%E7%9A%84%E6%A0%87%E5%87%86%E5%BA%93-weak/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/12/edbf334955e117265be0194bba455ee3.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/12/edbf334955e117265be0194bba455ee3.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">go1.24: 新的标准库 weak</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8B-ep9-%E4%B8%A4%E4%B8%AA%E6%9C%89%E7%94%A8%E7%9A%84-golang-%E6%97%A0%E9%94%81%E7%BC%96%E7%A8%8B%E6%8A%80%E5%B7%A7/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 高性能编程 EP9: 两个有用的 Golang 无锁编程技巧</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/swisstable-%E4%BC%9A%E6%88%90%E4%B8%BA-golang-std-map%E5%98%9B/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2024/09/f08c74aea8485d51d461d18494df416e.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2024/09/f08c74aea8485d51d461d18494df416e.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title"> SwissTable 会成为 Golang std map嘛？</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+
+    
+        
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2025 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+    </section>
+    <script src="/js/adblock-detection.js" defer></script>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>

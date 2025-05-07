@@ -7,7 +7,136 @@
         <generator>Hugo -- gohugo.io</generator>
         <language>zh-cn</language>
         <copyright>Copyright © 2023 huizhou92</copyright>
-        <lastBuildDate>Fri, 14 Mar 2025 09:59:10 +0800</lastBuildDate><atom:link href="https://huizhou92.com/zh-cn/categories/tech/index.xml" rel="self" type="application/rss+xml" /><item>
+        <lastBuildDate>Mon, 05 May 2025 16:30:26 +0800</lastBuildDate><atom:link href="https://huizhou92.com/zh-cn/categories/tech/index.xml" rel="self" type="application/rss+xml" /><item>
+        <title>Green Tea GC: Golang 的 ZGC？</title>
+        <link>https://huizhou92.com/zh-cn/p/green-tea-gc-golang-%E7%9A%84-zgc/</link>
+        <pubDate>Mon, 05 May 2025 16:30:26 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/zh-cn/p/green-tea-gc-golang-%E7%9A%84-zgc/</guid>
+        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2025/05/fb6313678681ee8e97a05ee521bd0e20.png" alt="Featured image of post Green Tea GC: Golang 的 ZGC？" /&gt;&lt;p&gt;近年来，Go 语言的垃圾回收（GC）机制虽然经历了多个版本优化，但它的性能瓶颈，尤其在高并发与大规模内存场景下，依然是开发者关注的重点。最近，Go 官方在 GitHub 上提出的 &lt;strong&gt;Green Tea GC&lt;/strong&gt;（#73581）引发了热议：它能否进一步解决 Go GC 的耗时问题？本文将深入解析 Go GC 的设计、缺点、实测表现，并带你了解 Green Tea GC 的技术突破。&lt;/p&gt;
+&lt;!-- more--&gt;
+&lt;h2 id=&#34;-go-gc-的设计与实现&#34;&gt;📦 Go GC 的设计与实现
+&lt;/h2&gt;&lt;p&gt;自 Go 1.5 起，Go 使用并发标记-清除（concurrent mark-sweep）算法，结合“三色标记”模型与 Yuasa 写屏障。&lt;/p&gt;
+&lt;p&gt;简而言之，Go GC 会在后台并发地遍历堆内存，标记可达对象，并逐步清除未被引用的内存块。整个回收过程中，Go 追求&lt;strong&gt;低延迟、低停顿&lt;/strong&gt;：&lt;/p&gt;
+&lt;p&gt;✅ 并发标记、并发清除&lt;br&gt;
+✅ 不会移动对象（即 no compaction）&lt;br&gt;
+✅ 按 span（内存块）分批清扫，减少单次 STW（Stop-the-World）时长&lt;/p&gt;
+&lt;p&gt;这种设计的直接好处是：应用大部分时间能与 GC 并行工作，最大停顿时间通常低于毫秒级。&lt;/p&gt;
+&lt;h2 id=&#34;-go-gc-的已知问题&#34;&gt;🚧 Go GC 的已知问题
+&lt;/h2&gt;&lt;p&gt;虽然 Go GC 的延迟表现优秀，但它在耗时和扩展性上仍有几个硬伤，尤其体现在：&lt;/p&gt;
+&lt;p&gt;1️⃣ &lt;strong&gt;内存访问低效&lt;/strong&gt;&lt;br&gt;
+GC 的标记阶段会跨对象跳跃，导致 CPU 频繁 cache miss、等待内存，约 35% 的 GC CPU 周期被耗在“等内存”。这在 NUMA 架构或多核大内存机器上尤为明显。&lt;/p&gt;
+&lt;p&gt;2️⃣ &lt;strong&gt;缺乏分代收集&lt;/strong&gt;&lt;br&gt;
+Go GC 没有分代机制，所有对象一视同仁，这在高分配率场景下显得笨重。Pinterest 工程师曾指出，内存压力一旦增大，GC 就会暴增 CPU 消耗，引发延迟激增。&lt;/p&gt;
+&lt;p&gt;3️⃣ &lt;strong&gt;频繁 GC 带来的 CPU 占用&lt;/strong&gt;&lt;br&gt;
+Twitch 工程团队曾报告：即便在中小堆内存下（&amp;lt;450 MiB），系统稳态下每秒会触发 8–10 次 GC，每分钟累计 400–600 次，GC 占用约 &lt;strong&gt;30% 的 CPU 时间&lt;/strong&gt;。这直接挤压了业务线程的执行空间。&lt;/p&gt;
+&lt;h2 id=&#34;-性能测试gc-对-go-程序的影响&#34;&gt;📊 性能测试：GC 对 Go 程序的影响
+&lt;/h2&gt;&lt;p&gt;我们来看几个实际基准的变化：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Go 1.3/1.4（并发 GC 前）&lt;/strong&gt;&lt;br&gt;
+大堆（10GB+）上的 GC 停顿：以秒计算。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Go 1.5（并发 GC 引入后）&lt;/strong&gt;&lt;br&gt;
+相同条件下，GC 停顿压缩到 &amp;lt;1ms。&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/05/8d6a9563ad431b76e34d31077cbcd82b.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20250504161704&#34;
+	
+	
+&gt;&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Go 1.6–1.8&lt;/strong&gt;&lt;br&gt;
+最大堆 200GB，GC 停顿控制在 20ms 以下，甚至常态 1ms。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这些进步非常亮眼，但注意：&lt;br&gt;
+✅ 延迟控制好了&lt;br&gt;
+⚠️ 总耗时和 CPU 消耗依然显著，特别是高负载或高分配场景。&lt;/p&gt;
+&lt;h2 id=&#34;-green-tea-gc全新优化方案&#34;&gt;🌿 Green Tea GC：全新优化方案
+&lt;/h2&gt;&lt;p&gt;面对这些问题，Go 官方提出了 Green Tea GC。它的核心优化点是：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;从单对象扫描，升级为按 span（内存块）批量扫描。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;具体来说：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;小对象（≤512B）标记由单个对象粒度提升为 span 粒度。&lt;/li&gt;
+&lt;li&gt;每个 span 中，只有首次标记的对象会将整个 span 推入扫描队列。&lt;/li&gt;
+&lt;li&gt;GC 扫描阶段批量处理整个 span，极大提升了内存访问局部性。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;此外，Green Tea 改进了并行队列管理，采用类似 Go 调度器的工作窃取机制，进一步提高了多核扩展性。&lt;/p&gt;
+&lt;h2 id=&#34;-green-tea-gc-实测表现&#34;&gt;⚡ Green Tea GC 实测表现
+&lt;/h2&gt;&lt;p&gt;从初步基准来看，Green Tea GC 带来了有选择性的性能提升：&lt;/p&gt;
+&lt;p&gt;✅ &lt;strong&gt;Tile38 基准（高扇出树结构）&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;GC 开销降低约 35%&lt;/li&gt;
+&lt;li&gt;吞吐、延迟、内存使用全面优化&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;⚠ &lt;strong&gt;bleve-index 基准（低扇出、频繁变异）&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;对象分布散乱，内存局部性差&lt;/li&gt;
+&lt;li&gt;Green Tea 与常规 GC 性能相近，有时略低&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;总结：Green Tea 并非“银弹”，但在内存局部性良好、多核扩展场景下，它展现了明显优势，并为未来 SIMD 加速等硬件优化奠定了基础。&lt;/p&gt;
+&lt;h2 id=&#34;-总结&#34;&gt;🏁 总结
+&lt;/h2&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;比较项&lt;/th&gt;
+&lt;th&gt;当前 Go GC&lt;/th&gt;
+&lt;th&gt;Green Tea GC&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;标记粒度&lt;/td&gt;
+&lt;td&gt;单对象&lt;/td&gt;
+&lt;td&gt;span（批量）&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;内存局部性&lt;/td&gt;
+&lt;td&gt;差，随机跳跃&lt;/td&gt;
+&lt;td&gt;高，同 span 内批量&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;多核扩展性&lt;/td&gt;
+&lt;td&gt;受限&lt;/td&gt;
+&lt;td&gt;改进，采用工作窃取队列&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;性能提升&lt;/td&gt;
+&lt;td&gt;已接近低延迟上限&lt;/td&gt;
+&lt;td&gt;某些场景下 GC 耗时降 35%&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;应用适用范围&lt;/td&gt;
+&lt;td&gt;普通场景&lt;/td&gt;
+&lt;td&gt;内存局部性好、分配密集场景&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;对于追求极限性能的开发者，Green Tea GC 提供了一个值得关注的新方向。想要试验 Green Tea，可以在 Go 1.25+ 开启实验标志体验。&lt;/p&gt;
+&lt;p&gt;📝 &lt;strong&gt;参考资料&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/73581&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;GitHub Issue #73581&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://stackoverflow.com/questions/31684862/how-fast-is-the-go-1-5-gc-with-terabytes-of-ram&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;https://stackoverflow.com/questions/31684862/how-fast-is-the-go-1-5-gc-with-terabytes-of-ram&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/green-tea-gc-golang-%E7%9A%84-zgc/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;本文长期链接&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;如果您觉得我的博客对你有帮助，请通过 &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RSS&lt;/a&gt;订阅我。&lt;/li&gt;
+&lt;li&gt;或者在&lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;X&lt;/a&gt;上关注我。&lt;/li&gt;
+&lt;li&gt;如果您有&lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt;账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+        </item>
+        <item>
         <title>【译】：gRPC丑陋的部分</title>
         <link>https://huizhou92.com/zh-cn/p/%E8%AF%91grpc%E4%B8%91%E9%99%8B%E7%9A%84%E9%83%A8%E5%88%86/</link>
         <pubDate>Fri, 14 Mar 2025 09:59:10 +0800</pubDate>
@@ -1643,422 +1772,6 @@ source &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/
 &lt;hr&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/go124-%E9%99%A4%E4%BA%86%E6%A0%87%E5%87%86%E5%BA%93%E4%B9%8B%E5%A4%96%E6%82%A8%E4%B9%9F%E8%AE%B8%E5%BA%94%E8%AF%A5%E6%9B%B4%E5%8A%A0%E5%85%B3%E6%B3%A8-go-%E5%B7%A5%E5%85%B7%E7%9A%84%E5%8F%98%E5%8C%96/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;本文长期链接&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;如果您觉得我的博客对你有帮助，请通过 &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;RSS&lt;/a&gt;订阅我。&lt;/li&gt;
-&lt;li&gt;或者在&lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;X&lt;/a&gt;上关注我。&lt;/li&gt;
-&lt;li&gt;如果您有&lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Medium&lt;/a&gt;账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。&lt;/li&gt;
-&lt;/ul&gt;
-</description>
-        </item>
-        <item>
-        <title>Go 1.24 的 Swiss Map：兼容性、扩展哈希与遗留问题</title>
-        <link>https://huizhou92.com/zh-cn/p/go-124-%E7%9A%84-swiss-map%E5%85%BC%E5%AE%B9%E6%80%A7%E6%89%A9%E5%B1%95%E5%93%88%E5%B8%8C%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98/</link>
-        <pubDate>Thu, 23 Jan 2025 14:19:09 +0800</pubDate>
-        
-        <guid>https://huizhou92.com/zh-cn/p/go-124-%E7%9A%84-swiss-map%E5%85%BC%E5%AE%B9%E6%80%A7%E6%89%A9%E5%B1%95%E5%93%88%E5%B8%8C%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98/</guid>
-        <description>&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/1899ebfa34c73a3c02f169d121b2ef77.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-	
-&gt;&lt;/p&gt;
-&lt;h1 id=&#34;go-124-的-swiss-map兼容性扩展哈希与遗留问题&#34;&gt;Go 1.24 的 Swiss Map：兼容性、扩展哈希与遗留问题
-&lt;/h1&gt;&lt;p&gt;在 &lt;a class=&#34;link&#34; href=&#34;https://pub.huizhou92.com/swisstable-a-high-performance-hash-table-implementation-3e13bfe8c79b&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;上一篇&lt;/a&gt;文章中，我介绍了&lt;code&gt;swiss map&lt;/code&gt;以及Dolthub 实现的一个Go语言版本。对于 &lt;code&gt;swiss map&lt;/code&gt; 不太熟悉的读者，可以先去看看那篇文章。&lt;/p&gt;
-&lt;p&gt;在即将正式发布的Go1.24中&lt;code&gt;swiss map&lt;/code&gt; 将作为现有&lt;code&gt;map&lt;/code&gt;的替代者正式进入gosrc。它完全兼容现有API，并且在部分&lt;code&gt;benchmark&lt;/code&gt;场景下带来了超过50%的性能提升。到目前为止，&lt;code&gt;swiss map&lt;/code&gt;是我对于Go1.24最期待的功能了。可是它真的有期待中的那么好嘛？本文将从&lt;strong&gt;兼容性、扩展哈希（Extendible Hashing)&lt;/strong&gt; 的实现与优势，以及&lt;strong&gt;遗留问题&lt;/strong&gt;三个方面，深入剖析这一新设计的核心逻辑。&lt;/p&gt;
-&lt;!-- more--&gt;
-&lt;h2 id=&#34;兼容性无痛迁移的底层支持&#34;&gt;兼容性：无痛迁移的底层支持
-&lt;/h2&gt;&lt;p&gt;Go 的&lt;code&gt;swiss map&lt;/code&gt; 设计目标之一是与旧版 &lt;code&gt;map&lt;/code&gt; 兼容。通过条件编译标签和类型转换，实现在新旧版本间的无缝切换。例如，在 &lt;code&gt;export_swiss_test.go&lt;/code&gt; 中，&lt;code&gt;newTestMapType&lt;/code&gt; 函数直接通过类型转换将旧版 &lt;code&gt;map&lt;/code&gt; 的元数据转换为 &lt;code&gt;swiss map&lt;/code&gt; 的类型结构：&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;7
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;//https://github.com/golang/go/blob/3f4164f508b8148eb526fc096884dba2609f5835/src/internal/runtime/maps/export_swiss_test.go#L14
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;newTestMapType&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;K&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;comparable&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;V&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;any&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]()&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;abi&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;SwissMapType&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;kd&#34;&gt;var&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;map&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;K&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;V&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;mTyp&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;abi&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;TypeOf&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;mt&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;abi&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;SwissMapType&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;unsafe&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Pointer&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;mTyp&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// 直接类型转换
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;    &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;mt&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;这种设计允许现有代码无需修改即可通过实验性标志启用 &lt;code&gt;swiss map&lt;/code&gt;，同时保留了旧版哈希表的内存布局兼容性。当前gotip(go1.24-3f4164f5) 中&lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/commit/99d60c24e23d4d97ce51b1ee5660b60a5651693a&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;GOEXPERIMENT=swissmap&lt;/a&gt; 编译选项已经默认打开，也就是默认使用的是&lt;code&gt;swiss map&lt;/code&gt;。&lt;br&gt;
-如果您还是想用 原来的map可以使用 &lt;code&gt;GOEXPERIMENT=noswissmap&lt;/code&gt;&lt;/p&gt;
-&lt;h2 id=&#34;swissmap的数据结构&#34;&gt;SwissMap的数据结构
-&lt;/h2&gt;&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/784e3f6a0ff90601480a2da80f3cb9d0.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-	
-&gt;&lt;/p&gt;
-&lt;p&gt;跟 Map 比较大的区别是&lt;br&gt;
-现在数据存储在Dir中，Dir 包含若干个table，同时每个table 有若干个group。&lt;br&gt;
-每个group有16个solt，solt就是最终的数据。并且现在数据排列方式跟以前不一样，不是key跟key在一起，value跟value在一起，而是混合在一起。&lt;/p&gt;
-&lt;h3 id=&#34;数据插入过程&#34;&gt;数据插入过程
-&lt;/h3&gt;&lt;p&gt;// TODO&lt;/p&gt;
-&lt;h3 id=&#34;数据查询过程&#34;&gt;数据查询过程
-&lt;/h3&gt;&lt;p&gt;查询使用的是线性探测。首先根据 hash key 以及 globalDepth 判断在那个table。&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Map&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;directoryIndex&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;hash&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;uintptr&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;uintptr&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;  
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;dirLen&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;==&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;  
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;       &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;  
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;  
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;hash&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;globalShift&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;63&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;  
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;然后在根据高位key。&lt;/p&gt;
-&lt;h2 id=&#34;extendible-hashing如何实现动态扩展&#34;&gt;Extendible Hashing：如何实现动态扩展？
-&lt;/h2&gt;&lt;p&gt;与其他其他几个社区实现，除了在兼容性方面的改进之外，&lt;code&gt;swiss map&lt;/code&gt;的核心创新之一是采用了&lt;code&gt;Extendible Hashing&lt;/code&gt;（扩展哈希），以支持高效的增量扩容。传统哈希表在扩容时需要全量迁移数据，而 &lt;code&gt;ExtendibleHashing&lt;/code&gt; 通过多级目录和表拆分，将扩容开销分摊到多次操作中。&lt;/p&gt;
-&lt;h3 id=&#34;dir与table的层级结构&#34;&gt;Dir与table的层级结构
-&lt;/h3&gt;&lt;p&gt;在 &lt;code&gt;map.go&lt;/code&gt; 的 &lt;code&gt;Map&lt;/code&gt; 结构体中，&lt;code&gt;globalDepth&lt;/code&gt; 和 &lt;code&gt;directory&lt;/code&gt; 字段是关键：&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;//https://github.com/golang/go/blob/3f4164f508b8148eb526fc096884dba2609f5835/src/internal/runtime/maps/map.go#L194
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;type&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;Map&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;globalDepth&lt;/span&gt;  &lt;span class=&#34;kt&#34;&gt;uint8&lt;/span&gt;      &lt;span class=&#34;c1&#34;&gt;// dir的全局深度
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;    &lt;span class=&#34;nx&#34;&gt;dirPtr&lt;/span&gt;       &lt;span class=&#34;nx&#34;&gt;unsafe&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Pointer&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// dir指针（指向多个 table）
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;    &lt;span class=&#34;c1&#34;&gt;// ...
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;dir大小为 &lt;code&gt;1 &amp;lt;&amp;lt; globalDepth&lt;/code&gt;，每个dir项指向一个 &lt;code&gt;table&lt;/code&gt;。当某个 &lt;code&gt;table&lt;/code&gt; 的负载过高时，会触发&lt;strong&gt;拆分&lt;/strong&gt;（Split），而非全局扩容。&lt;/p&gt;
-&lt;h3 id=&#34;拆分操作&#34;&gt;拆分操作
-&lt;/h3&gt;&lt;p&gt;拆分（Split）是 &lt;code&gt;swiss map&lt;/code&gt;在单个表容量达到 &lt;code&gt;maxTableCapacity&lt;/code&gt;（默认为 1024）时触发的动态扩容机制。其核心目标是将一个表的负载分摊到两个新表中，避免&lt;strong&gt;全局扩容的高延迟&lt;/strong&gt;。以下是拆分的关键步骤与地址变化：&lt;br&gt;
-拆分时，原表（假设为 &lt;code&gt;table A&lt;/code&gt;）会创建两个子表 &lt;code&gt;table Left&lt;/code&gt; 和 &lt;code&gt;table Right&lt;/code&gt;。它们的&lt;code&gt;localDepth&lt;/code&gt;（本地深度）比原表大 1，表示其哈希掩码多使用了一个高位比特。&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;7
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;8
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;//https://github.com/golang/go/blob/3f4164f508b8148eb526fc096884dba2609f5835/src/internal/runtime/maps/table.go#L1043
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;t&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;table&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;split&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;typ&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;abi&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;SwissMapType&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Map&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;localDepth&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;t&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;localDepth&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;localDepth&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;++&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// 子表的 localDepth 比原表大 1
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;    &lt;span class=&#34;nx&#34;&gt;left&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;newTable&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;typ&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;maxTableCapacity&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;-&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;localDepth&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;right&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;newTable&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;typ&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;maxTableCapacity&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;-&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;localDepth&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;c1&#34;&gt;// ...
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;&lt;code&gt;left&lt;/code&gt; 和 &lt;code&gt;right&lt;/code&gt; 是新分配的内存对象，其 &lt;code&gt;groups.data&lt;/code&gt; 指向新分配的连续内存块（通过 &lt;code&gt;newarray&lt;/code&gt; 函数）。&lt;/p&gt;
-&lt;h3 id=&#34;数据分配哈希掩码与比特位判定&#34;&gt;数据分配：哈希掩码与比特位判定
-&lt;/h3&gt;&lt;p&gt;拆分时，根据哈希值的高位比特（由 &lt;code&gt;localDepth&lt;/code&gt; 决定）将原表的数据分配到左表或右表。例如，若 &lt;code&gt;localDepth&lt;/code&gt; 为 2，则使用哈希值的第2个高位比特（从最高位开始计数）作为分配依据。&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;//https://github.com/golang/go/blob/3f4164f508b8148eb526fc096884dba2609f5835/src/internal/runtime/maps/table.go#L1052
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;mask&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;localDepthMask&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;localDepth&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// 生成掩码，例如 0x80000000（第 32 位）
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;...&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;hash&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;typ&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Hasher&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;key&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;seed&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;hash&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;mask&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;==&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;nx&#34;&gt;left&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;uncheckedPutSlot&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;...&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// 分配到左表
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;    &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt; &lt;span class=&#34;k&#34;&gt;else&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;nx&#34;&gt;right&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;uncheckedPutSlot&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;...&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// 分配到右表
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;    &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;掩码计算&lt;/strong&gt;：&lt;code&gt;localDepthMask&lt;/code&gt; 根据 &lt;code&gt;localDepth&lt;/code&gt; 生成一个掩码，例如：
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;localDepth=1&lt;/code&gt; → &lt;code&gt;0x80000000&lt;/code&gt;（32 位系统）或 &lt;code&gt;0x8000000000000000&lt;/code&gt;（64 位系统）。&lt;/li&gt;
-&lt;li&gt;该掩码用于提取哈希值的第 &lt;code&gt;localDepth&lt;/code&gt; 个高位比特。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3 id=&#34;3-目录的更新与扩展&#34;&gt;&lt;strong&gt;3. 目录的更新与扩展&lt;/strong&gt;
-&lt;/h3&gt;&lt;p&gt;拆分完成后，需要更新全局目录（&lt;code&gt;Map.directory&lt;/code&gt;），使原表的索引范围指向新的子表。如果原表的 &lt;code&gt;localDepth&lt;/code&gt; 等于全局的 &lt;code&gt;globalDepth&lt;/code&gt;，则目录需要扩展（翻倍）。&lt;/p&gt;
-&lt;h4 id=&#34;目录扩展示例&#34;&gt;&lt;strong&gt;目录扩展示例&lt;/strong&gt;
-&lt;/h4&gt;&lt;p&gt;假设原表 &lt;code&gt;table A&lt;/code&gt; 的 &lt;code&gt;localDepth=1&lt;/code&gt;，&lt;code&gt;globalDepth=1&lt;/code&gt;，目录大小为 &lt;code&gt;2&lt;/code&gt;（&lt;code&gt;1 &amp;lt;&amp;lt; 1&lt;/code&gt;）。拆分后：&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;目录翻倍&lt;/strong&gt;：&lt;code&gt;globalDepth&lt;/code&gt; 增加到 2，目录大小变为 &lt;code&gt;4&lt;/code&gt;（&lt;code&gt;1 &amp;lt;&amp;lt; 2&lt;/code&gt;）。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;索引重映射&lt;/strong&gt;：原表的目录项（例如索引 &lt;code&gt;0-1&lt;/code&gt;）被替换为指向 &lt;code&gt;left&lt;/code&gt; 和 &lt;code&gt;right&lt;/code&gt; 表。&lt;/li&gt;
-&lt;/ol&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;14
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;15
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;16
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;17
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;18
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;19
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;20
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;21
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// map.go
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Map&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;installTableSplit&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;old&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;left&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;right&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;table&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;old&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;localDepth&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;==&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;globalDepth&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;c1&#34;&gt;// 目录扩展：大小翻倍
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;        &lt;span class=&#34;nx&#34;&gt;newDir&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;make&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;([]&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;table&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;dirLen&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;2&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;c1&#34;&gt;// 复制旧目录项并指向新表
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;        &lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;k&#34;&gt;range&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;dirLen&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;            &lt;span class=&#34;nx&#34;&gt;newDir&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;2&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;left&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;            &lt;span class=&#34;nx&#34;&gt;newDir&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;2&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;+&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;right&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;dirPtr&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;unsafe&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Pointer&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;newDir&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;])&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;globalDepth&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;++&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt; &lt;span class=&#34;k&#34;&gt;else&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;c1&#34;&gt;// 不扩展目录，仅替换部分项
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;        &lt;span class=&#34;nx&#34;&gt;entries&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;globalDepth&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;-&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;left&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;localDepth&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;entries&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;++&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;            &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;directorySet&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;uintptr&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;old&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;index&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;+&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;),&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;left&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;            &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;directorySet&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;uintptr&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;old&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;index&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;+&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;+&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;entries&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;),&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;right&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;地址变化&lt;/strong&gt;：
-&lt;ul&gt;
-&lt;li&gt;原表 &lt;code&gt;table A&lt;/code&gt; 的 &lt;code&gt;dirPtr&lt;/code&gt; 指向的目录项被更新为新表的地址。&lt;/li&gt;
-&lt;li&gt;例如，原目录项 &lt;code&gt;[A, A]&lt;/code&gt; 变为 &lt;code&gt;[Left, Right]&lt;/code&gt;（扩展后目录为 &lt;code&gt;[Left, Right, Left, Right]&lt;/code&gt;）。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3 id=&#34;示例拆分前后的地址与目录变化&#34;&gt;示例：拆分前后的地址与目录变化
-&lt;/h3&gt;&lt;h4 id=&#34;初始状态&#34;&gt;&lt;strong&gt;初始状态&lt;/strong&gt;
-&lt;/h4&gt;&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;全局目录&lt;/strong&gt;：&lt;code&gt;globalDepth=1&lt;/code&gt;，目录大小为 2，指向同一个表 &lt;code&gt;A&lt;/code&gt;。
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-text&#34; data-lang=&#34;text&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;directory[0] → A (localDepth=1)
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;directory[1] → A (localDepth=1)
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h4 id=&#34;触发拆分&#34;&gt;&lt;strong&gt;触发拆分&lt;/strong&gt;
-&lt;/h4&gt;&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;创建子表&lt;/strong&gt;：&lt;code&gt;Left&lt;/code&gt;（&lt;code&gt;localDepth=2&lt;/code&gt;）和 &lt;code&gt;Right&lt;/code&gt;（&lt;code&gt;localDepth=2&lt;/code&gt;）。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;目录扩展&lt;/strong&gt;：&lt;code&gt;globalDepth&lt;/code&gt; 增加到 2，目录大小变为 4。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;更新目录项&lt;/strong&gt;：
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-text&#34; data-lang=&#34;text&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;directory[0] → Left  // 哈希前缀 00
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;directory[1] → Left  // 哈希前缀 01（原属于 A 的低半区）
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;directory[2] → Right // 哈希前缀 10
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;directory[3] → Right // 哈希前缀 11（原属于 A 的高半区）
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;/li&gt;
-&lt;/ol&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;地址变化&lt;/strong&gt;：
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;directory[0]&lt;/code&gt; 和 &lt;code&gt;directory[1]&lt;/code&gt; 的指针从 &lt;code&gt;A&lt;/code&gt; 变为 &lt;code&gt;Left&lt;/code&gt;。&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;directory[2]&lt;/code&gt; 和 &lt;code&gt;directory[3]&lt;/code&gt; 的指针从 &lt;code&gt;A&lt;/code&gt; 变为 &lt;code&gt;Right&lt;/code&gt;。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3 id=&#34;拆分后的数据分布&#34;&gt;拆分后的数据分布
-&lt;/h3&gt;&lt;p&gt;假设原表 &lt;code&gt;A&lt;/code&gt; 的哈希键分布如下：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;哈希值高位为 &lt;code&gt;00&lt;/code&gt; 或 &lt;code&gt;01&lt;/code&gt; → 分配到 &lt;code&gt;Left&lt;/code&gt;。&lt;/li&gt;
-&lt;li&gt;哈希值高位为 &lt;code&gt;10&lt;/code&gt; 或 &lt;code&gt;11&lt;/code&gt; → 分配到 &lt;code&gt;Right&lt;/code&gt;。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;通过掩码 &lt;code&gt;localDepthMask(2)&lt;/code&gt;（例如 &lt;code&gt;0x40000000&lt;/code&gt;），提取哈希值的第 2 个高位比特，决定数据归属。&lt;/p&gt;
-&lt;h3 id=&#34;关键设计优势&#34;&gt;关键设计优势
-&lt;/h3&gt;&lt;ol start=&#34;4&#34;&gt;
-&lt;li&gt;&lt;strong&gt;局部性&lt;/strong&gt;：仅拆分负载高的表，其他表不受影响。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;渐进式扩容&lt;/strong&gt;：目录按需扩展，避免一次性全量迁移。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;地址连续性&lt;/strong&gt;：新表的 &lt;code&gt;groups.data&lt;/code&gt; 是连续内存块，利于缓存优化。&lt;/li&gt;
-&lt;/ol&gt;
-&lt;h2 id=&#34;其他优化&#34;&gt;其他优化
-&lt;/h2&gt;&lt;p&gt;此外，&lt;code&gt;swiss map&lt;/code&gt; 针对一些特定场景也有优化，比如针对于少量元素(&amp;lt;=8)就直接使用一个group来存储数据，尽量降低 &lt;code&gt;swiss map&lt;/code&gt; 在少量数据的时候的性能劣势。&lt;/p&gt;
-&lt;h2 id=&#34;遗留问题与挑战&#34;&gt;遗留问题与挑战
-&lt;/h2&gt;&lt;p&gt;尽管 &lt;code&gt;swiss map&lt;/code&gt; 在设计与性能上迈出了一大步，但仍存在以下待优化点：&lt;/p&gt;
-&lt;h3 id=&#34;并发支持的局限性&#34;&gt;并发支持的局限性
-&lt;/h3&gt;&lt;p&gt;当前实现通过 &lt;code&gt;writing&lt;/code&gt; 标志检测并发写入，但缺乏细粒度锁：&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;//https://github.com/golang/go/blob/3f4164f508b8148eb526fc096884dba2609f5835/src/internal/runtime/maps/map.go#L478
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Map&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;PutSlot&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;typ&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;abi&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;SwissMapType&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;key&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;unsafe&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Pointer&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;unsafe&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Pointer&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;writing&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;^=&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// 简单标志位，非原子操作
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;    &lt;span class=&#34;c1&#34;&gt;// ...
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;这在多线程高并发场景下可能导致竞争条件。官方文档提到未来可能引入更复杂的同步机制，但目前仍需依赖外部锁。&lt;/p&gt;
-&lt;h3 id=&#34;内存碎片化&#34;&gt;内存碎片化
-&lt;/h3&gt;&lt;p&gt;&lt;code&gt;swiss map&lt;/code&gt; 的 &lt;code&gt;group&lt;/code&gt; 结构（8 控制字节 + 8 键值槽）可能导致内存对齐浪费，尤其是键值类型较小时。例如，若键为 &lt;code&gt;int32&lt;/code&gt;、值为 &lt;code&gt;int8&lt;/code&gt;，每个槽位将浪费 3 字节。&lt;/p&gt;
-&lt;h3 id=&#34;迭代器复杂度&#34;&gt;迭代器复杂度
-&lt;/h3&gt;&lt;p&gt;&lt;code&gt;Iter&lt;/code&gt; 的实现（&lt;code&gt;table.go&lt;/code&gt;）需处理目录扩展和表拆分，逻辑复杂：&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;7
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;8
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// https://github.com/golang/go/blob/3f4164f508b8148eb526fc096884dba2609f5835/src/internal/runtime/maps/table.go#L742
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;it&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Iter&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;Next&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;it&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;globalDepth&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;!=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;it&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;globalDepth&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;c1&#34;&gt;// 处理目录扩展后的索引调整
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;        &lt;span class=&#34;nx&#34;&gt;it&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;dirIdx&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;lt;&amp;lt;=&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;it&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;globalDepth&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;-&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;it&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;globalDepth&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;c1&#34;&gt;// ...
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;在频繁扩容的场景下，迭代器的性能可能受到影响。&lt;/p&gt;
-&lt;p&gt;此外，在最新的代码中，遗留了很多TODO&lt;br&gt;
-&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/715d866b7013c977454d49537e01888b.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-	
-&gt;&lt;br&gt;
-我甚至都不知道如何总结这些TODO， 目前距离 Go 1.24 正式发布还有不到一个月的时间，不知道这些TODO会不会全部解决。&lt;br&gt;
-在社区中关于&lt;code&gt;swiss map&lt;/code&gt; 的讨论也还有很多，主要集中在性能优化方面，可以想象未来 还会出现很多变动。&lt;br&gt;
-&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/f39ed089d7c8ab59a90840411de6551d.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-	
-&gt;&lt;/p&gt;
-&lt;p&gt;一切都要等到2月份正式发布。&lt;/p&gt;
-&lt;h2 id=&#34;性能测试&#34;&gt;性能测试
-&lt;/h2&gt;&lt;p&gt;完整的测试代码：https://github.com/hxzhouh/gomapbench&lt;br&gt;
-go version devel go1.24-3f4164f5 Mon Jan 20 09:25:11 2025 -0800 darwin/arm64&lt;br&gt;
-&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/f4a1ee763ddd58e309055e616b562268.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-	
-&gt;&lt;br&gt;
-平均性能提升 28% 大约，在某些场景下，甚至高达 50%。不愧是Go1.24 最期待的功能。&lt;/p&gt;
-&lt;p&gt;但是，这是一份不严谨的性能测试，测试机器也仅限于我自己的笔记本电脑，有一些报告显示&lt;code&gt;swiss map&lt;/code&gt; 在某些地方的性能甚至出现了下降。&lt;br&gt;
-&lt;a class=&#34;link&#34; href=&#34;https://x.com/valyala/status/1879988053076504761&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;https://x.com/valyala/status/1879988053076504761&lt;/a&gt;&lt;/p&gt;
-&lt;p&gt;&lt;a class=&#34;link&#34; href=&#34;https://x.com/zigo_101/status/1882311256541102178&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;https://x.com/zigo_101/status/1882311256541102178&lt;/a&gt;&lt;br&gt;
-&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/72e1e0c7299e083da7db0f6c2fdd0a61.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-	
-&gt;&lt;br&gt;
-&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/391c2aec55c9e25ffacd2f3e5c9f1265.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-	
-&gt;&lt;/p&gt;
-&lt;p&gt;最终&lt;code&gt;swiss map&lt;/code&gt; 如何，还是要看后续的演化。&lt;/p&gt;
-&lt;h2 id=&#34;总结&#34;&gt;总结
-&lt;/h2&gt;&lt;p&gt;Go 1.24 的 &lt;code&gt;swiss map&lt;/code&gt; 通过兼容性设计、Extendible Hashing 和优化的探测序列，显著提升了哈希表在高负载场景下的性能。然而，其并发模型和内存效率仍有改进空间。对于开发者而言，这一新特性值得在性能敏感的场景中尝试，但也需关注其当前限制。&lt;/p&gt;
-&lt;h2 id=&#34;参考资料&#34;&gt;参考资料
-&lt;/h2&gt;&lt;p&gt;&lt;a class=&#34;link&#34; href=&#34;https://tonybai.com/2024/11/14/go-map-use-swiss-table/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;https://tonybai.com/2024/11/14/go-map-use-swiss-table/&lt;/a&gt;&lt;br&gt;
-&lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/54766&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;https://github.com/golang/go/issues/54766&lt;/a&gt;&lt;br&gt;
-&lt;a class=&#34;link&#34; href=&#34;https://pub.huizhou92.com/swisstable-a-high-performance-hash-table-implementation-3e13bfe8c79b&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;https://pub.huizhou92.com/swisstable-a-high-performance-hash-table-implementation-3e13bfe8c79b&lt;/a&gt;&lt;br&gt;
-&lt;a class=&#34;link&#34; href=&#34;https://www.geeksforgeeks.org/extendible-hashing-dynamic-approach-to-dbms/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;https://www.geeksforgeeks.org/extendible-hashing-dynamic-approach-to-dbms/&lt;/a&gt;&lt;/p&gt;
-&lt;hr&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/go-124-%E7%9A%84-swiss-map%E5%85%BC%E5%AE%B9%E6%80%A7%E6%89%A9%E5%B1%95%E5%93%88%E5%B8%8C%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;本文长期链接&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;如果您觉得我的博客对你有帮助，请通过 &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;RSS&lt;/a&gt;订阅我。&lt;/li&gt;
