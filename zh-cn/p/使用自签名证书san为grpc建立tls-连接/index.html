@@ -4,24 +4,22 @@
 
 <meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
-<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="gRPC 是Google开发的一个高性能RPC框架，gRPC 默认内置了两种认证方式： SSL/TLS 认证方式 基于 Token 的认证方式 没有启用证书的gRPC服务和客户端进行的是明文通信，信息面临被任何第三方监听的风险。为了保证gRPC通信不被第三方监听、篡改或伪造，可以对服务器启动TLS加密特性。 从 go 1.15 版本开始废弃 CommonName，因此推荐使用 SAN 证书。如果按照之前的步骤通过 OpenSSL 来生成密钥、CSR、证书，会出现这样的错误： 1 rpc error: code = Unavailable desc = connection error: desc = &#34;transport: authentication handshake failed: x509: certificate relies on legacy Common Name field, use SANs instead&#34;| This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much.">
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="gRPC 是Google开发的一个高性能RPC框架，gRPC 默认内置了两种认证方式：\nSSL/TLS 认证方式 基于 Token 的认证方式\n没有启用证书的gRPC服务和客户端进行的是明文通信，信息面临被任何第三方监听的风险。为了保证gRPC通信不被第三方监听、篡改或伪造，可以对服务器启动TLS加密特性。\n从 go 1.15 版本开始废弃 CommonName，因此推荐使用 SAN 证书。如果按照之前的步骤通过 OpenSSL 来生成密钥、CSR、证书，会出现这样的错误： 1 rpc error: code = Unavailable desc = connection error: desc = &#34;transport: authentication handshake failed: x509: certificate relies on legacy Common Name field, use SANs instead&#34;| This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much.\n什么是SAN SAN(Subject Alternative Name) 是\u00a0SSL\u00a0标准\u00a0x509\u00a0中定义的一个扩展。使用了\u00a0SAN\u00a0字段的\u00a0SSL\u00a0证书，可以扩展此证书支持的域名，使得一个证书可以支持多个不同域名的解析。\n通俗点就是，在 SAN 证书中，可以有多个完整的 CN（CommonName），这样只需要购买一个证书就可以用在多个 URL。比如 skype.com 的证书，它就有很多 SAN。\n">
 <title> 使用自签名证书SAN为gRPC建立TLS 连接</title>
 
 <link rel='canonical' href='https://huizhou92.com/zh-cn/p/%E4%BD%BF%E7%94%A8%E8%87%AA%E7%AD%BE%E5%90%8D%E8%AF%81%E4%B9%A6san%E4%B8%BAgrpc%E5%BB%BA%E7%AB%8Btls-%E8%BF%9E%E6%8E%A5/'>
 
 <link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content=" 使用自签名证书SAN为gRPC建立TLS 连接">
-<meta property='og:description' content="gRPC 是Google开发的一个高性能RPC框架，gRPC 默认内置了两种认证方式： SSL/TLS 认证方式 基于 Token 的认证方式 没有启用证书的gRPC服务和客户端进行的是明文通信，信息面临被任何第三方监听的风险。为了保证gRPC通信不被第三方监听、篡改或伪造，可以对服务器启动TLS加密特性。 从 go 1.15 版本开始废弃 CommonName，因此推荐使用 SAN 证书。如果按照之前的步骤通过 OpenSSL 来生成密钥、CSR、证书，会出现这样的错误： 1 rpc error: code = Unavailable desc = connection error: desc = &#34;transport: authentication handshake failed: x509: certificate relies on legacy Common Name field, use SANs instead&#34;| This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much.">
+<meta property='og:description' content="gRPC 是Google开发的一个高性能RPC框架，gRPC 默认内置了两种认证方式：\nSSL/TLS 认证方式 基于 Token 的认证方式\n没有启用证书的gRPC服务和客户端进行的是明文通信，信息面临被任何第三方监听的风险。为了保证gRPC通信不被第三方监听、篡改或伪造，可以对服务器启动TLS加密特性。\n从 go 1.15 版本开始废弃 CommonName，因此推荐使用 SAN 证书。如果按照之前的步骤通过 OpenSSL 来生成密钥、CSR、证书，会出现这样的错误： 1 rpc error: code = Unavailable desc = connection error: desc = &#34;transport: authentication handshake failed: x509: certificate relies on legacy Common Name field, use SANs instead&#34;| This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much.\n什么是SAN SAN(Subject Alternative Name) 是\u00a0SSL\u00a0标准\u00a0x509\u00a0中定义的一个扩展。使用了\u00a0SAN\u00a0字段的\u00a0SSL\u00a0证书，可以扩展此证书支持的域名，使得一个证书可以支持多个不同域名的解析。\n通俗点就是，在 SAN 证书中，可以有多个完整的 CN（CommonName），这样只需要购买一个证书就可以用在多个 URL。比如 skype.com 的证书，它就有很多 SAN。\n">
 <meta property='og:url' content='https://huizhou92.com/zh-cn/p/%E4%BD%BF%E7%94%A8%E8%87%AA%E7%AD%BE%E5%90%8D%E8%AF%81%E4%B9%A6san%E4%B8%BAgrpc%E5%BB%BA%E7%AB%8Btls-%E8%BF%9E%E6%8E%A5/'>
 <meta property='og:site_name' content='huizhou92&#39;s Blog'>
 <meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:tag' content='tech' /><meta property='article:published_time' content='2024-06-29T21:41:50&#43;08:00'/><meta property='article:modified_time' content='2024-06-29T21:41:45&#43;08:00'/><meta property='og:image' content='https://images.yixiao9206.cn/blog-images/2024/05/4976a194a8daca00ff6991a866c2ee53.png' />
 <meta name="twitter:site" content="@piaopiaopig">
     <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content=" 使用自签名证书SAN为gRPC建立TLS 连接">
-<meta name="twitter:description" content="gRPC 是Google开发的一个高性能RPC框架，gRPC 默认内置了两种认证方式： SSL/TLS 认证方式 基于 Token 的认证方式 没有启用证书的gRPC服务和客户端进行的是明文通信，信息面临被任何第三方监听的风险。为了保证gRPC通信不被第三方监听、篡改或伪造，可以对服务器启动TLS加密特性。 从 go 1.15 版本开始废弃 CommonName，因此推荐使用 SAN 证书。如果按照之前的步骤通过 OpenSSL 来生成密钥、CSR、证书，会出现这样的错误： 1 rpc error: code = Unavailable desc = connection error: desc = &#34;transport: authentication handshake failed: x509: certificate relies on legacy Common Name field, use SANs instead&#34;| This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much."><meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:description" content="gRPC 是Google开发的一个高性能RPC框架，gRPC 默认内置了两种认证方式：\nSSL/TLS 认证方式 基于 Token 的认证方式\n没有启用证书的gRPC服务和客户端进行的是明文通信，信息面临被任何第三方监听的风险。为了保证gRPC通信不被第三方监听、篡改或伪造，可以对服务器启动TLS加密特性。\n从 go 1.15 版本开始废弃 CommonName，因此推荐使用 SAN 证书。如果按照之前的步骤通过 OpenSSL 来生成密钥、CSR、证书，会出现这样的错误： 1 rpc error: code = Unavailable desc = connection error: desc = &#34;transport: authentication handshake failed: x509: certificate relies on legacy Common Name field, use SANs instead&#34;| This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much.\n什么是SAN SAN(Subject Alternative Name) 是\u00a0SSL\u00a0标准\u00a0x509\u00a0中定义的一个扩展。使用了\u00a0SAN\u00a0字段的\u00a0SSL\u00a0证书，可以扩展此证书支持的域名，使得一个证书可以支持多个不同域名的解析。\n通俗点就是，在 SAN 证书中，可以有多个完整的 CN（CommonName），这样只需要购买一个证书就可以用在多个 URL。比如 skype.com 的证书，它就有很多 SAN。\n"><meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:image" content='https://images.yixiao9206.cn/blog-images/2024/05/4976a194a8daca00ff6991a866c2ee53.png' />
     <link rel="shortcut icon" href="/favicon.png" />
 
-  
-    
       <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
       <script>
         var doNotTrack = false;
@@ -35,11 +33,7 @@
           gtag('js', new Date());
           gtag('config', 'G-JMPMQ2QREG');
         }
-      </script>
-    
-  
-
-<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+      </script><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
 crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
   <meta name="referrer" content="no-referrer-when-downgrade">
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
@@ -89,7 +83,7 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
                     
                     
                         
-                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                        <img src="/img/avatar_hu_e52293b5d2b8c5f7.jpeg" width="300"
                             height="300" class="site-logo" loading="lazy" alt="Avatar">
                     
                 
@@ -502,8 +496,7 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </div><!-- more -->
 <blockquote>
 <p>This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
-    >Medium</a>. Thank you very much.</p>
-</blockquote>
+    >Medium</a>. Thank you very much.</p></blockquote>
 <h2 id="什么是san">什么是<code>SAN</code>
 </h2><p><em><strong>SAN(Subject Alternative Name)</strong></em> 是 <code>SSL</code> 标准 <code>x509</code> 中定义的一个扩展。使用了 <code>SAN</code> 字段的 <code>SSL</code> 证书，可以扩展此证书支持的域名，使得一个证书可以支持多个不同域名的解析。<br>
 通俗点就是，在 SAN 证书中，可以有多个<strong>完整</strong>的 CN（CommonName），这样只需要购买一个证书就可以用在多个 URL。比如 skype.com 的证书，它就有很多 SAN。</p>
@@ -784,21 +777,21 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
 </span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to load key pair: %v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
 </span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">    <span class="c1">// 通过CA创建证书池  
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">certPool</span> <span class="o">:=</span> <span class="nx">x509</span><span class="p">.</span><span class="nf">NewCertPool</span><span class="p">()</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// 通过CA创建证书池  </span>
+</span></span><span class="line"><span class="cl">    <span class="nx">certPool</span> <span class="o">:=</span> <span class="nx">x509</span><span class="p">.</span><span class="nf">NewCertPool</span><span class="p">()</span>  
 </span></span><span class="line"><span class="cl">    <span class="nx">ca</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">os</span><span class="p">.</span><span class="nf">ReadFile</span><span class="p">(</span><span class="s">&#34;./keys/ca.crt&#34;</span><span class="p">)</span>  
 </span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
 </span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to read ca: %v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
 </span></span><span class="line"><span class="cl">    <span class="p">}</span>  
 </span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl">    <span class="c1">// 将来自CA的客户端证书附加到证书池  
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">if</span> <span class="nx">ok</span> <span class="o">:=</span> <span class="nx">certPool</span><span class="p">.</span><span class="nf">AppendCertsFromPEM</span><span class="p">(</span><span class="nx">ca</span><span class="p">);</span> <span class="p">!</span><span class="nx">ok</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// 将来自CA的客户端证书附加到证书池  </span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">ok</span> <span class="o">:=</span> <span class="nx">certPool</span><span class="p">.</span><span class="nf">AppendCertsFromPEM</span><span class="p">(</span><span class="nx">ca</span><span class="p">);</span> <span class="p">!</span><span class="nx">ok</span> <span class="p">{</span>  
 </span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to append ca certificate&#34;</span><span class="p">)</span>  
 </span></span><span class="line"><span class="cl">    <span class="p">}</span>  
 </span></span><span class="line"><span class="cl">  
 </span></span><span class="line"><span class="cl">    <span class="nx">opts</span> <span class="o">:=</span> <span class="p">[]</span><span class="nx">grpc</span><span class="p">.</span><span class="nx">ServerOption</span><span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">grpc</span><span class="p">.</span><span class="nf">Creds</span><span class="p">(</span> <span class="c1">// 为所有传入的连接启用TLS  
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span>          <span class="nx">credentials</span><span class="p">.</span><span class="nf">NewTLS</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">tls</span><span class="p">.</span><span class="nx">Config</span><span class="p">{</span>  
+</span></span><span class="line"><span class="cl">       <span class="nx">grpc</span><span class="p">.</span><span class="nf">Creds</span><span class="p">(</span> <span class="c1">// 为所有传入的连接启用TLS  </span>
+</span></span><span class="line"><span class="cl">          <span class="nx">credentials</span><span class="p">.</span><span class="nf">NewTLS</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">tls</span><span class="p">.</span><span class="nx">Config</span><span class="p">{</span>  
 </span></span><span class="line"><span class="cl">             <span class="nx">ClientAuth</span><span class="p">:</span>   <span class="nx">tls</span><span class="p">.</span><span class="nx">RequireAndVerifyClientCert</span><span class="p">,</span>  
 </span></span><span class="line"><span class="cl">             <span class="nx">Certificates</span><span class="p">:</span> <span class="p">[]</span><span class="nx">tls</span><span class="p">.</span><span class="nx">Certificate</span><span class="p">{</span><span class="nx">certificate</span><span class="p">},</span>  
 </span></span><span class="line"><span class="cl">             <span class="nx">ClientCAs</span><span class="p">:</span>    <span class="nx">certPool</span><span class="p">,</span>  
@@ -810,8 +803,8 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
 </span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;failed to listen %d port&#34;</span><span class="p">,</span> <span class="mi">50051</span><span class="p">)</span>  
 </span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">    <span class="c1">// 通过传入的TLS服务器凭证创建新的gRPC服务实例  
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">s</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">NewServer</span><span class="p">(</span><span class="nx">opts</span><span class="o">...</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// 通过传入的TLS服务器凭证创建新的gRPC服务实例  </span>
+</span></span><span class="line"><span class="cl">    <span class="nx">s</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">NewServer</span><span class="p">(</span><span class="nx">opts</span><span class="o">...</span><span class="p">)</span>  
 </span></span><span class="line"><span class="cl">    <span class="nx">api</span><span class="p">.</span><span class="nf">RegisterGreeterServer</span><span class="p">(</span><span class="nx">s</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">server</span><span class="p">{})</span>  
 </span></span><span class="line"><span class="cl">    <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;server listening at %v&#34;</span><span class="p">,</span> <span class="nx">listen</span><span class="p">.</span><span class="nf">Addr</span><span class="p">())</span>  
 </span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">s</span><span class="p">.</span><span class="nf">Serve</span><span class="p">(</span><span class="nx">listen</span><span class="p">);</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
@@ -822,8 +815,8 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </span></span><span class="line"><span class="cl">  
 </span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">ErrorWithDetails</span><span class="p">()</span> <span class="kt">error</span> <span class="p">{</span>  
 </span></span><span class="line"><span class="cl">    <span class="nx">st</span> <span class="o">:=</span> <span class="nx">status</span><span class="p">.</span><span class="nf">Newf</span><span class="p">(</span><span class="nx">codes</span><span class="p">.</span><span class="nx">Internal</span><span class="p">,</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;something went wrong: %v&#34;</span><span class="p">,</span> <span class="s">&#34;api.Getter&#34;</span><span class="p">))</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">v</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">errdetails</span><span class="p">.</span><span class="nx">PreconditionFailure_Violation</span><span class="p">{</span> <span class="c1">//errDetails  
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span>       <span class="nx">Type</span><span class="p">:</span>        <span class="s">&#34;test&#34;</span><span class="p">,</span>  
+</span></span><span class="line"><span class="cl">    <span class="nx">v</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">errdetails</span><span class="p">.</span><span class="nx">PreconditionFailure_Violation</span><span class="p">{</span> <span class="c1">//errDetails  </span>
+</span></span><span class="line"><span class="cl">       <span class="nx">Type</span><span class="p">:</span>        <span class="s">&#34;test&#34;</span><span class="p">,</span>  
 </span></span><span class="line"><span class="cl">       <span class="nx">Subject</span><span class="p">:</span>     <span class="s">&#34;12&#34;</span><span class="p">,</span>  
 </span></span><span class="line"><span class="cl">       <span class="nx">Description</span><span class="p">:</span> <span class="s">&#34;32&#34;</span><span class="p">,</span>  
 </span></span><span class="line"><span class="cl">    <span class="p">}</span>  
@@ -869,17 +862,17 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nx">conn</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span>  
 </span></span><span class="line"><span class="cl">  
 </span></span><span class="line"><span class="cl">    <span class="nx">client</span> <span class="o">:=</span> <span class="nx">api</span><span class="p">.</span><span class="nf">NewGreeterClient</span><span class="p">(</span><span class="nx">conn</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="c1">// 创建带有超时时间的上下文, cancel可以取消上下文  
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(),</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="o">*</span><span class="mi">5</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// 创建带有超时时间的上下文, cancel可以取消上下文  </span>
+</span></span><span class="line"><span class="cl">    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(),</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="o">*</span><span class="mi">5</span><span class="p">)</span>  
 </span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nf">cancel</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">    <span class="c1">// 业务代码处理部分 ...    r, err := client.SayHello(ctx, &amp;api.HelloRequest{Name: &#34;Hello&#34;})  
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// 业务代码处理部分 ...    r, err := client.SayHello(ctx, &amp;api.HelloRequest{Name: &#34;Hello&#34;})  </span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
 </span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Failed to greet, error: %v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
 </span></span><span class="line"><span class="cl">    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>  
 </span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Greeting: %v&#34;</span><span class="p">,</span> <span class="nx">r</span><span class="p">.</span><span class="nf">GetMessage</span><span class="p">())</span>  
 </span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">    <span class="c1">// Set up a connection to the server.  
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Greeting: %s&#34;</span><span class="p">,</span> <span class="nx">r</span><span class="p">.</span><span class="nf">GetMessage</span><span class="p">())</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// Set up a connection to the server.  </span>
+</span></span><span class="line"><span class="cl">    <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Greeting: %s&#34;</span><span class="p">,</span> <span class="nx">r</span><span class="p">.</span><span class="nf">GetMessage</span><span class="p">())</span>  
 </span></span><span class="line"><span class="cl"><span class="p">}</span>
 </span></span></code></pre></td></tr></table>
 </div>
@@ -968,25 +961,25 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </span></span><span class="line"><span class="cl">          <span class="p">})),</span>  
 </span></span><span class="line"><span class="cl">    <span class="p">}</span>  
 </span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl">    <span class="c1">// conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(insecure.NewCredentials()))  
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">conn</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">Dial</span><span class="p">(</span><span class="s">&#34;localhost:50051&#34;</span><span class="p">,</span> <span class="nx">opts</span><span class="o">...</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(insecure.NewCredentials()))  </span>
+</span></span><span class="line"><span class="cl">    <span class="nx">conn</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">Dial</span><span class="p">(</span><span class="s">&#34;localhost:50051&#34;</span><span class="p">,</span> <span class="nx">opts</span><span class="o">...</span><span class="p">)</span>  
 </span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
 </span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Connect to %s failed&#34;</span><span class="p">,</span> <span class="s">&#34;localhost:50051&#34;</span><span class="p">)</span>  
 </span></span><span class="line"><span class="cl">    <span class="p">}</span>  
 </span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nx">conn</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span>  
 </span></span><span class="line"><span class="cl">  
 </span></span><span class="line"><span class="cl">    <span class="nx">client</span> <span class="o">:=</span> <span class="nx">api</span><span class="p">.</span><span class="nf">NewGreeterClient</span><span class="p">(</span><span class="nx">conn</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="c1">// 创建带有超时时间的上下文, cancel可以取消上下文  
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(),</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="o">*</span><span class="mi">5</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// 创建带有超时时间的上下文, cancel可以取消上下文  </span>
+</span></span><span class="line"><span class="cl">    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(),</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="o">*</span><span class="mi">5</span><span class="p">)</span>  
 </span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nf">cancel</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">    <span class="c1">// 业务代码处理部分 ...    r, err := client.SayHello(ctx, &amp;api.HelloRequest{Name: &#34;Hello&#34;})  
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// 业务代码处理部分 ...    r, err := client.SayHello(ctx, &amp;api.HelloRequest{Name: &#34;Hello&#34;})  </span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
 </span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Failed to greet, error: %v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
 </span></span><span class="line"><span class="cl">    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>  
 </span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Greeting: %v&#34;</span><span class="p">,</span> <span class="nx">r</span><span class="p">.</span><span class="nf">GetMessage</span><span class="p">())</span>  
 </span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">    <span class="c1">// Set up a connection to the server.  
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Greeting: %s&#34;</span><span class="p">,</span> <span class="nx">r</span><span class="p">.</span><span class="nf">GetMessage</span><span class="p">())</span>  
+</span></span><span class="line"><span class="cl">    <span class="c1">// Set up a connection to the server.  </span>
+</span></span><span class="line"><span class="cl">    <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Greeting: %s&#34;</span><span class="p">,</span> <span class="nx">r</span><span class="p">.</span><span class="nf">GetMessage</span><span class="p">())</span>  
 </span></span><span class="line"><span class="cl"><span class="p">}</span>
 </span></span></code></pre></td></tr></table>
 </div>
@@ -1095,6 +1088,25 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
             
                 
 <article class="has-image">
+    <a href="/zh-cn/p/go-%E7%9A%84-map-%E4%B8%BA%E4%BB%80%E4%B9%88%E5%8F%98%E6%85%A2%E4%BA%86.zh-cn/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2025/05/a7748f1ab7e01c49c0f35f9591f6cfd3.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2025/05/a7748f1ab7e01c49c0f35f9591f6cfd3.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 的 map 为什么变慢了?.zh-cn</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
     <a href="/zh-cn/p/go124-mutex%E8%87%AA%E6%97%8B%E4%BC%98%E5%8C%96%E6%9C%80%E5%A4%A7%E6%8F%90%E5%8D%8770%E7%9A%84%E6%80%A7%E8%83%BD/">
         
         
@@ -1152,19 +1164,6 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 
         <div class="article-details">
             <h2 class="article-title">Go 1.24 的 Swiss Map：兼容性、扩展哈希与遗留问题</h2>
-        </div>
-    </a>
-</article>
-
-            
-                
-<article class="">
-    <a href="/zh-cn/p/%E4%BD%BF%E7%94%A8%E5%AF%B9%E5%86%B2%E6%A8%A1%E5%BC%8F%E9%99%8D%E4%BD%8E%E9%95%BF%E5%B0%BE%E8%AF%B7%E6%B1%82/">
-        
-        
-
-        <div class="article-details">
-            <h2 class="article-title">使用对冲模式降低长尾请求</h2>
         </div>
     </a>
 </article>

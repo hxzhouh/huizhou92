@@ -4,23 +4,21 @@
 
 <meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
-<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="在[上一篇](013 两个有用的 Golang 无锁编程技巧.zh-cn)文章中，我们讨论了两个无锁编程思想。总结就是：通过精心的设计消除数据共享或者消除并发访问同一个数据。尽管我们一直想追求完全的无锁编程，但事实是这基本不可能。一般来说，我们讨论look-free，是因为想要避免加锁，那么使用CAS是一种不错的选择。如果CAS 都不能够满足要求，那么我们可以尽量将Mutex 的粒度缩小，或者使用RWmutex 替换Mutex等。 lock-free的优势： 减少线程阻塞和等待时间 避免线程的优先级反转 提高并发性能 消除竞态条件（race condition）、死锁、饿死等潜在问题 代码更加清晰易懂 本文我们将使用Go实践一下几种lock-free编程的方案。 Channel Share Memory By Communicating 是Go语言官方推荐的共享内存方案： 不要通过共享内存进行通信；相反，通过通信来共享内存。 channel实现 lock-free 的 原因是 channel 将数据所有全交出去了 channel 内部使用了锁 在官方博客的例子中 1 2 3 4 5 6 7 8 9 type Resource string func Poller(in, out chan *Resource) { for r := range in { // poll the URL // send the processed Resource to out out &lt;- r } } 数据通过 in，out 两个channel 流转，不存在同一个时间有多个goroutine 同时操作一份数据，所以这就是lock-free。">
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="在[上一篇](013 两个有用的 Golang 无锁编程技巧.zh-cn)文章中，我们讨论了两个无锁编程思想。总结就是：通过精心的设计消除数据共享或者消除并发访问同一个数据。尽管我们一直想追求完全的无锁编程，但事实是这基本不可能。一般来说，我们讨论look-free，是因为想要避免加锁，那么使用CAS是一种不错的选择。如果CAS 都不能够满足要求，那么我们可以尽量将Mutex 的粒度缩小，或者使用RWmutex 替换Mutex等。\nlock-free的优势：\n减少线程阻塞和等待时间 避免线程的优先级反转 提高并发性能 消除竞态条件（race condition）、死锁、饿死等潜在问题 代码更加清晰易懂\n本文我们将使用Go实践一下几种lock-free编程的方案。 Channel Share Memory By Communicating 是Go语言官方推荐的共享内存方案：\n不要通过共享内存进行通信；相反，通过通信来共享内存。\nchannel实现 lock-free 的 原因是\nchannel 将数据所有全交出去了 channel 内部使用了锁\n在官方博客的例子中 1 2 3 4 5 6 7 8 9 type Resource string func Poller(in, out chan *Resource) { for r := range in { // poll the URL // send the processed Resource to out out &lt;- r } } 数据通过 in，out 两个channel 流转，不存在同一个时间有多个goroutine 同时操作一份数据，所以这就是lock-free。\nCAS 现在几乎所有的 CPU 指令都支持\u00a0CAS\u00a0的原子操作，\nCAS\u00a0(compare and swap) 是原子操作的一种，用于在多线程中实现原子数据交换，避免多线程同时改写某一共享数据时，由于执行顺序不确定性以及中断的不可预知性产生的数据不一致问题。我们可以直接用\u00a0CAS\u00a0来实现\u00a0lock free的数据结构。\n如果我们要实现一个stack 数据结构，最常用的方案就是使用slice+ RWmutex ,保证并发安全， 同时，我们也可以使用CAS来实现 这个数据结构，完整的 代码如下：\n">
 <title>go 高性能编程EP11 lock-free 实践.zh-cn</title>
 
 <link rel='canonical' href='https://huizhou92.com/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8Bep11-lock-free-%E5%AE%9E%E8%B7%B5.zh-cn/'>
 
 <link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="go 高性能编程EP11 lock-free 实践.zh-cn">
-<meta property='og:description' content="在[上一篇](013 两个有用的 Golang 无锁编程技巧.zh-cn)文章中，我们讨论了两个无锁编程思想。总结就是：通过精心的设计消除数据共享或者消除并发访问同一个数据。尽管我们一直想追求完全的无锁编程，但事实是这基本不可能。一般来说，我们讨论look-free，是因为想要避免加锁，那么使用CAS是一种不错的选择。如果CAS 都不能够满足要求，那么我们可以尽量将Mutex 的粒度缩小，或者使用RWmutex 替换Mutex等。 lock-free的优势： 减少线程阻塞和等待时间 避免线程的优先级反转 提高并发性能 消除竞态条件（race condition）、死锁、饿死等潜在问题 代码更加清晰易懂 本文我们将使用Go实践一下几种lock-free编程的方案。 Channel Share Memory By Communicating 是Go语言官方推荐的共享内存方案： 不要通过共享内存进行通信；相反，通过通信来共享内存。 channel实现 lock-free 的 原因是 channel 将数据所有全交出去了 channel 内部使用了锁 在官方博客的例子中 1 2 3 4 5 6 7 8 9 type Resource string func Poller(in, out chan *Resource) { for r := range in { // poll the URL // send the processed Resource to out out &lt;- r } } 数据通过 in，out 两个channel 流转，不存在同一个时间有多个goroutine 同时操作一份数据，所以这就是lock-free。">
+<meta property='og:description' content="在[上一篇](013 两个有用的 Golang 无锁编程技巧.zh-cn)文章中，我们讨论了两个无锁编程思想。总结就是：通过精心的设计消除数据共享或者消除并发访问同一个数据。尽管我们一直想追求完全的无锁编程，但事实是这基本不可能。一般来说，我们讨论look-free，是因为想要避免加锁，那么使用CAS是一种不错的选择。如果CAS 都不能够满足要求，那么我们可以尽量将Mutex 的粒度缩小，或者使用RWmutex 替换Mutex等。\nlock-free的优势：\n减少线程阻塞和等待时间 避免线程的优先级反转 提高并发性能 消除竞态条件（race condition）、死锁、饿死等潜在问题 代码更加清晰易懂\n本文我们将使用Go实践一下几种lock-free编程的方案。 Channel Share Memory By Communicating 是Go语言官方推荐的共享内存方案：\n不要通过共享内存进行通信；相反，通过通信来共享内存。\nchannel实现 lock-free 的 原因是\nchannel 将数据所有全交出去了 channel 内部使用了锁\n在官方博客的例子中 1 2 3 4 5 6 7 8 9 type Resource string func Poller(in, out chan *Resource) { for r := range in { // poll the URL // send the processed Resource to out out &lt;- r } } 数据通过 in，out 两个channel 流转，不存在同一个时间有多个goroutine 同时操作一份数据，所以这就是lock-free。\nCAS 现在几乎所有的 CPU 指令都支持\u00a0CAS\u00a0的原子操作，\nCAS\u00a0(compare and swap) 是原子操作的一种，用于在多线程中实现原子数据交换，避免多线程同时改写某一共享数据时，由于执行顺序不确定性以及中断的不可预知性产生的数据不一致问题。我们可以直接用\u00a0CAS\u00a0来实现\u00a0lock free的数据结构。\n如果我们要实现一个stack 数据结构，最常用的方案就是使用slice+ RWmutex ,保证并发安全， 同时，我们也可以使用CAS来实现 这个数据结构，完整的 代码如下：\n">
 <meta property='og:url' content='https://huizhou92.com/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8Bep11-lock-free-%E5%AE%9E%E8%B7%B5.zh-cn/'>
 <meta property='og:site_name' content='huizhou92&#39;s Blog'>
 <meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='go' /><meta property='article:published_time' content='2024-09-09T09:46:47&#43;08:00'/><meta property='article:modified_time' content='2024-09-09T09:46:44&#43;08:00'/>
 <meta name="twitter:site" content="@piaopiaopig">
     <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="go 高性能编程EP11 lock-free 实践.zh-cn">
-<meta name="twitter:description" content="在[上一篇](013 两个有用的 Golang 无锁编程技巧.zh-cn)文章中，我们讨论了两个无锁编程思想。总结就是：通过精心的设计消除数据共享或者消除并发访问同一个数据。尽管我们一直想追求完全的无锁编程，但事实是这基本不可能。一般来说，我们讨论look-free，是因为想要避免加锁，那么使用CAS是一种不错的选择。如果CAS 都不能够满足要求，那么我们可以尽量将Mutex 的粒度缩小，或者使用RWmutex 替换Mutex等。 lock-free的优势： 减少线程阻塞和等待时间 避免线程的优先级反转 提高并发性能 消除竞态条件（race condition）、死锁、饿死等潜在问题 代码更加清晰易懂 本文我们将使用Go实践一下几种lock-free编程的方案。 Channel Share Memory By Communicating 是Go语言官方推荐的共享内存方案： 不要通过共享内存进行通信；相反，通过通信来共享内存。 channel实现 lock-free 的 原因是 channel 将数据所有全交出去了 channel 内部使用了锁 在官方博客的例子中 1 2 3 4 5 6 7 8 9 type Resource string func Poller(in, out chan *Resource) { for r := range in { // poll the URL // send the processed Resource to out out &lt;- r } } 数据通过 in，out 两个channel 流转，不存在同一个时间有多个goroutine 同时操作一份数据，所以这就是lock-free。">
+<meta name="twitter:description" content="在[上一篇](013 两个有用的 Golang 无锁编程技巧.zh-cn)文章中，我们讨论了两个无锁编程思想。总结就是：通过精心的设计消除数据共享或者消除并发访问同一个数据。尽管我们一直想追求完全的无锁编程，但事实是这基本不可能。一般来说，我们讨论look-free，是因为想要避免加锁，那么使用CAS是一种不错的选择。如果CAS 都不能够满足要求，那么我们可以尽量将Mutex 的粒度缩小，或者使用RWmutex 替换Mutex等。\nlock-free的优势：\n减少线程阻塞和等待时间 避免线程的优先级反转 提高并发性能 消除竞态条件（race condition）、死锁、饿死等潜在问题 代码更加清晰易懂\n本文我们将使用Go实践一下几种lock-free编程的方案。 Channel Share Memory By Communicating 是Go语言官方推荐的共享内存方案：\n不要通过共享内存进行通信；相反，通过通信来共享内存。\nchannel实现 lock-free 的 原因是\nchannel 将数据所有全交出去了 channel 内部使用了锁\n在官方博客的例子中 1 2 3 4 5 6 7 8 9 type Resource string func Poller(in, out chan *Resource) { for r := range in { // poll the URL // send the processed Resource to out out &lt;- r } } 数据通过 in，out 两个channel 流转，不存在同一个时间有多个goroutine 同时操作一份数据，所以这就是lock-free。\nCAS 现在几乎所有的 CPU 指令都支持\u00a0CAS\u00a0的原子操作，\nCAS\u00a0(compare and swap) 是原子操作的一种，用于在多线程中实现原子数据交换，避免多线程同时改写某一共享数据时，由于执行顺序不确定性以及中断的不可预知性产生的数据不一致问题。我们可以直接用\u00a0CAS\u00a0来实现\u00a0lock free的数据结构。\n如果我们要实现一个stack 数据结构，最常用的方案就是使用slice+ RWmutex ,保证并发安全， 同时，我们也可以使用CAS来实现 这个数据结构，完整的 代码如下：\n">
     <link rel="shortcut icon" href="/favicon.png" />
 
-  
-    
       <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
       <script>
         var doNotTrack = false;
@@ -34,11 +32,7 @@
           gtag('js', new Date());
           gtag('config', 'G-JMPMQ2QREG');
         }
-      </script>
-    
-  
-
-<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+      </script><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
 crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
   <meta name="referrer" content="no-referrer-when-downgrade">
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
@@ -88,7 +82,7 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
                     
                     
                         
-                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                        <img src="/img/avatar_hu_e52293b5d2b8c5f7.jpeg" width="300"
                             height="300" class="site-logo" loading="lazy" alt="Avatar">
                     
                 
@@ -486,8 +480,7 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </h3><p><a class="link" href="https://go.dev/blog/codelab-share"  target="_blank" rel="noopener"
     >Share Memory By Communicating</a> 是Go语言官方推荐的共享内存方案：</p>
 <blockquote>
-<p>不要通过共享内存进行通信；相反，通过通信来共享内存。</p>
-</blockquote>
+<p>不要通过共享内存进行通信；相反，通过通信来共享内存。</p></blockquote>
 <p>channel实现 lock-free 的 原因是</p>
 <ol>
 <li>channel 将数据所有全交出去了</li>
@@ -511,9 +504,9 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </span></span><span class="line"><span class="cl">
 </span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">Poller</span><span class="p">(</span><span class="nx">in</span><span class="p">,</span> <span class="nx">out</span> <span class="kd">chan</span> <span class="o">*</span><span class="nx">Resource</span><span class="p">)</span> <span class="p">{</span>
 </span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">r</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">in</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="c1">// poll the URL
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span>        <span class="c1">// send the processed Resource to out
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span>        <span class="nx">out</span> <span class="o">&lt;-</span> <span class="nx">r</span>
+</span></span><span class="line"><span class="cl">        <span class="c1">// poll the URL</span>
+</span></span><span class="line"><span class="cl">        <span class="c1">// send the processed Resource to out</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">out</span> <span class="o">&lt;-</span> <span class="nx">r</span>
 </span></span><span class="line"><span class="cl">    <span class="p">}</span>
 </span></span><span class="line"><span class="cl"><span class="p">}</span>
 </span></span></code></pre></td></tr></table>
