@@ -4,21 +4,23 @@
 
 <meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
-<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="上周 go1.23 已经进入冻结期了，应该不会再添加新功能，相应的已经添加了的功能 也不太可能会被移除。\n这正好可以让我们提前尝鲜这些即将到来的新特性。\nhttps://groups.google.com/g/golang-dev/c/vXE304_MnKM\nThis article is first published in the medium MPP plan. If you are a medium user, please follow me in medium. Thank you very much.\n今天要说的就是1.23中对//go:linkname指令的变更。\n相关讨论的issue 在这里：\nhttps://github.com/golang/go/issues/67401\nTL;DR //go:linkname指令官方并不推荐使用，且不保证任何向前或者向后兼容性，因此明智的做法是尽量别用\n牢记这一点之后，我们可以接着往下看了。至于为啥和“我”也就是本文的作者有关，我们先看完新版本带来的新变化再说。\nlinkname指令是做什么的 简单的说，linkname指令用于向编译器和链接器传递信息。具体的含义根据用法可以分为三类。\n第一类叫做“pull”，意思是拉取，使用方式如下：\n1 2 3 4 5 6 import _ &#34;unsafe&#34; // 必须有这行才能用linkname import _ &#34;fmt&#34; // 被拉取的包需要显式导入（除了runtime包） //go:linkname my_func fmt.Println func my_func(...any) (n int, err error) 这种用法的指令格式是//go:linkname &lt;指令下方的只有声明的函数或包级别变量名&gt; &lt;本包或者其他包中的有完整定义的函数或变量&gt;。\n这个指令的作用就是告诉编译器和连接器，my_func的函数体直接使用fmt.Println的，my_func类似fmt.Println的别名，和它共享同一份代码，就像把指令第二个参数指定的函数和变量拉取下来给第一个参数使用一样。\n正因如此，指令下方给出的声明必须和被拉取的函数/变量完全一致，否则很容易因为类型不匹配导致panic（是的没错，除非拉取的对象不存在，否则都不会出现编译错误）。\n这个指令最恐怖的地方在于它能无视函数或者变量是否是export的，包私有的东西也能被拉取出来使用。因为这一点这种用法在早期的社区中很常见，比如很多人喜欢这么干：//go:linkname myRand runtime.fastrand，因为runtime提供了一个性能还不错的随机数实现，但没有公开出来，所以有人会用linkname指令把它导出为己所用，当然随着1.21的发布这种用法不再有任何意义了，请永远都不要去模仿。\n">
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="上周 go1.23 已经进入冻结期了，应该不会再添加新功能，相应的已经添加了的功能 也不太可能会被移除。 这正好可以让我们提前尝鲜这些即将到来的新特性。 https://groups.google.com/g/golang-dev/c/vXE304_MnKM This article is first published in the medium MPP plan. If you are a medium user, please follow me in medium. Thank you very much. 今天要说的就是1.23中对//go:linkname指令的变更。 相关讨论的issue 在这里： https://github.com/golang/go/issues/67401 TL;DR //go:linkname指令官方并不推荐使用，且不保证任何向前或者向后兼容性，因此明智的做法是尽量别用 牢记这一点之后，我们可以接着往下看了。至于为啥和“我”也就是本文的作者有关，我们先看完新版本带来的新变化再说。 linkname指令是做什么的 简单的说，linkname指令用于向编译器和链接器传递信息。具体的含义根据用法可以分为三类。 第一类叫做“pull”，意思是拉取，使用方式如下： 1 2 3 4 5 6 import _ &#34;unsafe&#34; // 必须有这行才能用linkname import _ &#34;fmt&#34; // 被拉取的包需要显式导入（除了runtime包） //go:linkname my_func fmt.Println func my_func(...any) (n int, err error) 这种用法的指令格式是//go:linkname &lt;指令下方的只有声明的函数或包级别变量名&gt; &lt;本包或者其他包中的有完整定义的函数或变量&gt;。 这个指令的作用就是告诉编译器和连接器，my_func的函数体直接使用fmt.Println的，my_func类似fmt.Println的别名，和它共享同一份代码，就像把指令第二个参数指定的函数和变量拉取下来给第一个参数使用一样。">
 <title>Golang 1.23：`//go:linkname` 的变更及其对开发人员的意义</title>
 
 <link rel='canonical' href='https://huizhou92.com/zh-cn/p/%23-golang-1.23-changes-to-/golinkname-and-what-it-means-for-developers/'>
 
 <link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="Golang 1.23：`//go:linkname` 的变更及其对开发人员的意义">
-<meta property='og:description' content="上周 go1.23 已经进入冻结期了，应该不会再添加新功能，相应的已经添加了的功能 也不太可能会被移除。\n这正好可以让我们提前尝鲜这些即将到来的新特性。\nhttps://groups.google.com/g/golang-dev/c/vXE304_MnKM\nThis article is first published in the medium MPP plan. If you are a medium user, please follow me in medium. Thank you very much.\n今天要说的就是1.23中对//go:linkname指令的变更。\n相关讨论的issue 在这里：\nhttps://github.com/golang/go/issues/67401\nTL;DR //go:linkname指令官方并不推荐使用，且不保证任何向前或者向后兼容性，因此明智的做法是尽量别用\n牢记这一点之后，我们可以接着往下看了。至于为啥和“我”也就是本文的作者有关，我们先看完新版本带来的新变化再说。\nlinkname指令是做什么的 简单的说，linkname指令用于向编译器和链接器传递信息。具体的含义根据用法可以分为三类。\n第一类叫做“pull”，意思是拉取，使用方式如下：\n1 2 3 4 5 6 import _ &#34;unsafe&#34; // 必须有这行才能用linkname import _ &#34;fmt&#34; // 被拉取的包需要显式导入（除了runtime包） //go:linkname my_func fmt.Println func my_func(...any) (n int, err error) 这种用法的指令格式是//go:linkname &lt;指令下方的只有声明的函数或包级别变量名&gt; &lt;本包或者其他包中的有完整定义的函数或变量&gt;。\n这个指令的作用就是告诉编译器和连接器，my_func的函数体直接使用fmt.Println的，my_func类似fmt.Println的别名，和它共享同一份代码，就像把指令第二个参数指定的函数和变量拉取下来给第一个参数使用一样。\n正因如此，指令下方给出的声明必须和被拉取的函数/变量完全一致，否则很容易因为类型不匹配导致panic（是的没错，除非拉取的对象不存在，否则都不会出现编译错误）。\n这个指令最恐怖的地方在于它能无视函数或者变量是否是export的，包私有的东西也能被拉取出来使用。因为这一点这种用法在早期的社区中很常见，比如很多人喜欢这么干：//go:linkname myRand runtime.fastrand，因为runtime提供了一个性能还不错的随机数实现，但没有公开出来，所以有人会用linkname指令把它导出为己所用，当然随着1.21的发布这种用法不再有任何意义了，请永远都不要去模仿。\n">
+<meta property='og:description' content="上周 go1.23 已经进入冻结期了，应该不会再添加新功能，相应的已经添加了的功能 也不太可能会被移除。 这正好可以让我们提前尝鲜这些即将到来的新特性。 https://groups.google.com/g/golang-dev/c/vXE304_MnKM This article is first published in the medium MPP plan. If you are a medium user, please follow me in medium. Thank you very much. 今天要说的就是1.23中对//go:linkname指令的变更。 相关讨论的issue 在这里： https://github.com/golang/go/issues/67401 TL;DR //go:linkname指令官方并不推荐使用，且不保证任何向前或者向后兼容性，因此明智的做法是尽量别用 牢记这一点之后，我们可以接着往下看了。至于为啥和“我”也就是本文的作者有关，我们先看完新版本带来的新变化再说。 linkname指令是做什么的 简单的说，linkname指令用于向编译器和链接器传递信息。具体的含义根据用法可以分为三类。 第一类叫做“pull”，意思是拉取，使用方式如下： 1 2 3 4 5 6 import _ &#34;unsafe&#34; // 必须有这行才能用linkname import _ &#34;fmt&#34; // 被拉取的包需要显式导入（除了runtime包） //go:linkname my_func fmt.Println func my_func(...any) (n int, err error) 这种用法的指令格式是//go:linkname &lt;指令下方的只有声明的函数或包级别变量名&gt; &lt;本包或者其他包中的有完整定义的函数或变量&gt;。 这个指令的作用就是告诉编译器和连接器，my_func的函数体直接使用fmt.Println的，my_func类似fmt.Println的别名，和它共享同一份代码，就像把指令第二个参数指定的函数和变量拉取下来给第一个参数使用一样。">
 <meta property='og:url' content='https://huizhou92.com/zh-cn/p/%23-golang-1.23-changes-to-/golinkname-and-what-it-means-for-developers/'>
 <meta property='og:site_name' content='huizhou92&#39;s Blog'>
 <meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:tag' content='go1_23' /><meta property='article:published_time' content='2024-05-27T09:37:25&#43;08:00'/><meta property='article:modified_time' content='2024-05-27T09:37:22&#43;08:00'/>
 <meta name="twitter:site" content="@piaopiaopig">
     <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="Golang 1.23：`//go:linkname` 的变更及其对开发人员的意义">
-<meta name="twitter:description" content="上周 go1.23 已经进入冻结期了，应该不会再添加新功能，相应的已经添加了的功能 也不太可能会被移除。\n这正好可以让我们提前尝鲜这些即将到来的新特性。\nhttps://groups.google.com/g/golang-dev/c/vXE304_MnKM\nThis article is first published in the medium MPP plan. If you are a medium user, please follow me in medium. Thank you very much.\n今天要说的就是1.23中对//go:linkname指令的变更。\n相关讨论的issue 在这里：\nhttps://github.com/golang/go/issues/67401\nTL;DR //go:linkname指令官方并不推荐使用，且不保证任何向前或者向后兼容性，因此明智的做法是尽量别用\n牢记这一点之后，我们可以接着往下看了。至于为啥和“我”也就是本文的作者有关，我们先看完新版本带来的新变化再说。\nlinkname指令是做什么的 简单的说，linkname指令用于向编译器和链接器传递信息。具体的含义根据用法可以分为三类。\n第一类叫做“pull”，意思是拉取，使用方式如下：\n1 2 3 4 5 6 import _ &#34;unsafe&#34; // 必须有这行才能用linkname import _ &#34;fmt&#34; // 被拉取的包需要显式导入（除了runtime包） //go:linkname my_func fmt.Println func my_func(...any) (n int, err error) 这种用法的指令格式是//go:linkname &lt;指令下方的只有声明的函数或包级别变量名&gt; &lt;本包或者其他包中的有完整定义的函数或变量&gt;。\n这个指令的作用就是告诉编译器和连接器，my_func的函数体直接使用fmt.Println的，my_func类似fmt.Println的别名，和它共享同一份代码，就像把指令第二个参数指定的函数和变量拉取下来给第一个参数使用一样。\n正因如此，指令下方给出的声明必须和被拉取的函数/变量完全一致，否则很容易因为类型不匹配导致panic（是的没错，除非拉取的对象不存在，否则都不会出现编译错误）。\n这个指令最恐怖的地方在于它能无视函数或者变量是否是export的，包私有的东西也能被拉取出来使用。因为这一点这种用法在早期的社区中很常见，比如很多人喜欢这么干：//go:linkname myRand runtime.fastrand，因为runtime提供了一个性能还不错的随机数实现，但没有公开出来，所以有人会用linkname指令把它导出为己所用，当然随着1.21的发布这种用法不再有任何意义了，请永远都不要去模仿。\n">
+<meta name="twitter:description" content="上周 go1.23 已经进入冻结期了，应该不会再添加新功能，相应的已经添加了的功能 也不太可能会被移除。 这正好可以让我们提前尝鲜这些即将到来的新特性。 https://groups.google.com/g/golang-dev/c/vXE304_MnKM This article is first published in the medium MPP plan. If you are a medium user, please follow me in medium. Thank you very much. 今天要说的就是1.23中对//go:linkname指令的变更。 相关讨论的issue 在这里： https://github.com/golang/go/issues/67401 TL;DR //go:linkname指令官方并不推荐使用，且不保证任何向前或者向后兼容性，因此明智的做法是尽量别用 牢记这一点之后，我们可以接着往下看了。至于为啥和“我”也就是本文的作者有关，我们先看完新版本带来的新变化再说。 linkname指令是做什么的 简单的说，linkname指令用于向编译器和链接器传递信息。具体的含义根据用法可以分为三类。 第一类叫做“pull”，意思是拉取，使用方式如下： 1 2 3 4 5 6 import _ &#34;unsafe&#34; // 必须有这行才能用linkname import _ &#34;fmt&#34; // 被拉取的包需要显式导入（除了runtime包） //go:linkname my_func fmt.Println func my_func(...any) (n int, err error) 这种用法的指令格式是//go:linkname &lt;指令下方的只有声明的函数或包级别变量名&gt; &lt;本包或者其他包中的有完整定义的函数或变量&gt;。 这个指令的作用就是告诉编译器和连接器，my_func的函数体直接使用fmt.Println的，my_func类似fmt.Println的别名，和它共享同一份代码，就像把指令第二个参数指定的函数和变量拉取下来给第一个参数使用一样。">
     <link rel="shortcut icon" href="/favicon.png" />
 
+  
+    
       <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
       <script>
         var doNotTrack = false;
@@ -32,7 +34,11 @@
           gtag('js', new Date());
           gtag('config', 'G-JMPMQ2QREG');
         }
-      </script><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+      </script>
+    
+  
+
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
 crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
   <meta name="referrer" content="no-referrer-when-downgrade">
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
@@ -82,7 +88,7 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
                     
                     
                         
-                        <img src="/img/avatar_hu_e52293b5d2b8c5f7.jpeg" width="300"
+                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
                             height="300" class="site-logo" loading="lazy" alt="Avatar">
                     
                 
@@ -490,7 +496,8 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 <!-- more -->
 <blockquote>
 <p>This article is first published in the medium MPP plan. If you are a medium user, please follow me in <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
-    >medium</a>. Thank you very much.</p></blockquote>
+    >medium</a>. Thank you very much.</p>
+</blockquote>
 <p>今天要说的就是1.23中对<code>//go:linkname</code>指令的变更。<br>
 相关讨论的issue 在这里：<br>
 <a class="link" href="https://github.com/golang/go/issues/67401"  target="_blank" rel="noopener"
@@ -510,12 +517,12 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </span><span class="lnt">6
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">import</span> <span class="nx">_</span> <span class="s">&#34;unsafe&#34;</span> <span class="c1">// 必须有这行才能用linkname</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="nx">_</span> <span class="s">&#34;fmt&#34;</span> <span class="c1">// 被拉取的包需要显式导入（除了runtime包）</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="c1">//go:linkname my_func fmt.Println</span>
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">my_func</span><span class="p">(</span><span class="o">...</span><span class="kt">any</span><span class="p">)</span> <span class="p">(</span><span class="nx">n</span> <span class="kt">int</span><span class="p">,</span> <span class="nx">err</span> <span class="kt">error</span><span class="p">)</span>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">import</span> <span class="nx">_</span> <span class="s">&#34;unsafe&#34;</span> <span class="c1">// 必须有这行才能用linkname
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>
+</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="nx">_</span> <span class="s">&#34;fmt&#34;</span> <span class="c1">// 被拉取的包需要显式导入（除了runtime包）
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>
+</span></span><span class="line"><span class="cl"><span class="c1">//go:linkname my_func fmt.Println
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">my_func</span><span class="p">(</span><span class="o">...</span><span class="nx">any</span><span class="p">)</span> <span class="p">(</span><span class="nx">n</span> <span class="kt">int</span><span class="p">,</span> <span class="nx">err</span> <span class="kt">error</span><span class="p">)</span>
 </span></span></code></pre></td></tr></table>
 </div>
 </div><p>这种用法的指令格式是<code>//go:linkname &lt;指令下方的只有声明的函数或包级别变量名&gt; &lt;本包或者其他包中的有完整定义的函数或变量&gt;</code>。</p>
@@ -539,19 +546,19 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </span><span class="lnt">12
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">import</span> <span class="nx">_</span> <span class="s">&#34;unsafe&#34;</span> <span class="c1">// 必须有这行才能用linkname</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="c1">//go:linkname main.fastHandle</span>
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">fastHandle</span><span class="p">(</span><span class="nx">input</span> <span class="nx">io</span><span class="p">.</span><span class="nx">Writer</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">import</span> <span class="nx">_</span> <span class="s">&#34;unsafe&#34;</span> <span class="c1">// 必须有这行才能用linkname
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>
+</span></span><span class="line"><span class="cl"><span class="c1">//go:linkname main.fastHandle
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">fastHandle</span><span class="p">(</span><span class="nx">input</span> <span class="nx">io</span><span class="p">.</span><span class="nx">Writer</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
 </span></span><span class="line"><span class="cl"><span class="o">...</span>
 </span></span><span class="line"><span class="cl"><span class="p">}</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="c1">// package main</span>
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">fastHandle</span><span class="p">(</span><span class="nx">input</span> <span class="nx">io</span><span class="p">.</span><span class="nx">Writer</span><span class="p">)</span> <span class="kt">error</span>
+</span></span><span class="line"><span class="cl"><span class="c1">// package main
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">fastHandle</span><span class="p">(</span><span class="nx">input</span> <span class="nx">io</span><span class="p">.</span><span class="nx">Writer</span><span class="p">)</span> <span class="kt">error</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="c1">// 后面main包中可以直接使用fastHandle</span>
-</span></span><span class="line"><span class="cl"><span class="c1">// 这种情况下需要在main包下创建一个空的asm文件（通常以.s作为扩展名），以告诉编译器fastHandle的定义在别处</span>
-</span></span></code></pre></td></tr></table>
+</span></span><span class="line"><span class="cl"><span class="c1">// 后面main包中可以直接使用fastHandle
+</span></span></span><span class="line"><span class="cl"><span class="c1">// 这种情况下需要在main包下创建一个空的asm文件（通常以.s作为扩展名），以告诉编译器fastHandle的定义在别处
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>在这种用法中，我们只需要把函数/变量名当作第一个参数传给指令，注意需要给出想用这个函数/变量的包的名字，这里是main。同时指令声明的变量或函数必须要在同包内有完整的定义，通常推荐直接把完整定义写在linkname指令下方。</p>
 <p>这种用法是告诉编译器和链接器这个函数/变量的名字就是<code>xxx.yyy</code>，如果遇到这个函数就使用linkname指定的函数/变量的代码，这个模式下甚至能在本包定义别的包里的函数。</p>
@@ -578,19 +585,19 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 <td class="lntd">
 <pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">mypkg</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="nx">_</span> <span class="s">&#34;unsafe&#34;</span> <span class="c1">// 必须有这行才能用linkname</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="c1">//go:linkname fastHandle</span>
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">fastHandle</span><span class="p">(</span><span class="nx">input</span> <span class="nx">io</span><span class="p">.</span><span class="nx">Writer</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="nx">_</span> <span class="s">&#34;unsafe&#34;</span> <span class="c1">// 必须有这行才能用linkname
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>
+</span></span><span class="line"><span class="cl"><span class="c1">//go:linkname fastHandle
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">fastHandle</span><span class="p">(</span><span class="nx">input</span> <span class="nx">io</span><span class="p">.</span><span class="nx">Writer</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
 </span></span><span class="line"><span class="cl"><span class="o">...</span>
 </span></span><span class="line"><span class="cl"><span class="p">}</span>
 </span></span><span class="line"><span class="cl">
 </span></span><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">main</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="nx">_</span> <span class="s">&#34;unsafe&#34;</span> <span class="c1">// 必须有这行才能用linkname</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="c1">//go:linkname fastHandle mypkg.fastHandle</span>
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">fastHandle</span><span class="p">(</span><span class="nx">input</span> <span class="nx">io</span><span class="p">.</span><span class="nx">Writer</span><span class="p">)</span> <span class="kt">error</span>
+</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="nx">_</span> <span class="s">&#34;unsafe&#34;</span> <span class="c1">// 必须有这行才能用linkname
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>
+</span></span><span class="line"><span class="cl"><span class="c1">//go:linkname fastHandle mypkg.fastHandle
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">fastHandle</span><span class="p">(</span><span class="nx">input</span> <span class="nx">io</span><span class="p">.</span><span class="nx">Writer</span><span class="p">)</span> <span class="kt">error</span>
 </span></span></code></pre></td></tr></table>
 </div>
 </div><p>“pull”的一方没什么区别，但“push”的一方不用再写包名，同时用来告诉编译器函数定义在别的地方的空的asm文件也不需要了。这种就像通讯协议中的“握手”，一方告诉编译器这边允许某个函数/变量被linkname操作，另一边则明确像编译器要求它要使用某个包的某个函数/变量。</p>
@@ -626,15 +633,15 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </span><span class="lnt">22
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// pkg/mymath/mymath.go</span>
-</span></span><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">mymath</span>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// pkg/mymath/mymath.go
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kn">package</span> <span class="nx">mymath</span>
 </span></span><span class="line"><span class="cl">
 </span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">uintPow</span><span class="p">(</span><span class="nx">n</span> <span class="kt">uint</span><span class="p">)</span> <span class="kt">uint</span> <span class="p">{</span>
 </span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="nx">n</span><span class="o">*</span><span class="nx">n</span>
 </span></span><span class="line"><span class="cl"><span class="p">}</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="c1">// main.go</span>
-</span></span><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">main</span>
+</span></span><span class="line"><span class="cl"><span class="c1">// main.go
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kn">package</span> <span class="nx">main</span>
 </span></span><span class="line"><span class="cl">
 </span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="p">(</span>
 </span></span><span class="line"><span class="cl">	<span class="s">&#34;fmt&#34;</span>
@@ -642,12 +649,12 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </span></span><span class="line"><span class="cl">	<span class="nx">_</span> <span class="s">&#34;unsafe&#34;</span>
 </span></span><span class="line"><span class="cl"><span class="p">)</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="c1">//go:linkname pow linkname/pkg/mymath.uintPow</span>
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">pow</span><span class="p">(</span><span class="nx">n</span> <span class="kt">uint</span><span class="p">)</span> <span class="kt">uint</span>
+</span></span><span class="line"><span class="cl"><span class="c1">//go:linkname pow linkname/pkg/mymath.uintPow
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">pow</span><span class="p">(</span><span class="nx">n</span> <span class="kt">uint</span><span class="p">)</span> <span class="kt">uint</span>
 </span></span><span class="line"><span class="cl">
 </span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nf">pow</span><span class="p">(</span><span class="mi">6</span><span class="p">))</span> <span class="c1">// 36</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nf">pow</span><span class="p">(</span><span class="mi">6</span><span class="p">))</span> <span class="c1">// 36
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="p">}</span>
 </span></span></code></pre></td></tr></table>
 </div>
 </div><p>正常来说，<code>uintPow</code>是不可能被外部使用的，然而通过linkname指令我们直接无视了接口的公开和私有，有什么就能用什么了。</p>
@@ -709,20 +716,20 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </span><span class="lnt">14
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// runtime/proc.go</span>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// runtime/proc.go
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>
+</span></span><span class="line"><span class="cl"><span class="c1">//go:linkname main_main main.main
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">main_main</span><span class="p">()</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="c1">//go:linkname main_main main.main</span>
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main_main</span><span class="p">()</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="c1">// runtime.main</span>
-</span></span><span class="line"><span class="cl"><span class="c1">// 所有go程序的入口</span>
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">	<span class="c1">// 初始化runtime</span>
-</span></span><span class="line"><span class="cl">	<span class="c1">// 调用main.main</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">fn</span> <span class="o">:=</span> <span class="nx">main_main</span> <span class="c1">// make an indirect call, as the linker doesn&#39;t know the address of the main package when laying down the runtime</span>
-</span></span><span class="line"><span class="cl">	<span class="nf">fn</span><span class="p">()</span>
-</span></span><span class="line"><span class="cl">	<span class="c1">// main退出后做清理工作</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="c1">// runtime.main
+</span></span></span><span class="line"><span class="cl"><span class="c1">// 所有go程序的入口
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="c1">// 初始化runtime
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="c1">// 调用main.main
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="nx">fn</span> <span class="o">:=</span> <span class="nx">main_main</span> <span class="c1">// make an indirect call, as the linker doesn&#39;t know the address of the main package when laying down the runtime
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="nf">fn</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">	<span class="c1">// main退出后做清理工作
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="p">}</span>
 </span></span></code></pre></td></tr></table>
 </div>
 </div><p>因为程序的入口在runtime里（要初始化runtime，比如gc等），所以入口函数必须在runtime包里。而我们又需要调用用户定义在main包里的main函数，但main包不能被import，因此只能靠linkname指令让链接器绕过所有编译器附加的限制来调用main函数。</p>
@@ -750,8 +757,8 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 <td class="lntd">
 <pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">main</span>
 </span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="nx">_</span> <span class="s">&#34;unsafe&#34;</span>
-</span></span><span class="line"><span class="cl"><span class="c1">//go:linkname corostart runtime.corostart</span>
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">corostart</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl"><span class="c1">//go:linkname corostart runtime.corostart
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">corostart</span><span class="p">()</span>
 </span></span><span class="line"><span class="cl">
 </span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
 </span></span><span class="line"><span class="cl"><span class="nf">corostart</span><span class="p">()</span>
