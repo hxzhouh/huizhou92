@@ -4,23 +4,21 @@
 
 <meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
-<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="原文:Avoiding high GC overhead with large heaps 当分配的内存量相对较小时，Go垃圾收集器 (GC) 工作得非常好,但是如果堆的大小较大，GC过程可能会消耗大量 的CPU。在极端情况下，它甚至可能无法完成任务（GC算法保证GC不会使用超过50%的CPU时间，如果超过这阈值，会导致内存泄露）。 有什么问题？ GC的工作是确定哪些内存块可被释放，它通过扫描内存中分配的指针来完成这一任务。简单来说，如果没有指针指向某个内存分配，则可释放该内存分配。这种方法非常有效，但需要扫描的内存越多，所需时间就越长。 这是一个大问题吗？ 有多严重？我们来揭晓！以下是 demonstrate 的小程序。我们分配 1e9 个 8 字节指针，即约 8GB 的内存。我们强制执行 GC，并测量它需要多长时间。我们会重复几次以获得一个稳定的值。还调用\u00a0runtime.KeepAlive()\u00a0以防止编译器优化。 1 2 3 4 5 6 7 8 9 10 11 func main() { a := make([]*int, 1e9) for i := 0; i &lt; 10; i++ { start := time.Now() fmt.Printf(&#34;GC took %s\\n&#34;, time.Since(start)) } runtime.KeepAlive(a) } 在我的 2015 年 MBP上，输出结果如下所示。 1 2 3 4 5 6 7 8 9 10 GC took 4.">
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="原文:Avoiding high GC overhead with large heaps\n当分配的内存量相对较小时，Go垃圾收集器 (GC) 工作得非常好,但是如果堆的大小较大，GC过程可能会消耗大量 的CPU。在极端情况下，它甚至可能无法完成任务（GC算法保证GC不会使用超过50%的CPU时间，如果超过这阈值，会导致内存泄露）。\n有什么问题？ GC的工作是确定哪些内存块可被释放，它通过扫描内存中分配的指针来完成这一任务。简单来说，如果没有指针指向某个内存分配，则可释放该内存分配。这种方法非常有效，但需要扫描的内存越多，所需时间就越长。\n这是一个大问题吗？ 有多严重？我们来揭晓！以下是 demonstrate 的小程序。我们分配 1e9 个 8 字节指针，即约 8GB 的内存。我们强制执行 GC，并测量它需要多长时间。我们会重复几次以获得一个稳定的值。还调用\u00a0runtime.KeepAlive()\u00a0以防止编译器优化。\n1 2 3 4 5 6 7 8 9 10 11 func main() { a := make([]*int, 1e9) for i := 0; i &lt; 10; i++ { start := time.Now() fmt.Printf(&#34;GC took %s\\n&#34;, time.Since(start)) } runtime.KeepAlive(a) } 在我的 2015 年 MBP上，输出结果如下所示。\n1 2 3 4 5 6 7 8 9 10 GC took 4.275752421s GC took 1.465274593s GC took 652.591348ms GC took 648.295749ms GC took 574.027934ms GC took 560.615987ms GC took 555.199337ms GC took 1.071215002s GC took 544.226187ms GC took 545.682881ms GC需要花费0.5S以上的时间。我为它分配了10e9个指针。事实上，每检查一个指针所花费的时间不到一纳秒。对于检查指针的速度来说，这已经相当快了。\n">
 <title>【译】 Go Action：如何避免因为大堆产生的高GC开销</title>
 
 <link rel='canonical' href='https://huizhou92.com/zh-cn/p/%E8%AF%91-go-action%E5%A6%82%E4%BD%95%E9%81%BF%E5%85%8D%E5%9B%A0%E4%B8%BA%E5%A4%A7%E5%A0%86%E4%BA%A7%E7%94%9F%E7%9A%84%E9%AB%98gc%E5%BC%80%E9%94%80/'>
 
 <link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="【译】 Go Action：如何避免因为大堆产生的高GC开销">
-<meta property='og:description' content="原文:Avoiding high GC overhead with large heaps 当分配的内存量相对较小时，Go垃圾收集器 (GC) 工作得非常好,但是如果堆的大小较大，GC过程可能会消耗大量 的CPU。在极端情况下，它甚至可能无法完成任务（GC算法保证GC不会使用超过50%的CPU时间，如果超过这阈值，会导致内存泄露）。 有什么问题？ GC的工作是确定哪些内存块可被释放，它通过扫描内存中分配的指针来完成这一任务。简单来说，如果没有指针指向某个内存分配，则可释放该内存分配。这种方法非常有效，但需要扫描的内存越多，所需时间就越长。 这是一个大问题吗？ 有多严重？我们来揭晓！以下是 demonstrate 的小程序。我们分配 1e9 个 8 字节指针，即约 8GB 的内存。我们强制执行 GC，并测量它需要多长时间。我们会重复几次以获得一个稳定的值。还调用\u00a0runtime.KeepAlive()\u00a0以防止编译器优化。 1 2 3 4 5 6 7 8 9 10 11 func main() { a := make([]*int, 1e9) for i := 0; i &lt; 10; i++ { start := time.Now() fmt.Printf(&#34;GC took %s\\n&#34;, time.Since(start)) } runtime.KeepAlive(a) } 在我的 2015 年 MBP上，输出结果如下所示。 1 2 3 4 5 6 7 8 9 10 GC took 4.">
+<meta property='og:description' content="原文:Avoiding high GC overhead with large heaps\n当分配的内存量相对较小时，Go垃圾收集器 (GC) 工作得非常好,但是如果堆的大小较大，GC过程可能会消耗大量 的CPU。在极端情况下，它甚至可能无法完成任务（GC算法保证GC不会使用超过50%的CPU时间，如果超过这阈值，会导致内存泄露）。\n有什么问题？ GC的工作是确定哪些内存块可被释放，它通过扫描内存中分配的指针来完成这一任务。简单来说，如果没有指针指向某个内存分配，则可释放该内存分配。这种方法非常有效，但需要扫描的内存越多，所需时间就越长。\n这是一个大问题吗？ 有多严重？我们来揭晓！以下是 demonstrate 的小程序。我们分配 1e9 个 8 字节指针，即约 8GB 的内存。我们强制执行 GC，并测量它需要多长时间。我们会重复几次以获得一个稳定的值。还调用\u00a0runtime.KeepAlive()\u00a0以防止编译器优化。\n1 2 3 4 5 6 7 8 9 10 11 func main() { a := make([]*int, 1e9) for i := 0; i &lt; 10; i++ { start := time.Now() fmt.Printf(&#34;GC took %s\\n&#34;, time.Since(start)) } runtime.KeepAlive(a) } 在我的 2015 年 MBP上，输出结果如下所示。\n1 2 3 4 5 6 7 8 9 10 GC took 4.275752421s GC took 1.465274593s GC took 652.591348ms GC took 648.295749ms GC took 574.027934ms GC took 560.615987ms GC took 555.199337ms GC took 1.071215002s GC took 544.226187ms GC took 545.682881ms GC需要花费0.5S以上的时间。我为它分配了10e9个指针。事实上，每检查一个指针所花费的时间不到一纳秒。对于检查指针的速度来说，这已经相当快了。\n">
 <meta property='og:url' content='https://huizhou92.com/zh-cn/p/%E8%AF%91-go-action%E5%A6%82%E4%BD%95%E9%81%BF%E5%85%8D%E5%9B%A0%E4%B8%BA%E5%A4%A7%E5%A0%86%E4%BA%A7%E7%94%9F%E7%9A%84%E9%AB%98gc%E5%BC%80%E9%94%80/'>
 <meta property='og:site_name' content='huizhou92&#39;s Blog'>
 <meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='go' /><meta property='article:published_time' content='2024-07-24T10:16:50&#43;08:00'/><meta property='article:modified_time' content='2024-07-24T10:16:28&#43;08:00'/>
 <meta name="twitter:site" content="@piaopiaopig">
     <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="【译】 Go Action：如何避免因为大堆产生的高GC开销">
-<meta name="twitter:description" content="原文:Avoiding high GC overhead with large heaps 当分配的内存量相对较小时，Go垃圾收集器 (GC) 工作得非常好,但是如果堆的大小较大，GC过程可能会消耗大量 的CPU。在极端情况下，它甚至可能无法完成任务（GC算法保证GC不会使用超过50%的CPU时间，如果超过这阈值，会导致内存泄露）。 有什么问题？ GC的工作是确定哪些内存块可被释放，它通过扫描内存中分配的指针来完成这一任务。简单来说，如果没有指针指向某个内存分配，则可释放该内存分配。这种方法非常有效，但需要扫描的内存越多，所需时间就越长。 这是一个大问题吗？ 有多严重？我们来揭晓！以下是 demonstrate 的小程序。我们分配 1e9 个 8 字节指针，即约 8GB 的内存。我们强制执行 GC，并测量它需要多长时间。我们会重复几次以获得一个稳定的值。还调用\u00a0runtime.KeepAlive()\u00a0以防止编译器优化。 1 2 3 4 5 6 7 8 9 10 11 func main() { a := make([]*int, 1e9) for i := 0; i &lt; 10; i++ { start := time.Now() fmt.Printf(&#34;GC took %s\\n&#34;, time.Since(start)) } runtime.KeepAlive(a) } 在我的 2015 年 MBP上，输出结果如下所示。 1 2 3 4 5 6 7 8 9 10 GC took 4.">
+<meta name="twitter:description" content="原文:Avoiding high GC overhead with large heaps\n当分配的内存量相对较小时，Go垃圾收集器 (GC) 工作得非常好,但是如果堆的大小较大，GC过程可能会消耗大量 的CPU。在极端情况下，它甚至可能无法完成任务（GC算法保证GC不会使用超过50%的CPU时间，如果超过这阈值，会导致内存泄露）。\n有什么问题？ GC的工作是确定哪些内存块可被释放，它通过扫描内存中分配的指针来完成这一任务。简单来说，如果没有指针指向某个内存分配，则可释放该内存分配。这种方法非常有效，但需要扫描的内存越多，所需时间就越长。\n这是一个大问题吗？ 有多严重？我们来揭晓！以下是 demonstrate 的小程序。我们分配 1e9 个 8 字节指针，即约 8GB 的内存。我们强制执行 GC，并测量它需要多长时间。我们会重复几次以获得一个稳定的值。还调用\u00a0runtime.KeepAlive()\u00a0以防止编译器优化。\n1 2 3 4 5 6 7 8 9 10 11 func main() { a := make([]*int, 1e9) for i := 0; i &lt; 10; i++ { start := time.Now() fmt.Printf(&#34;GC took %s\\n&#34;, time.Since(start)) } runtime.KeepAlive(a) } 在我的 2015 年 MBP上，输出结果如下所示。\n1 2 3 4 5 6 7 8 9 10 GC took 4.275752421s GC took 1.465274593s GC took 652.591348ms GC took 648.295749ms GC took 574.027934ms GC took 560.615987ms GC took 555.199337ms GC took 1.071215002s GC took 544.226187ms GC took 545.682881ms GC需要花费0.5S以上的时间。我为它分配了10e9个指针。事实上，每检查一个指针所花费的时间不到一纳秒。对于检查指针的速度来说，这已经相当快了。\n">
     <link rel="shortcut icon" href="/favicon.png" />
 
-  
-    
       <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
       <script>
         var doNotTrack = false;
@@ -34,11 +32,7 @@
           gtag('js', new Date());
           gtag('config', 'G-JMPMQ2QREG');
         }
-      </script>
-    
-  
-
-<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+      </script><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
 crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
   <meta name="referrer" content="no-referrer-when-downgrade">
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
@@ -88,7 +82,7 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
                     
                     
                         
-                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                        <img src="/img/avatar_hu_e52293b5d2b8c5f7.jpeg" width="300"
                             height="300" class="site-logo" loading="lazy" alt="Avatar">
                     
                 
@@ -679,13 +673,13 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </span></span><span class="line"><span class="cl">	<span class="nx">fd</span> <span class="o">:=</span> <span class="o">-</span><span class="mi">1</span>
 </span></span><span class="line"><span class="cl">	<span class="nx">data</span><span class="p">,</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">errno</span> <span class="o">:=</span> <span class="nx">syscall</span><span class="p">.</span><span class="nf">Syscall6</span><span class="p">(</span>
 </span></span><span class="line"><span class="cl">		<span class="nx">syscall</span><span class="p">.</span><span class="nx">SYS_MMAP</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">		<span class="mi">0</span><span class="p">,</span> <span class="c1">// address
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span>		<span class="nb">uintptr</span><span class="p">(</span><span class="nx">len</span><span class="p">)</span><span class="o">*</span><span class="nx">eltsize</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">		<span class="mi">0</span><span class="p">,</span> <span class="c1">// address</span>
+</span></span><span class="line"><span class="cl">		<span class="nb">uintptr</span><span class="p">(</span><span class="nx">len</span><span class="p">)</span><span class="o">*</span><span class="nx">eltsize</span><span class="p">,</span>
 </span></span><span class="line"><span class="cl">		<span class="nx">syscall</span><span class="p">.</span><span class="nx">PROT_READ</span><span class="p">|</span><span class="nx">syscall</span><span class="p">.</span><span class="nx">PROT_WRITE</span><span class="p">,</span>
 </span></span><span class="line"><span class="cl">		<span class="nx">syscall</span><span class="p">.</span><span class="nx">MAP_ANON</span><span class="p">|</span><span class="nx">syscall</span><span class="p">.</span><span class="nx">MAP_PRIVATE</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">		<span class="nb">uintptr</span><span class="p">(</span><span class="nx">fd</span><span class="p">),</span> <span class="c1">// No file descriptor
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span>		<span class="mi">0</span><span class="p">,</span>           <span class="c1">// offset
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="p">)</span>
+</span></span><span class="line"><span class="cl">		<span class="nb">uintptr</span><span class="p">(</span><span class="nx">fd</span><span class="p">),</span> <span class="c1">// No file descriptor</span>
+</span></span><span class="line"><span class="cl">		<span class="mi">0</span><span class="p">,</span>           <span class="c1">// offset</span>
+</span></span><span class="line"><span class="cl">	<span class="p">)</span>
 </span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">errno</span> <span class="o">!=</span> <span class="mi">0</span> <span class="p">{</span>
 </span></span><span class="line"><span class="cl">		<span class="nb">panic</span><span class="p">(</span><span class="nx">errno</span><span class="p">)</span>
 </span></span><span class="line"><span class="cl">	<span class="p">}</span>
@@ -1104,6 +1098,19 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
         <div class="flex article-list--tile">
             
                 
+<article class="">
+    <a href="/zh-cn/p/go-1.26-%E9%BB%91%E7%A7%91%E6%8A%80%E8%B7%B3%E8%BF%87-gc-%E7%9B%B4%E6%8E%A5%E9%87%8A%E6%94%BE%E5%86%85%E5%AD%98%E6%80%A7%E8%83%BD%E9%A3%99%E5%8D%87-200/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 1.26 黑科技：跳过 GC 直接释放内存，性能飙升 200%</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
 <article class="has-image">
     <a href="/zh-cn/p/green-tea-gc-golang-%E7%9A%84-zgc/">
         
@@ -1162,19 +1169,6 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 
         <div class="article-details">
             <h2 class="article-title">go1.24: 新的标准库 weak</h2>
-        </div>
-    </a>
-</article>
-
-            
-                
-<article class="">
-    <a href="/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8B-ep9-%E4%B8%A4%E4%B8%AA%E6%9C%89%E7%94%A8%E7%9A%84-golang-%E6%97%A0%E9%94%81%E7%BC%96%E7%A8%8B%E6%8A%80%E5%B7%A7/">
-        
-        
-
-        <div class="article-details">
-            <h2 class="article-title">Go 高性能编程 EP9: 两个有用的 Golang 无锁编程技巧</h2>
         </div>
     </a>
 </article>

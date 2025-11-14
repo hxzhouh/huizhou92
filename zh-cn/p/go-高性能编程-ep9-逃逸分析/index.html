@@ -4,24 +4,22 @@
 
 <meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
-<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="从Go 编译器的角度来看，内存会被分配到两个地方: stack 和 heap。对于业务开发人员来说，这两种方式，没什么区别，通常开发者并不需要关心内存分配在栈上，还是堆上，因为这都是编译器自动完成的。但是从性能的角度出发，在栈上分配内存和在堆上分配内存，性能差异是非常大的。在函数中申请一个对象，如果分配在栈中，函数执行结束时自动回收。如果分配在堆中，则是由GC算法在某个时间点进行垃圾回收，其中的原理比较复杂。总之，分配堆内存比栈内存需要更多的开销，这种将内存分配到堆的现象就是内存逃逸。我们在写代码的时候，应当尽量避免堆内存分配。 为什么会有内存逃逸？ 原因其实很简单，编译器无法确定变量的生存周期，或者栈空间放不下那么大的内存。Go 编译器怎么知道某个变量需要分配在栈上，还是堆上呢？编译器决定内存分配位置的方式，就称之为逃逸分析(escape analysis)。逃逸分析由编译器完成，作用于编译阶段。可以用 -gcflags=-m 来观察变量是否逃逸。 内存逃逸对性能的影响 可以做一个很简单的benchmark测试, BenchmarkInt 是一个指针数组，&amp;j 会产生内存逃逸， BenchmarkInt2 则不会产生 内存逃逸。 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 func BenchmarkInt(b *testing.B) { for i := 0; i &lt; b.N; i++ { a := make([]*int, 100) for j := 0; j &lt; 100; j++ { a[j] = &amp;j } } } func BenchmarkInt2(b *testing.">
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="从Go 编译器的角度来看，内存会被分配到两个地方: stack 和 heap。对于业务开发人员来说，这两种方式，没什么区别，通常开发者并不需要关心内存分配在栈上，还是堆上，因为这都是编译器自动完成的。但是从性能的角度出发，在栈上分配内存和在堆上分配内存，性能差异是非常大的。在函数中申请一个对象，如果分配在栈中，函数执行结束时自动回收。如果分配在堆中，则是由GC算法在某个时间点进行垃圾回收，其中的原理比较复杂。总之，分配堆内存比栈内存需要更多的开销，这种将内存分配到堆的现象就是内存逃逸。我们在写代码的时候，应当尽量避免堆内存分配。\n为什么会有内存逃逸？ 原因其实很简单，编译器无法确定变量的生存周期，或者栈空间放不下那么大的内存。Go 编译器怎么知道某个变量需要分配在栈上，还是堆上呢？编译器决定内存分配位置的方式，就称之为逃逸分析(escape analysis)。逃逸分析由编译器完成，作用于编译阶段。可以用 -gcflags=-m 来观察变量是否逃逸。\n内存逃逸对性能的影响 可以做一个很简单的benchmark测试, BenchmarkInt 是一个指针数组，&amp;j 会产生内存逃逸， BenchmarkInt2 则不会产生 内存逃逸。\n1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 func BenchmarkInt(b *testing.B) { for i := 0; i &lt; b.N; i++ { a := make([]*int, 100) for j := 0; j &lt; 100; j++ { a[j] = &amp;j } } } func BenchmarkInt2(b *testing.B) { for i := 0; i &lt; b.N; i++ { a := make([]int, 100) for j := 0; j &lt; 100; j++ { a[j] = j } } } 运行结果是：\nBenchmarkInt2 的比BenchmarkInt 快30倍，并且没有一次内存分配，BenchmarkInt 则有101次内存分配。 从这个测试我们就知道为什么有必要进行内存逃逸分析了。\n">
 <title>Go 高性能编程 EP9: 逃逸分析</title>
 
 <link rel='canonical' href='https://huizhou92.com/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8B-ep9-%E9%80%83%E9%80%B8%E5%88%86%E6%9E%90/'>
 
 <link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="Go 高性能编程 EP9: 逃逸分析">
-<meta property='og:description' content="从Go 编译器的角度来看，内存会被分配到两个地方: stack 和 heap。对于业务开发人员来说，这两种方式，没什么区别，通常开发者并不需要关心内存分配在栈上，还是堆上，因为这都是编译器自动完成的。但是从性能的角度出发，在栈上分配内存和在堆上分配内存，性能差异是非常大的。在函数中申请一个对象，如果分配在栈中，函数执行结束时自动回收。如果分配在堆中，则是由GC算法在某个时间点进行垃圾回收，其中的原理比较复杂。总之，分配堆内存比栈内存需要更多的开销，这种将内存分配到堆的现象就是内存逃逸。我们在写代码的时候，应当尽量避免堆内存分配。 为什么会有内存逃逸？ 原因其实很简单，编译器无法确定变量的生存周期，或者栈空间放不下那么大的内存。Go 编译器怎么知道某个变量需要分配在栈上，还是堆上呢？编译器决定内存分配位置的方式，就称之为逃逸分析(escape analysis)。逃逸分析由编译器完成，作用于编译阶段。可以用 -gcflags=-m 来观察变量是否逃逸。 内存逃逸对性能的影响 可以做一个很简单的benchmark测试, BenchmarkInt 是一个指针数组，&amp;j 会产生内存逃逸， BenchmarkInt2 则不会产生 内存逃逸。 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 func BenchmarkInt(b *testing.B) { for i := 0; i &lt; b.N; i++ { a := make([]*int, 100) for j := 0; j &lt; 100; j++ { a[j] = &amp;j } } } func BenchmarkInt2(b *testing.">
+<meta property='og:description' content="从Go 编译器的角度来看，内存会被分配到两个地方: stack 和 heap。对于业务开发人员来说，这两种方式，没什么区别，通常开发者并不需要关心内存分配在栈上，还是堆上，因为这都是编译器自动完成的。但是从性能的角度出发，在栈上分配内存和在堆上分配内存，性能差异是非常大的。在函数中申请一个对象，如果分配在栈中，函数执行结束时自动回收。如果分配在堆中，则是由GC算法在某个时间点进行垃圾回收，其中的原理比较复杂。总之，分配堆内存比栈内存需要更多的开销，这种将内存分配到堆的现象就是内存逃逸。我们在写代码的时候，应当尽量避免堆内存分配。\n为什么会有内存逃逸？ 原因其实很简单，编译器无法确定变量的生存周期，或者栈空间放不下那么大的内存。Go 编译器怎么知道某个变量需要分配在栈上，还是堆上呢？编译器决定内存分配位置的方式，就称之为逃逸分析(escape analysis)。逃逸分析由编译器完成，作用于编译阶段。可以用 -gcflags=-m 来观察变量是否逃逸。\n内存逃逸对性能的影响 可以做一个很简单的benchmark测试, BenchmarkInt 是一个指针数组，&amp;j 会产生内存逃逸， BenchmarkInt2 则不会产生 内存逃逸。\n1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 func BenchmarkInt(b *testing.B) { for i := 0; i &lt; b.N; i++ { a := make([]*int, 100) for j := 0; j &lt; 100; j++ { a[j] = &amp;j } } } func BenchmarkInt2(b *testing.B) { for i := 0; i &lt; b.N; i++ { a := make([]int, 100) for j := 0; j &lt; 100; j++ { a[j] = j } } } 运行结果是：\nBenchmarkInt2 的比BenchmarkInt 快30倍，并且没有一次内存分配，BenchmarkInt 则有101次内存分配。 从这个测试我们就知道为什么有必要进行内存逃逸分析了。\n">
 <meta property='og:url' content='https://huizhou92.com/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8B-ep9-%E9%80%83%E9%80%B8%E5%88%86%E6%9E%90/'>
 <meta property='og:site_name' content='huizhou92&#39;s Blog'>
 <meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:published_time' content='2024-08-08T11:28:58&#43;08:00'/><meta property='article:modified_time' content='2024-08-08T11:27:43&#43;08:00'/><meta property='og:image' content='https://images.hxzhouh.com/blog-images/2024/08/317a5c9d3df72bec002eb7c0bd64c06d.png' />
 <meta name="twitter:site" content="@piaopiaopig">
     <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="Go 高性能编程 EP9: 逃逸分析">
-<meta name="twitter:description" content="从Go 编译器的角度来看，内存会被分配到两个地方: stack 和 heap。对于业务开发人员来说，这两种方式，没什么区别，通常开发者并不需要关心内存分配在栈上，还是堆上，因为这都是编译器自动完成的。但是从性能的角度出发，在栈上分配内存和在堆上分配内存，性能差异是非常大的。在函数中申请一个对象，如果分配在栈中，函数执行结束时自动回收。如果分配在堆中，则是由GC算法在某个时间点进行垃圾回收，其中的原理比较复杂。总之，分配堆内存比栈内存需要更多的开销，这种将内存分配到堆的现象就是内存逃逸。我们在写代码的时候，应当尽量避免堆内存分配。 为什么会有内存逃逸？ 原因其实很简单，编译器无法确定变量的生存周期，或者栈空间放不下那么大的内存。Go 编译器怎么知道某个变量需要分配在栈上，还是堆上呢？编译器决定内存分配位置的方式，就称之为逃逸分析(escape analysis)。逃逸分析由编译器完成，作用于编译阶段。可以用 -gcflags=-m 来观察变量是否逃逸。 内存逃逸对性能的影响 可以做一个很简单的benchmark测试, BenchmarkInt 是一个指针数组，&amp;j 会产生内存逃逸， BenchmarkInt2 则不会产生 内存逃逸。 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 func BenchmarkInt(b *testing.B) { for i := 0; i &lt; b.N; i++ { a := make([]*int, 100) for j := 0; j &lt; 100; j++ { a[j] = &amp;j } } } func BenchmarkInt2(b *testing."><meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:description" content="从Go 编译器的角度来看，内存会被分配到两个地方: stack 和 heap。对于业务开发人员来说，这两种方式，没什么区别，通常开发者并不需要关心内存分配在栈上，还是堆上，因为这都是编译器自动完成的。但是从性能的角度出发，在栈上分配内存和在堆上分配内存，性能差异是非常大的。在函数中申请一个对象，如果分配在栈中，函数执行结束时自动回收。如果分配在堆中，则是由GC算法在某个时间点进行垃圾回收，其中的原理比较复杂。总之，分配堆内存比栈内存需要更多的开销，这种将内存分配到堆的现象就是内存逃逸。我们在写代码的时候，应当尽量避免堆内存分配。\n为什么会有内存逃逸？ 原因其实很简单，编译器无法确定变量的生存周期，或者栈空间放不下那么大的内存。Go 编译器怎么知道某个变量需要分配在栈上，还是堆上呢？编译器决定内存分配位置的方式，就称之为逃逸分析(escape analysis)。逃逸分析由编译器完成，作用于编译阶段。可以用 -gcflags=-m 来观察变量是否逃逸。\n内存逃逸对性能的影响 可以做一个很简单的benchmark测试, BenchmarkInt 是一个指针数组，&amp;j 会产生内存逃逸， BenchmarkInt2 则不会产生 内存逃逸。\n1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 func BenchmarkInt(b *testing.B) { for i := 0; i &lt; b.N; i++ { a := make([]*int, 100) for j := 0; j &lt; 100; j++ { a[j] = &amp;j } } } func BenchmarkInt2(b *testing.B) { for i := 0; i &lt; b.N; i++ { a := make([]int, 100) for j := 0; j &lt; 100; j++ { a[j] = j } } } 运行结果是：\nBenchmarkInt2 的比BenchmarkInt 快30倍，并且没有一次内存分配，BenchmarkInt 则有101次内存分配。 从这个测试我们就知道为什么有必要进行内存逃逸分析了。\n"><meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:image" content='https://images.hxzhouh.com/blog-images/2024/08/317a5c9d3df72bec002eb7c0bd64c06d.png' />
     <link rel="shortcut icon" href="/favicon.png" />
 
-  
-    
       <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
       <script>
         var doNotTrack = false;
@@ -35,11 +33,7 @@
           gtag('js', new Date());
           gtag('config', 'G-JMPMQ2QREG');
         }
-      </script>
-    
-  
-
-<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+      </script><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
 crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
   <meta name="referrer" content="no-referrer-when-downgrade">
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
@@ -89,7 +83,7 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
                     
                     
                         
-                        <img src="/img/avatar_hu82a0a27be0be6253ef292d06d582a6ab_94926_300x0_resize_q75_box.jpeg" width="300"
+                        <img src="/img/avatar_hu_e52293b5d2b8c5f7.jpeg" width="300"
                             height="300" class="site-logo" loading="lazy" alt="Avatar">
                     
                 
@@ -715,9 +709,9 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </span></span><span class="line"><span class="cl">  
 </span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>  
 </span></span><span class="line"><span class="cl">	<span class="nx">in</span> <span class="o">:=</span> <span class="nf">Increase</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">	<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nf">in</span><span class="p">())</span> <span class="c1">// 1  
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nf">in</span><span class="p">())</span> <span class="c1">// 2  
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nf">in</span><span class="p">())</span> <span class="c1">// 1  </span>
+</span></span><span class="line"><span class="cl">	<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nf">in</span><span class="p">())</span> <span class="c1">// 2  </span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
 </span></span></code></pre></td></tr></table>
 </div>
 </div><p><code>Increase()</code> 返回值是一个闭包函数，该闭包函数访问了外部变量 n，那变量 n 将会一直存在，直到 <code>in</code> 被销毁。很显然，变量 n 占用的内存不能随着函数 <code>Increase()</code> 的退出而回收，因此将会逃逸到堆上。</p>
@@ -732,8 +726,8 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 </span><span class="lnt">5
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// $GOROOT/src/runtime/stubs.go
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">func</span> <span class="nf">noescape</span><span class="p">(</span><span class="nx">p</span> <span class="nx">unsafe</span><span class="p">.</span><span class="nx">Pointer</span><span class="p">)</span> <span class="nx">unsafe</span><span class="p">.</span><span class="nx">Pointer</span> <span class="p">{</span>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// $GOROOT/src/runtime/stubs.go</span>
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">noescape</span><span class="p">(</span><span class="nx">p</span> <span class="nx">unsafe</span><span class="p">.</span><span class="nx">Pointer</span><span class="p">)</span> <span class="nx">unsafe</span><span class="p">.</span><span class="nx">Pointer</span> <span class="p">{</span>
 </span></span><span class="line"><span class="cl">    <span class="nx">x</span> <span class="o">:=</span> <span class="nb">uintptr</span><span class="p">(</span><span class="nx">p</span><span class="p">)</span>
 </span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">unsafe</span><span class="p">.</span><span class="nf">Pointer</span><span class="p">(</span><span class="nx">x</span> <span class="p">^</span> <span class="mi">0</span><span class="p">)</span> 
 </span></span><span class="line"><span class="cl"><span class="p">}</span>
