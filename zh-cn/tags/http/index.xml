@@ -151,6 +151,142 @@
 &lt;/ul&gt;
 </description>
         </item>
+        <item>
+        <title>Golang http 支持 NegotiateFormat</title>
+        <link>https://huizhou92.com/zh-cn/p/golang-http-%E6%94%AF%E6%8C%81-negotiateformat/</link>
+        <pubDate>Sat, 15 Feb 2025 21:58:48 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/zh-cn/p/golang-http-%E6%94%AF%E6%8C%81-negotiateformat/</guid>
+        <description>&lt;h2 id=&#34;go-标准库提案更优雅的-http-内容协商&#34;&gt;Go 标准库提案：更优雅的 HTTP 内容协商
+&lt;/h2&gt;&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2026/01/e29de6d605baff522a40f1df93a6ec77.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20260108203706&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;h3 id=&#34;背景&#34;&gt;背景
+&lt;/h3&gt;&lt;p&gt;在 Web 开发中，HTTP 内容协商（&lt;a class=&#34;link&#34; href=&#34;https://www.rfc-editor.org/rfc/rfc9110.html#name-content-negotiation&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Content Negotiation&lt;/a&gt;）是一项重要的机制，它允许客户端和服务器就响应内容的最佳格式达成一致。例如，手机端可能希望接收 JSON 格式的数据，Web端可能想要XML格式的数据，服务端可以在一个接口中提供多种数据格式。客户端通过 &lt;code&gt;Accept&lt;/code&gt; 请求头表达自己的偏好，服务端根据这些偏好选择最合适的格式返回。  具体内容可以参考&lt;a class=&#34;link&#34; href=&#34;https://www.rfc-editor.org/rfc/rfc9110.html#name-content-negotiation&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RFC9110&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;比如在下面的例子中，使用Gin框架自己实现的&lt;a class=&#34;link&#34; href=&#34;https://pkg.go.dev/github.com/gin-gonic/gin#Context.NegotiateFormat&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;内容协商&lt;/a&gt; 。在一个API接口中返回了JSON和XML两种格式。&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;14
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;15
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;16
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;17
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;18
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;19
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;20
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;21
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;22
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;23
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;24
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kn&#34;&gt;package&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;main&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kn&#34;&gt;import&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;s&#34;&gt;&amp;#34;net/http&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;s&#34;&gt;&amp;#34;github.com/gin-gonic/gin&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;type&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;User&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;Name&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;`json:&amp;#34;name&amp;#34;`&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;Age&lt;/span&gt;  &lt;span class=&#34;kt&#34;&gt;int&lt;/span&gt;    &lt;span class=&#34;s&#34;&gt;`json:&amp;#34;age&amp;#34;`&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;main&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;r&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;gin&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Default&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;r&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;GET&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;/&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;c&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;gin&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Context&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;nx&#34;&gt;user&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;User&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Name&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;#34;John Doe&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;Age&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;30&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;nx&#34;&gt;c&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Negotiate&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;http&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;StatusOK&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;gin&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Negotiate&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Offered&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;[]&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;application/json&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;#34;application/xml&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;},&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;			&lt;span class=&#34;nx&#34;&gt;Data&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;user&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;		&lt;span class=&#34;p&#34;&gt;})&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;p&#34;&gt;})&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;	&lt;span class=&#34;nx&#34;&gt;r&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Run&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;c1&#34;&gt;// listen and serve on 0.0.0.0:8080&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;客户端根据自己的需求，支持返回 &lt;code&gt;JSON&lt;/code&gt; 与&lt;code&gt;XML&lt;/code&gt;格式的User。&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-shell&#34; data-lang=&#34;shell&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;➜  blog-example git:&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;main&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt; ✗ curl -H &lt;span class=&#34;s2&#34;&gt;&amp;#34;Accept: application/json&amp;#34;&lt;/span&gt; localhost:8080 
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;o&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;s2&#34;&gt;&amp;#34;name&amp;#34;&lt;/span&gt;:&lt;span class=&#34;s2&#34;&gt;&amp;#34;John Doe&amp;#34;&lt;/span&gt;,&lt;span class=&#34;s2&#34;&gt;&amp;#34;age&amp;#34;&lt;/span&gt;:30&lt;span class=&#34;o&#34;&gt;}&lt;/span&gt;%                                                                                 
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;➜  blog-example git:&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;main&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt; ✗ curl -H &lt;span class=&#34;s2&#34;&gt;&amp;#34;Accept: application/xml&amp;#34;&lt;/span&gt; localhost:8080 
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&amp;lt;User&amp;gt;&amp;lt;Name&amp;gt;John Doe&amp;lt;/Name&amp;gt;&amp;lt;Age&amp;gt;30&amp;lt;/Age&amp;gt;&amp;lt;/User&amp;gt;%
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;这种做法一个显而易见的好处就是不用为不同格式的数据提供多个接口。然而 Go 标准库 &lt;code&gt;net/http &lt;/code&gt;中缺少对内容协商的&lt;strong&gt;直接支持&lt;/strong&gt;。开发者通常需要借助第三方库或自行实现相关逻辑，这既增加了开发成本，也可能存在一些潜在问题。比如 gin 的实现不支持质量因素（It does not handle quality factors）等。&lt;/p&gt;
+&lt;p&gt;为了解决这个问题，Go 社区在2017年就提出了一个提案&lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/19307&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt; Proposal: x/net/http: support content negotiation&lt;/a&gt;，旨在为 &lt;code&gt;net/http&lt;/code&gt;包添加内容协商的支持，从而提供更优雅的解决方案。在，这个提案终于有了&lt;a class=&#34;link&#34; href=&#34;https://go-review.googlesource.com/c/net/&amp;#43;/642956&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;实质性进展&lt;/a&gt;)（可能不会出现在Go 1.26）。&lt;/p&gt;
+&lt;h3 id=&#34;提案内容&#34;&gt;提案内容
+&lt;/h3&gt;&lt;p&gt;该提案建议在 &lt;code&gt;golang.org/x/net/http&lt;/code&gt; 包中新增一个 &lt;code&gt;httpcontent&lt;/code&gt; 子包，其中包含一个名为 &lt;code&gt;Negotiate&lt;/code&gt; 的函数。该函数的基本签名如下：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;Negotiate&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;accepts&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;[]&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;offers&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;[]&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;accepts&lt;/code&gt; 参数：表示客户端可接受的内容类型，通常来自 &lt;code&gt;Accept&lt;/code&gt; 请求头。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;offers&lt;/code&gt; 参数：表示服务器提供的可用内容类型。&lt;/li&gt;
+&lt;li&gt;返回值：表示协商后确定的最佳内容类型。&lt;br&gt;
+&lt;code&gt;Negotiate&lt;/code&gt; 函数的设计灵感来源于 &lt;code&gt;golang/gddo/httputil&lt;/code&gt; 包中的 &lt;code&gt;NegotiateContentType&lt;/code&gt; 函数，但它更加通用，可以处理各种类型的 &lt;code&gt;Accept&lt;/code&gt; 头，例如 &lt;code&gt;Accept-Encoding&lt;/code&gt;、&lt;code&gt;Accept-Language&lt;/code&gt; 等。&lt;br&gt;
+最终经过@rsc拍板，这个函数被放在 net/http 中。（net/http 不是冻结了吗？🤐）&lt;br&gt;
+&lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/19307#issuecomment-2656875317&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;https://github.com/golang/go/issues/19307#issuecomment-2656875317&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;优势与权衡&#34;&gt;优势与权衡
+&lt;/h3&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;优势：&lt;/strong&gt;
+&lt;ul&gt;
+&lt;li&gt;更简洁的 API：&lt;code&gt;http.Negotiate&lt;/code&gt; 函数提供了一个简单而强大的接口，可以处理各种内容协商场景。&lt;/li&gt;
+&lt;li&gt;更广泛的适用性：该函数不仅限于 &lt;code&gt;Accept&lt;/code&gt; 头，还可以用于其他类型的 &lt;code&gt;Accept-*&lt;/code&gt; 头。&lt;/li&gt;
+&lt;li&gt;更高的效率：&lt;code&gt;httpcontent.Negotiate&lt;/code&gt; 函数的实现经过优化，可以提供良好的性能。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;权衡：&lt;/strong&gt;
+&lt;ul&gt;
+&lt;li&gt;需要用户自行解析 &lt;code&gt;Accept&lt;/code&gt; 头：&lt;code&gt;httpcontent.Negotiate&lt;/code&gt; 函数要求用户将 &lt;code&gt;Accept&lt;/code&gt; 头解析为字符串切片。&lt;/li&gt;
+&lt;li&gt;错误处理：如果 &lt;code&gt;Accept&lt;/code&gt; 头无法解析，&lt;code&gt;httpcontent.Negotiate&lt;/code&gt; 函数将返回空字符串，开发者需要自行处理这种情况。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;总结&#34;&gt;总结
+&lt;/h3&gt;&lt;p&gt;Go 社区的这项提案旨在为 &lt;code&gt;net/http&lt;/code&gt; 包添加内容协商的官方支持，这将大大简化 Web 开发者的工作。通过 &lt;code&gt;http.Negotiate&lt;/code&gt; 函数，开发者可以更轻松地实现灵活而高效的内容协商，提升 Web 应用的用户体验。&lt;/p&gt;
+&lt;p&gt;目前，该提案的代码已经提交到 Go 官方仓库，并正在进行评审。如果一切顺利，我们有望在未来的 Go 版本中看到这个实用的新特性。&lt;/p&gt;
+</description>
+        </item>
         
     </channel>
 </rss>
