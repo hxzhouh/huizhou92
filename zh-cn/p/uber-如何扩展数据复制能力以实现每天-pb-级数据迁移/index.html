@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="zh-cn" dir="ltr">
+    <head>
+
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Uber 重视可靠的数据湖（Data Lake），其分布在本地和云环境中。这种多区域架构在有限的网络带宽下为确保可靠且及时的数据访问带来了挑战，尤其是在灾难恢复场景中需要实现无缝的数据可用性。Uber 使用 Hive Sync 服务，该服务基于 Apache Hadoop® Distcp（Distributed Copy）进行数据复制。然而，随着 Uber 数据湖规模超过 350 PB，Distcp 的局限性逐渐显现。本文探讨了针对 Distcp 所做的优化，以提升其性能并满足 Uber 在分布式基础设施上日益增长的数据复制和灾难恢复需求。">
+<meta name="keywords" content="uber, data lake"><title>Uber 如何扩展数据复制能力以实现每天 PB 级数据迁移</title>
+
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/uber-%E5%A6%82%E4%BD%95%E6%89%A9%E5%B1%95%E6%95%B0%E6%8D%AE%E5%A4%8D%E5%88%B6%E8%83%BD%E5%8A%9B%E4%BB%A5%E5%AE%9E%E7%8E%B0%E6%AF%8F%E5%A4%A9-pb-%E7%BA%A7%E6%95%B0%E6%8D%AE%E8%BF%81%E7%A7%BB/'>
+
+<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="Uber 如何扩展数据复制能力以实现每天 PB 级数据迁移">
+<meta property='og:description' content="Uber 重视可靠的数据湖（Data Lake），其分布在本地和云环境中。这种多区域架构在有限的网络带宽下为确保可靠且及时的数据访问带来了挑战，尤其是在灾难恢复场景中需要实现无缝的数据可用性。Uber 使用 Hive Sync 服务，该服务基于 Apache Hadoop® Distcp（Distributed Copy）进行数据复制。然而，随着 Uber 数据湖规模超过 350 PB，Distcp 的局限性逐渐显现。本文探讨了针对 Distcp 所做的优化，以提升其性能并满足 Uber 在分布式基础设施上日益增长的数据复制和灾难恢复需求。">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/uber-%E5%A6%82%E4%BD%95%E6%89%A9%E5%B1%95%E6%95%B0%E6%8D%AE%E5%A4%8D%E5%88%B6%E8%83%BD%E5%8A%9B%E4%BB%A5%E5%AE%9E%E7%8E%B0%E6%AF%8F%E5%A4%A9-pb-%E7%BA%A7%E6%95%B0%E6%8D%AE%E8%BF%81%E7%A7%BB/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='database' /><meta property='article:published_time' content='2026-01-30T12:25:38&#43;08:00'/><meta property='article:modified_time' content='2026-01-30T12:15:57&#43;08:00'/>
+<meta name="twitter:site" content="@piaopiaopig">
+    <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="Uber 如何扩展数据复制能力以实现每天 PB 级数据迁移">
+<meta name="twitter:description" content="Uber 重视可靠的数据湖（Data Lake），其分布在本地和云环境中。这种多区域架构在有限的网络带宽下为确保可靠且及时的数据访问带来了挑战，尤其是在灾难恢复场景中需要实现无缝的数据可用性。Uber 使用 Hive Sync 服务，该服务基于 Apache Hadoop® Distcp（Distributed Copy）进行数据复制。然而，随着 Uber 数据湖规模超过 350 PB，Distcp 的局限性逐渐显现。本文探讨了针对 Distcp 所做的优化，以提升其性能并满足 Uber 在分布式基础设施上日益增长的数据复制和灾难恢复需求。">
+    <link rel="shortcut icon" href="/favicon.png" />
+
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="切换菜单">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/zh-cn/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu_e52293b5d2b8c5f7.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/zh-cn">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/zh-cn/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>主页</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/%E5%85%B3%E4%BA%8E/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>关于</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>归档</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>搜索</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" >English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" selected>中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>暗色模式</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">目录</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#引言">引言</a></li>
+    <li><a href="#理解-distcp">理解 Distcp</a>
+      <ol>
+        <li><a href="#distcp-架构">Distcp 架构</a></li>
+      </ol>
+    </li>
+    <li><a href="#hivesync-如何使用-distcp">HiveSync 如何使用 Distcp</a></li>
+    <li><a href="#hivesync-的扩展性问题临界点">HiveSync 的扩展性问题：临界点</a></li>
+    <li><a href="#关键改进">关键改进</a>
+      <ol>
+        <li><a href="#将-distcp-准备任务转移到-am">将 Distcp 准备任务转移到 AM</a></li>
+        <li><a href="#并行化拷贝清单任务">并行化拷贝清单任务</a></li>
+        <li><a href="#并行化拷贝提交器任务">并行化拷贝提交器任务</a></li>
+        <li><a href="#uber-化单-mapper-作业改善-yarn-使用效率">Uber 化单 Mapper 作业：改善 YARN 使用效率</a></li>
+      </ol>
+    </li>
+    <li><a href="#成效">成效</a>
+      <ol>
+        <li><a href="#增量数据复制能力显著提升-5-倍">增量数据复制能力显著提升 5 倍</a></li>
+        <li><a href="#从本地到云的无缝批量数据迁移">从本地到云的无缝批量数据迁移</a></li>
+        <li><a href="#更好的可观测性">更好的可观测性</a></li>
+      </ol>
+    </li>
+    <li><a href="#挑战">挑战</a></li>
+    <li><a href="#结论">结论</a></li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+            
+        
+              
+              <section class="widget">
+                 
+                <div class="widget-content">
+                    <iframe frameborder="0"
+                        src="https://support.nodeget.com/page/promotion?id=30795"
+                        style="border-radius:8px; height: 270px; width: 100%; display: block;"></iframe>
+                        
+                </div>
+            </section>
+    </aside>
+  
+
+
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+
+            <main class="main full-width">
+    <article class="main-article">
+    <header class="article-header">
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/zh-cn/categories/database/" >
+                Database
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/zh-cn/p/uber-%E5%A6%82%E4%BD%95%E6%89%A9%E5%B1%95%E6%95%B0%E6%8D%AE%E5%A4%8D%E5%88%B6%E8%83%BD%E5%8A%9B%E4%BB%A5%E5%AE%9E%E7%8E%B0%E6%AF%8F%E5%A4%A9-pb-%E7%BA%A7%E6%95%B0%E6%8D%AE%E8%BF%81%E7%A7%BB/">Uber 如何扩展数据复制能力以实现每天 PB 级数据迁移</a>
+        </h2>
+    
+        
+        <h3 class="article-subtitle">
+            Uber 重视可靠的数据湖（Data Lake），其分布在本地和云环境中。这种多区域架构在有限的网络带宽下为确保可靠且及时的数据访问带来了挑战，尤其是在灾难恢复场景中需要实现无缝的数据可用性。Uber 使用 Hive Sync 服务，该服务基于 Apache Hadoop® Distcp（Distributed Copy）进行数据复制。然而，随着 Uber 数据湖规模超过 350 PB，Distcp 的局限性逐渐显现。本文探讨了针对 Distcp 所做的优化，以提升其性能并满足 Uber 在分布式基础设施上日益增长的数据复制和灾难恢复需求。
+        </h3>
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Jan 30, 2026</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    阅读时长: 3 分钟
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <p><img src="https://images.hxzhouh.com/blog-images/2026/01/80e16aa62038af4a72c2b96421964388.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="How Uber Scaled Data Replication to Move Petabytes Every Day-cover"
+	
+	
+></p>
+<h2 id="引言">引言
+</h2><p>Uber 重视可靠的数据湖（Data Lake），其分布在本地和云环境中。这种多区域架构在有限的网络带宽下为确保可靠且及时的数据访问带来了挑战，尤其是在灾难恢复（Disaster Recovery）场景中需要实现无缝的数据可用性。Uber 使用 <a class="link" href="https://www.uber.com/en-IN/blog/building-ubers-data-lake-batch-data-replication-using-hivesync/"  target="_blank" rel="noopener"
+    >Hive Sync 服务</a>，该服务基于 Apache Hadoop® Distcp（Distributed Copy，分布式拷贝）进行数据复制。然而，随着 Uber 数据湖规模超过 350 PB，Distcp 的局限性逐渐显现。本文探讨了针对 Distcp 所做的优化，以提升其性能并满足 Uber 在分布式基础设施上日益增长的数据复制和灾难恢复需求。</p>
+<!-- more-->
+<h2 id="理解-distcp">理解 Distcp
+</h2><p>Distcp 是一个开源框架，用于以分布式方式在不同位置之间复制大规模数据集。它利用 Hadoop 的 MapReduce 框架将拷贝任务并行化并分发到多个节点上，从而实现更快、更具扩展性的数据传输，尤其适用于大规模环境。</p>
+<p><img src="https://blog.uber-cdn.com/cdn-cgi/image/width=1024,quality=80,onerror=redirect,format=auto/wp-content/uploads/2026/01/image-17696490376086.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Image"
+	
+	
+></p>
+<p>图 1：Distcp 高层架构。</p>
+<h3 id="distcp-架构">Distcp 架构
+</h3><p>Distcp 架构由以下几个关键组件组成：</p>
+<ul>
+<li><strong>Distcp 工具（Distcp Tool）：</strong> 识别文件，将其分组为块（拷贝清单，Copy Listing），定义跨 Mapper 的分发策略，并将配置好的 Hadoop 作业提交到 YARN。</li>
+<li><strong>Hadoop 客户端（Hadoop Client）：</strong> 设置作业环境，确定哪些 Mapper 处理特定的块（输入分片，Input Splitting），并将作业提交到 YARN。</li>
+<li><strong>资源管理器（RM，Resource Manager）：</strong> YARN 组件，负责调度任务，接收 Distcp 作业，分配资源，并将执行委托给应用主节点。</li>
+<li><strong>应用主节点（AM，Application Master）：</strong> 监控 MapReduce 作业的生命周期，为 Copy Mapper 任务向 RM 请求资源（容器），并在目标端合并文件分片。</li>
+<li><strong>拷贝映射器（Copy Mapper）：</strong> 执行实际的数据块拷贝操作，运行在由 YARN Node Manager 管理的容器中。</li>
+<li><strong>拷贝提交器（Copy Committer）：</strong> 合并已拷贝的数据块，在目标文件系统中组装最终文件。</li>
+</ul>
+<p><img src="https://blog.uber-cdn.com/cdn-cgi/image/width=806,quality=80,onerror=redirect,format=auto/wp-content/uploads/2026/01/image-17696490375966.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Image"
+	
+	
+></p>
+<p>图 2：Distcp 从 /src/ 目录复制到 /dest/ 目录的示意图。</p>
+<p>图 2 展示了 Distcp 如何使用上述组件将三个文件从源目录 <em>/src/</em> 复制到目标目录 <em>/dest/</em>。源目录包含三个大小相同的文件——File 1、File 2 和 File 3。在客户端运行的拷贝清单任务识别这些文件并将每个文件分成两个块（Chunk）。输入分片任务随后将这些文件块分配给三个 Mapper。</p>
+<ul>
+<li><strong>Map 1</strong> 接收 File 1 的一个块和 File 2 的一个块。</li>
+<li><strong>Map 2</strong> 处理 File 3 的一个块和 File 1 的一个块。</li>
+<li><strong>Map 3</strong> 处理 File 2 的一个块和 File 3 的一个块。</li>
+</ul>
+<p>拷贝映射器任务随后将这些块从源目录复制到目标目录。复制完成后，拷贝提交器任务在 AM 中运行，合并每个文件对应的块，在目标目录中重建最终的三个文件。</p>
+<h2 id="hivesync-如何使用-distcp">HiveSync 如何使用 Distcp
+</h2><p>HiveSync 最初基于开源的 Airbnb® <a class="link" href="https://github.com/airbnb/reair"  target="_blank" rel="noopener"
+    >ReAir</a> 项目构建。它支持批量复制（一次性拷贝大量数据）和增量复制（随着新数据到达同步增量更新），使 Uber 的数据湖在 HDFS™（Hadoop Distributed File System，Hadoop 分布式文件系统）和基于云的对象存储之间保持同步。它使用 Distcp 进行大规模数据复制。</p>
+<p><img src="https://blog.uber-cdn.com/cdn-cgi/image/width=990,quality=80,onerror=redirect,format=auto/wp-content/uploads/2026/01/image-17696490389357.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Image"
+	
+	
+></p>
+<p>图 3：HiveSync 架构：使用 Distcp 的数据复制工作流。</p>
+<p>图 3 展示了 HiveSync 服务器如何监听来自源 Hive 集群的拷贝请求。对于大于 256 MB 的数据，它将 Distcp 作业提交给执行器。多个 Worker（异步线程）随后并行准备并通过 Hadoop 客户端将这些作业提交到 YARN。监控线程跟踪每个作业的进度，作业成功完成后，数据即可在目标集群中使用。</p>
+<h2 id="hivesync-的扩展性问题临界点">HiveSync 的扩展性问题：临界点
+</h2><p>到 2022 年第三季度，HiveSync 面临重大的扩展性挑战，因为每日数据复制量在仅一个季度内从 250 TB 激增至 1 PB。</p>
+<p>导致这一快速增长的一个因素是数据写入集中在单个数据中心。2022 年，Uber 为节省成本转向了主动-被动（Active-Passive）数据湖架构，从均匀分布的数据生成模式转变为由主要的本地数据中心承担 90% 的数据生成和大部分批处理计算任务。这显著增加了 HiveSync 服务器从主区域向备用区域复制数据的负载。SRC（Single Region Compute，单区域计算）项目的影响将另行讨论。</p>
+<p>另一个因素是将所有本地 Hive 数据集接入 HiveSync。在新的主动-被动模型下，HiveSync 成为灾难恢复的关键组件，确保在一个区域生成的数据能被复制到另一个地理区域。这要求 HiveSync 扩展到覆盖 Uber 的整个数据湖。仅在一个季度内，HiveSync 管理的数据集数量从 30,000 增长到 144,000，新数据集不断接入。这使复制请求数量增加了一倍多。</p>
+<p>由此，每日复制作业数量从 10,000 飙升至平均 374,000，远远超出系统的处理能力。这导致了大量积压，使得满足承诺的复制延迟 SLA 变得越来越困难。具体而言，P100 复制延迟 SLA 4 小时和 P99.9 SLO 20 分钟在这一新规模下变得难以维持。</p>
+<p>此外，随着 HiveSync 在将 Uber 数据湖<a class="link" href="https://www.uber.com/en-IN/blog/modernizing-ubers-data-infrastructure-with-gcp/?uclick_id=f08b5468-ea9f-4f1f-a440-357109448b6e"  target="_blank" rel="noopener"
+    >从本地迁移到云区域</a>中承担关键角色，复制请求的规模预计将大幅增加。预计拷贝请求的规模和数量将几乎翻倍，这对 HiveSync 管理增长的工作负载和优化数据复制流程以应对云基础设施运营挑战提出了更高要求。</p>
+<h2 id="关键改进">关键改进
+</h2><p>我们对 Distcp 进行了以下增强，以满足我们的扩展需求。这些优化显著提升了 Uber 数据复制的规模和效率。</p>
+<p>具体包括：</p>
+<ul>
+<li>将资源密集型的拷贝清单和输入分片任务转移到应用主节点，通过缓解 HDFS 客户端争用将作业提交延迟降低了 90%。</li>
+<li>并行化拷贝清单和拷贝提交器任务，显著缩短了作业规划和完成时间。</li>
+<li>为小规模传输实现 <em>Uber 作业</em>，帮助每天减少 268,000 次容器启动，优化了 YARN 资源使用。</li>
+</ul>
+<p>下面详细介绍每项改进——</p>
+<h3 id="将-distcp-准备任务转移到-am">将 Distcp 准备任务转移到 AM
+</h3><p>在一次故障事件中，我们注意到系统负载较高时，文件系统延迟的增加导致 Distcp 拷贝清单延迟相应上升。</p>
+<p><img src="https://blog.uber-cdn.com/cdn-cgi/image/width=1024,quality=80,onerror=redirect,format=auto/wp-content/uploads/2026/01/image-17696490376049.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Image"
+	
+	
+></p>
+<p>图 4：HDFS FSUtils 延迟增加直接影响 Distcp 拷贝清单任务。</p>
+<p>当我们分析延迟峰值期间的线程转储时，发现大部分线程都在等待 HDFS 客户端持有的远程过程调用（RPC，Remote Procedure Call）锁。这种方式在高度多线程的环境中无法很好地扩展。</p>
+<p><img src="https://blog.uber-cdn.com/cdn-cgi/image/width=1024,quality=80,onerror=redirect,format=auto/wp-content/uploads/2026/01/image-17696490376845.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Image"
+	
+	
+></p>
+<p>图 5：线程阻塞在 RPC 调用上。</p>
+<p>在典型的 Distcp 提交流程中，多个组件依赖 HDFS 客户端：Distcp Worker 用于数据比较，Distcp 工具用于拷贝清单，Hadoop 客户端用于输入分片。随着 Distcp 执行线程数量的增加，并行使用 HDFS 客户端的数量也随之增加。</p>
+<p><img src="https://blog.uber-cdn.com/cdn-cgi/image/width=871,quality=80,onerror=redirect,format=auto/wp-content/uploads/2026/01/image-17696490375027.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Image"
+	
+	
+></p>
+<p>图 6：来自不同拷贝作业请求的多个并行调用在 HDFS 客户端上产生争用。</p>
+<p>我们发现，虽然 Distcp 能很好地扩展数据拷贝，但它也在客户端处理文件规划和清单任务。这一准备阶段——识别待拷贝文件（输入分片）——造成了瓶颈，因为它依赖共享的 HDFS 客户端，而该客户端也被 HiveSync 的其他组件使用。随着数据量和 Distcp Worker 数量的增长，HDFS 客户端中的 JVM 级锁成为主要问题，随着并行度的增加导致线程争用。这造成了延迟，其中仅拷贝清单就占了作业提交延迟的 90%。</p>
+<p>大量的 NameNode 调用使问题更加严重，这些调用与待拷贝文件数量成正比——对于大型目录尤为突出。</p>
+<p>为了减轻单个 HDFS 客户端的负载，我们将资源密集型的拷贝清单和输入分片任务从 HiveSync 服务器转移到了 AM。</p>
+<p><img src="https://blog.uber-cdn.com/cdn-cgi/image/width=1440,quality=80,onerror=redirect,format=auto/wp-content/uploads/2026/01/image-17696490372570-edited.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Image"
+	
+	
+></p>
+<p>图 7：将拷贝清单和输入分片流程从 Hive Sync 服务器（客户端）转移到 AM。</p>
+<p>现在，每个 Distcp 作业在自己的 AM 容器中执行拷贝清单，这显著减少了 HiveSync Hadoop 客户端上的锁争用。这帮助我们实现了 Distcp 作业提交延迟 90% 的降低。</p>
+<p><img src="https://blog.uber-cdn.com/cdn-cgi/image/width=1024,quality=80,onerror=redirect,format=auto/wp-content/uploads/2026/01/image-17696490404372.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Image"
+	
+	
+></p>
+<p>图 8：观测到 Distcp 作业提交时间降低了 90%。</p>
+<h3 id="并行化拷贝清单任务">并行化拷贝清单任务
+</h3><p>Distcp 工具运行拷贝清单任务以生成待拷贝文件的文件系统块。这些块被写入序列文件（Sequence File），形成一个文件块列表，供拷贝映射器任务从源集群复制到目标集群。在此过程中，主线程通过 <a class="link" href="https://hadoop.apache.org/docs/stable/api/org/apache/hadoop/fs/FileSystem.html#getFileBlockLocations-org.apache.hadoop.fs.FileStatus-long-long-"  target="_blank" rel="noopener"
+    >getFileBlockLocations API</a> 依次调用 NameNode，为超过指定块大小的文件创建文件分片（Chunk）。它还在文件状态检查失败时进行重试，使这成为 Distcp 中最耗费资源的部分。</p>
+<p><img src="https://blog.uber-cdn.com/cdn-cgi/image/width=1024,quality=80,onerror=redirect,format=auto/wp-content/uploads/2026/01/image-17696490375821.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Image"
+	
+	
+></p>
+<p>图 9：即使将此任务移至应用主节点后，最繁忙的复制服务器上 P99 延迟平均仍约 10 分钟。</p>
+<p>我们观察到多个文件可以并行列出，并以任意顺序写入序列文件。但是，每个文件的块需要保持在一起并按顺序排列，因为拷贝提交器算法使用它们在目标端合并已拷贝的文件分片。基于这一思路，我们通过为每个文件分配单独的线程来创建分片，将文件系统 NameNode 调用并行化以降低拷贝清单延迟，将分片添加到阻塞队列中，由单独的写入线程按顺序将块写入序列文件。这一方法帮助改善了 Distcp 作业的完成时间。</p>
+<p><img src="https://blog.uber-cdn.com/cdn-cgi/image/width=794,quality=80,onerror=redirect,format=auto/wp-content/uploads/2026/01/image-17696490375237.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Image"
+	
+	
+></p>
+<p>图 10：拷贝清单任务 V2 工作流。</p>
+<p>在图 10 中，列出函数使用多线程通过 NameNode 调用从源集群检索文件。每个线程负责为一个文件创建块，允许多个文件的并行处理。例如，<em>/src/file1</em>（1684 MB）被分成两个块：第一个块（<em>/src/file1/part0</em>）包含 4 个 256 MB 的 HDFS 块，第二个块（<em>/src/file1/part1</em>）包含 3 个块（2 个 256 MB 和 1 个 128 MB）。列出线程同步地将这些块添加到阻塞队列中，而单独的写入线程定期轮询队列并按顺序将两个块写入序列文件。为实现快速故障处理，如果任何线程失败，主线程将停止处理并重试 Distcp 作业。列出函数完成且队列中所有项目均已写入序列文件后，它通过状态更新器更新作业状态。</p>
+<p>通过使用 6 个线程，我们在所有 HiveSync 服务器上实现了 P99 平均 Distcp 清单延迟降低 60%，最大延迟降低 75%。</p>
+<p><img src="https://blog.uber-cdn.com/cdn-cgi/image/width=1024,quality=80,onerror=redirect,format=auto/wp-content/uploads/2026/01/image-17696490405298.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Image"
+	
+	
+></p>
+<p>图 11：使用 6 个线程后，某 Hive Sync 服务器上拷贝清单延迟的改善。</p>
+<h3 id="并行化拷贝提交器任务">并行化拷贝提交器任务
+</h3><p>在 Distcp 拷贝映射器任务完成从源目录到目标目录的文件分片拷贝后，AM 中的拷贝提交器任务将这些分片合并为完整文件。对于包含超过 500,000 个文件的目录，这一过程可能需要长达 30 分钟。开源版本按顺序合并文件块，导致性能较低。</p>
+<p>为解决这一问题，我们将文件拼接过程并行化，每个线程负责一次合并一个文件。拷贝清单过程中创建的序列文件用于确定需要在目标端合并的各个文件块的顺序。</p>
+<p><img src="https://blog.uber-cdn.com/cdn-cgi/image/width=940,quality=80,onerror=redirect,format=auto/wp-content/uploads/2026/01/image-17696490383440.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Image"
+	
+	
+></p>
+<p>图 12：拷贝提交器任务 V2 工作流。</p>
+<p>在图 12 中，Mapper 从序列文件中获取拷贝清单过程中创建的文件分片，并将其拷贝到 <em>/dest/</em> 下的目标目录。每个拼接线程（Concatenator）收集特定文件的分片并将其合并以创建最终文件。File 1 的三个分片（<em>/dest/file_part0</em>、<em>/dest/file_part1</em> 和 <em>/dest/file_part2</em>）被合并为目标端的 <em>/dest/file1</em>。File 2 和 File 3 同理。为实现快速故障处理，如果任何线程遇到问题，主线程将停止处理并重试 Distcp 作业。</p>
+<p><img src="https://blog.uber-cdn.com/cdn-cgi/image/width=1024,quality=80,onerror=redirect,format=auto/wp-content/uploads/2026/01/image-17696490375203.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Image"
+	
+	
+></p>
+<p>图 13：使用 10 个线程后，平均拼接延迟降低了 97.29%。</p>
+<h3 id="uber-化单-mapper-作业改善-yarn-使用效率">Uber 化单 Mapper 作业：改善 YARN 使用效率
+</h3><p>约 52% 的 HiveSync 服务器提交的 Distcp 作业仅需一个 Mapper 即可拷贝少于 512 MB 和不到 200 个文件的数据。虽然这些小作业执行速度很快，但大量时间花在了环境设置（在 YARN 中分配新容器和 JVM 启动时间）而非实际拷贝上。</p>
+<p><img src="https://blog.uber-cdn.com/cdn-cgi/image/width=1024,quality=80,onerror=redirect,format=auto/wp-content/uploads/2026/01/image-17696490391599.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Image"
+	
+	
+></p>
+<p>图 14：超过 50% 的 Distcp 作业仅分配了一个 Mapper。</p>
+<p>为解决这一开销问题，我们利用了 Hadoop 的 &ldquo;Uber 作业&rdquo; 功能，消除了在单独容器中分配和运行任务的需要。拷贝映射器任务直接在应用主节点的 JVM 中执行，减少了不必要的容器分配。</p>
+<p><img src="https://blog.uber-cdn.com/cdn-cgi/image/width=1024,quality=80,onerror=redirect,format=auto/wp-content/uploads/2026/01/image-17696490375551.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Image"
+	
+	
+></p>
+<p>图 15：Uber 作业工作流。</p>
+<p>在图 15 中，AM 判断一个作业是否符合 Uber 作业的条件。如果符合，拷贝映射器任务将在 AM 的 JVM 中本地执行。否则，AM 通过 Node Manager 请求容器并在其中运行拷贝映射器任务。任务完成后，AM 启动拷贝提交器任务以在目标端合并文件分片。</p>
+<p>我们通过以下配置启用了 Uber 作业：</p>
+<ul>
+<li><em>mapreduce.job.ubertask.enable: true</em></li>
+<li><em>mapreduce.job.ubertask.maxmaps: 1</em>（确保仅使用 1 个 Mapper）</li>
+<li><em>mapreduce.job.ubertask.maxbytes: 512 MB</em>（限制数据拷贝量为 512 MB）</li>
+</ul>
+<p>通过实施这一方案，我们每天减少了约 268,000 次单核容器启动，显著改善了 YARN 资源使用和作业效率。</p>
+<h2 id="成效">成效
+</h2><h3 id="增量数据复制能力显著提升-5-倍">增量数据复制能力显著提升 5 倍
+</h3><p>我们对 Uber Distcp 工具所做的改进极大地提升了跨本地和云数据中心的增量数据复制能力。得益于这些变更，我们在仅一年内将本地数据处理能力提升了 5 倍，且未发生任何与扩展相关的故障。</p>
+<p><img src="https://blog.uber-cdn.com/cdn-cgi/image/width=1024,quality=80,onerror=redirect,format=auto/wp-content/uploads/2026/01/image-17696490377430.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Image"
+	
+	
+></p>
+<p>图 16：HiveSync 在本地和云数据中心的规模。</p>
+<h3 id="从本地到云的无缝批量数据迁移">从本地到云的无缝批量数据迁移
+</h3><p>近几个月，我们扩展了 HiveSync 的功能以支持将本地数据湖复制到基于云的数据湖，详情见<a class="link" href="https://www.uber.com/en-IN/blog/modernizing-ubers-data-infrastructure-with-gcp/?uclick_id=f08b5468-ea9f-4f1f-a440-357109448b6e"  target="_blank" rel="noopener"
+    >此文</a>。对 Distcp 的增强在处理此次迁移的规模方面发挥了关键作用。截至目前，我们已成功将超过 306 PB 的数据迁移到云端。</p>
+<p><img src="https://blog.uber-cdn.com/cdn-cgi/image/width=1024,quality=80,onerror=redirect,format=auto/wp-content/uploads/2026/01/image-17696490374135.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Image"
+	
+	
+></p>
+<p>图 17：通过 HiveSync 服务从本地迁移到云端的数据量。</p>
+<h3 id="更好的可观测性">更好的可观测性
+</h3><p>我们引入了多个关键指标，显著提升了可观测性（Observability）。这些指标提供了关于客户端和 YARN AM 端 Distcp 作业提交时间、作业提交速率以及关键 Distcp 组件（如拷贝清单和拷贝提交器任务）性能的洞察。我们还跟踪了 Hadoop 容器的最大堆内存使用量、每个作业的 P99 Distcp 拷贝速率以及整体拷贝速率等指标。这种增强的可见性使我们能够更好地监控和了解服务的复制速率，并在缓解和诊断多起故障中发挥了关键作用。</p>
+<h2 id="挑战">挑战
+</h2><p>在将变更部署到生产服务器的过程中，我们面临了几项挑战。其中一个挑战是 AM 中的 OOM（Out of Memory，内存溢出）异常。严格的压力测试帮助我们确定了最优的内存和核心使用配置。我们添加了指标来检测 OOM 问题，这在后续帮助我们为内存密集型拷贝请求确定最优的 YARN 资源配置。</p>
+<p>另一个问题是 HiveSync 的高作业提交速率。降低提交延迟提高了作业提交速率，但这经常导致&quot;YARN 队列已满&quot;错误。为防止 YARN 过载，我们在 HiveSync 中实现了熔断器（Circuit Breaker），在重试成功之前暂时暂停新的提交。我们添加了指标来检测此类事件，从而实现实时监控并按需调整 YARN 队列容量。管理高拷贝速率虽然高效，但会导致高网络带宽使用，需要仔细调优以平衡性能和资源限制。</p>
+<p>我们还遇到了因长时间运行的拷贝清单任务导致的 AM 故障。最初，拷贝清单和输入分片部分被移至 AM 的启动阶段。这导致了问题，因为 RM 期望 AM 发送定期心跳信号。由于心跳发送器仅在启动完成后才启动，而拷贝清单任务有时需要超过 10 分钟，因此会导致超时。为解决这一问题，拷贝清单任务被移至输出提交器的设置阶段，该阶段在心跳发送器已启动之后执行，从而避免了超时。</p>
+<h2 id="结论">结论
+</h2><p>展望未来，团队正聚焦于围绕并行化、更好的资源利用和网络管理的若干增强，包括：</p>
+<ul>
+<li>并行化文件权限设置</li>
+<li>并行化输入分片</li>
+<li>将计算密集型提交任务移至 Reduce 阶段以提高可扩展性</li>
+<li>实现动态带宽限流器</li>
+</ul>
+<p>此外，我们计划为这些优化贡献开源补丁。Uber HiveSync 团队将继续专注于解决数据复制挑战，在我们的规模下，即使是微小的改进也能带来显著的收益。</p>
+<hr>
+<ul>
+<li><a class="link" href="https://huizhou92.com/zh-cn/p/uber-%E5%A6%82%E4%BD%95%E6%89%A9%E5%B1%95%E6%95%B0%E6%8D%AE%E5%A4%8D%E5%88%B6%E8%83%BD%E5%8A%9B%E4%BB%A5%E5%AE%9E%E7%8E%B0%E6%AF%8F%E5%A4%A9-pb-%E7%BA%A7%E6%95%B0%E6%8D%AE%E8%BF%81%E7%A7%BB/"  target="_blank" rel="noopener"
+    >本文长期链接</a></li>
+<li>如果您觉得我的博客对你有帮助，请通过 <a class="link" href="https://huizhou92.com/index.xml"  target="_blank" rel="noopener"
+    >RSS</a>订阅我。</li>
+<li>或者在<a class="link" href="https://x.com/@piaopiaopig"  target="_blank" rel="noopener"
+    >X</a>上关注我。</li>
+<li>如果您有<a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >Medium</a>账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。</li>
+</ul>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/zh-cn/tags/database/">Database</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            最后更新于 Jan 30, 2026 12:15 CST
+        </span>
+    </section></footer>
+
+
+    
+        <link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI&#43;WdtXRGWt2kTvGFasHpSy3SV"crossorigin="anonymous"
+            ><script 
+                src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG&#43;vnGctmUb0ZY0l8"crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"integrity="sha384-&#43;VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4&#43;/RRE05"crossorigin="anonymous"
+                defer
+                >
+            </script><script>
+    window.addEventListener("DOMContentLoaded", () => {
+        renderMathInElement(document.body, {
+            delimiters: [
+                { left: "$$", right: "$$", display: true },
+                { left: "$", right: "$", display: false },
+                { left: "\\(", right: "\\)", display: false },
+                { left: "\\[", right: "\\]", display: true }
+            ],
+            ignoredClasses: ["gist"]
+        });})
+</script>
+    
+</article>
+
+    
+
+    
+
+
+    
+        
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2026 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+    </section>
+    <script src="/js/adblock-detection.js" defer></script>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>

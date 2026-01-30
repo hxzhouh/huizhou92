@@ -4,19 +4,19 @@
 
 <meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
-<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content=" 解析 net/http 新提案「ClientConn API」的潜台词、争议与未来写法\n在 Go 官方仓库最近的一则提案#75772里，Go 团队放出了一个看似不起眼、但可能影响未来原生服务端写法的更新：给 net/http 增加“连接级别（ClientConn）”操作能力。\n这个提案最近已被标记为 Proposal-Accepted 预计会在 Go 1.27 发布。\n这意味着一件大事：\nGo 准备在标准库里正式暴露 “我想拿到一条 HTTP 客户端连接，并直接控制它” 的能力。\n对于只写 REST API 的普通用户来说，你可能根本不关心连接。\n但对于那些做：\n高性能 HTTP 客户端 自定义连接池 IoT 长连接 代理、隧道 HTTP/2 / HTTP/3 多流复用\n的工程师，这个能力就像开了天眼。 本文将浅度的探讨一下这个改动\n起点：Transport 池是个“黑盒”，高级用户被卡死很多年 先看一个图，解释现在 net/http 的模型：\n![[Pasted image 20251129081239.png]]\n你能看到的：\nClient → Transport → Do()\n你看不到的： 哪条连接被用？ 我能不能让多条请求固定在同一个连接上？ HTTP/2 连接的并发限制是多少？ 这条连接是不是刚被服务器发送 GOAWAY？ 这条连接还能不能继续承担更多 stream？ 对普通用户来说看不到没关系，但对高级用户就非常痛苦。\n过去几年里，你可能见过这些 &ldquo;hack&quot;的 编程方式：\n">
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="作为软件工程师，我们都在努力编写整洁、可维护且易于测试的代码。我们遵循最佳实践，阅读软件设计书籍，并进行严格的代码审查。但如果我们一些根深蒂固的习惯实际上是隐蔽的反模式呢？如果存在更有效、虽然不那么明显的方法来解决常见的编码问题呢？\n在最近的 GopherCon Europe 大会上，Dave Cheney 分享了他对于什么是好代码的一些&quot;非常强烈的观点&quot;。这些观点在生产系统的淬炼中形成，常常挑战传统智慧。本文提炼了一些最令人惊讶、最具影响力的要点，它们可能会改变你编写 Go 代码的方式。\n1. &ldquo;If 不好，Else 更糟&rdquo; Cheney 的第一条颇具挑战性的建议是：对 if 语句保持强烈的厌恶，对 else 更是如此。他认为，每当我们看到 if，就应该想要隐藏它；每当看到 else，就应该重构代码让它消失。\n他批评的一个典型模式是&quot;延迟初始化（Lazy Initialization）&quot;。假设你有一个变量 thing，需要在生产环境中初始化为真实实现，在其他情况下使用 mock。许多开发者会这样写：\n1 2 3 4 5 6 var thing *Thing if os.Getenv(&#34;ENV&#34;) == &#34;production&#34; { thing = NewRealThing() } else { thing = NewMockThing() } 这里的问题是 thing 一开始是 nil。任何意外绕过这个 if/else 块的重构都可能导致 thing 未被初始化。更好的方法是通过先将 thing 初始化为一个安全的默认值来消除 else：\n1 2 3 4 thing := NewMockThing() // 总是初始化为安全的默认值 if os.Getenv(&#34;ENV&#34;) == &#34;production&#34; { thing = NewRealThing() // 仅在生产环境下覆盖 } 这是一个改进，因为 thing 永远不会是 nil。然而，正如 Cheney 所承认的，这引发了一个性能问题：如果创建 mock 的成本很高，我们是否在生产环境中付出了这个代价，却只是为了立即丢弃它？虽然这在应用程序初始化阶段可能是可以接受的，但在每个请求的上下文中确实是一个合理的担忧。这个权衡完美地引出了最佳解决方案：将这个逻辑封装在一个辅助函数中。\n1 2 3 4 5 6 7 8 9 func newThing(env string) *Thing { if env == &#34;production&#34; { return NewRealThing() } return NewMockThing() } // 在调用代码中： thing := newThing(os.Getenv(&#34;ENV&#34;)) 这种方法提供了几个具体的好处。从调用者的角度来看，thing 总是 从单个函数调用初始化。条件逻辑被赋予了一个描述性的名称（newThing），最重要的是，newThing 现在是一个简单的、独立的函数，可以独立进行单元测试。Cheney 更进一步指出，因为这是基于环境的 选择，他更喜欢使用 switch 语句，这样意图更清晰，当添加新环境时代码也更容易扩展。\n">
 <title></title>
 
 <link rel='canonical' href='https://huizhou92.com/zh-cn/p/'>
 
 <link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="">
-<meta property='og:description' content=" 解析 net/http 新提案「ClientConn API」的潜台词、争议与未来写法\n在 Go 官方仓库最近的一则提案#75772里，Go 团队放出了一个看似不起眼、但可能影响未来原生服务端写法的更新：给 net/http 增加“连接级别（ClientConn）”操作能力。\n这个提案最近已被标记为 Proposal-Accepted 预计会在 Go 1.27 发布。\n这意味着一件大事：\nGo 准备在标准库里正式暴露 “我想拿到一条 HTTP 客户端连接，并直接控制它” 的能力。\n对于只写 REST API 的普通用户来说，你可能根本不关心连接。\n但对于那些做：\n高性能 HTTP 客户端 自定义连接池 IoT 长连接 代理、隧道 HTTP/2 / HTTP/3 多流复用\n的工程师，这个能力就像开了天眼。 本文将浅度的探讨一下这个改动\n起点：Transport 池是个“黑盒”，高级用户被卡死很多年 先看一个图，解释现在 net/http 的模型：\n![[Pasted image 20251129081239.png]]\n你能看到的：\nClient → Transport → Do()\n你看不到的： 哪条连接被用？ 我能不能让多条请求固定在同一个连接上？ HTTP/2 连接的并发限制是多少？ 这条连接是不是刚被服务器发送 GOAWAY？ 这条连接还能不能继续承担更多 stream？ 对普通用户来说看不到没关系，但对高级用户就非常痛苦。\n过去几年里，你可能见过这些 &ldquo;hack&quot;的 编程方式：\n">
+<meta property='og:description' content="作为软件工程师，我们都在努力编写整洁、可维护且易于测试的代码。我们遵循最佳实践，阅读软件设计书籍，并进行严格的代码审查。但如果我们一些根深蒂固的习惯实际上是隐蔽的反模式呢？如果存在更有效、虽然不那么明显的方法来解决常见的编码问题呢？\n在最近的 GopherCon Europe 大会上，Dave Cheney 分享了他对于什么是好代码的一些&quot;非常强烈的观点&quot;。这些观点在生产系统的淬炼中形成，常常挑战传统智慧。本文提炼了一些最令人惊讶、最具影响力的要点，它们可能会改变你编写 Go 代码的方式。\n1. &ldquo;If 不好，Else 更糟&rdquo; Cheney 的第一条颇具挑战性的建议是：对 if 语句保持强烈的厌恶，对 else 更是如此。他认为，每当我们看到 if，就应该想要隐藏它；每当看到 else，就应该重构代码让它消失。\n他批评的一个典型模式是&quot;延迟初始化（Lazy Initialization）&quot;。假设你有一个变量 thing，需要在生产环境中初始化为真实实现，在其他情况下使用 mock。许多开发者会这样写：\n1 2 3 4 5 6 var thing *Thing if os.Getenv(&#34;ENV&#34;) == &#34;production&#34; { thing = NewRealThing() } else { thing = NewMockThing() } 这里的问题是 thing 一开始是 nil。任何意外绕过这个 if/else 块的重构都可能导致 thing 未被初始化。更好的方法是通过先将 thing 初始化为一个安全的默认值来消除 else：\n1 2 3 4 thing := NewMockThing() // 总是初始化为安全的默认值 if os.Getenv(&#34;ENV&#34;) == &#34;production&#34; { thing = NewRealThing() // 仅在生产环境下覆盖 } 这是一个改进，因为 thing 永远不会是 nil。然而，正如 Cheney 所承认的，这引发了一个性能问题：如果创建 mock 的成本很高，我们是否在生产环境中付出了这个代价，却只是为了立即丢弃它？虽然这在应用程序初始化阶段可能是可以接受的，但在每个请求的上下文中确实是一个合理的担忧。这个权衡完美地引出了最佳解决方案：将这个逻辑封装在一个辅助函数中。\n1 2 3 4 5 6 7 8 9 func newThing(env string) *Thing { if env == &#34;production&#34; { return NewRealThing() } return NewMockThing() } // 在调用代码中： thing := newThing(os.Getenv(&#34;ENV&#34;)) 这种方法提供了几个具体的好处。从调用者的角度来看，thing 总是 从单个函数调用初始化。条件逻辑被赋予了一个描述性的名称（newThing），最重要的是，newThing 现在是一个简单的、独立的函数，可以独立进行单元测试。Cheney 更进一步指出，因为这是基于环境的 选择，他更喜欢使用 switch 语句，这样意图更清晰，当添加新环境时代码也更容易扩展。\n">
 <meta property='og:url' content='https://huizhou92.com/zh-cn/p/'>
 <meta property='og:site_name' content='huizhou92&#39;s Blog'>
 <meta property='og:type' content='article'><meta property='article:section' content='Post' />
 <meta name="twitter:site" content="@piaopiaopig">
     <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="">
-<meta name="twitter:description" content=" 解析 net/http 新提案「ClientConn API」的潜台词、争议与未来写法\n在 Go 官方仓库最近的一则提案#75772里，Go 团队放出了一个看似不起眼、但可能影响未来原生服务端写法的更新：给 net/http 增加“连接级别（ClientConn）”操作能力。\n这个提案最近已被标记为 Proposal-Accepted 预计会在 Go 1.27 发布。\n这意味着一件大事：\nGo 准备在标准库里正式暴露 “我想拿到一条 HTTP 客户端连接，并直接控制它” 的能力。\n对于只写 REST API 的普通用户来说，你可能根本不关心连接。\n但对于那些做：\n高性能 HTTP 客户端 自定义连接池 IoT 长连接 代理、隧道 HTTP/2 / HTTP/3 多流复用\n的工程师，这个能力就像开了天眼。 本文将浅度的探讨一下这个改动\n起点：Transport 池是个“黑盒”，高级用户被卡死很多年 先看一个图，解释现在 net/http 的模型：\n![[Pasted image 20251129081239.png]]\n你能看到的：\nClient → Transport → Do()\n你看不到的： 哪条连接被用？ 我能不能让多条请求固定在同一个连接上？ HTTP/2 连接的并发限制是多少？ 这条连接是不是刚被服务器发送 GOAWAY？ 这条连接还能不能继续承担更多 stream？ 对普通用户来说看不到没关系，但对高级用户就非常痛苦。\n过去几年里，你可能见过这些 &ldquo;hack&quot;的 编程方式：\n">
+<meta name="twitter:description" content="作为软件工程师，我们都在努力编写整洁、可维护且易于测试的代码。我们遵循最佳实践，阅读软件设计书籍，并进行严格的代码审查。但如果我们一些根深蒂固的习惯实际上是隐蔽的反模式呢？如果存在更有效、虽然不那么明显的方法来解决常见的编码问题呢？\n在最近的 GopherCon Europe 大会上，Dave Cheney 分享了他对于什么是好代码的一些&quot;非常强烈的观点&quot;。这些观点在生产系统的淬炼中形成，常常挑战传统智慧。本文提炼了一些最令人惊讶、最具影响力的要点，它们可能会改变你编写 Go 代码的方式。\n1. &ldquo;If 不好，Else 更糟&rdquo; Cheney 的第一条颇具挑战性的建议是：对 if 语句保持强烈的厌恶，对 else 更是如此。他认为，每当我们看到 if，就应该想要隐藏它；每当看到 else，就应该重构代码让它消失。\n他批评的一个典型模式是&quot;延迟初始化（Lazy Initialization）&quot;。假设你有一个变量 thing，需要在生产环境中初始化为真实实现，在其他情况下使用 mock。许多开发者会这样写：\n1 2 3 4 5 6 var thing *Thing if os.Getenv(&#34;ENV&#34;) == &#34;production&#34; { thing = NewRealThing() } else { thing = NewMockThing() } 这里的问题是 thing 一开始是 nil。任何意外绕过这个 if/else 块的重构都可能导致 thing 未被初始化。更好的方法是通过先将 thing 初始化为一个安全的默认值来消除 else：\n1 2 3 4 thing := NewMockThing() // 总是初始化为安全的默认值 if os.Getenv(&#34;ENV&#34;) == &#34;production&#34; { thing = NewRealThing() // 仅在生产环境下覆盖 } 这是一个改进，因为 thing 永远不会是 nil。然而，正如 Cheney 所承认的，这引发了一个性能问题：如果创建 mock 的成本很高，我们是否在生产环境中付出了这个代价，却只是为了立即丢弃它？虽然这在应用程序初始化阶段可能是可以接受的，但在每个请求的上下文中确实是一个合理的担忧。这个权衡完美地引出了最佳解决方案：将这个逻辑封装在一个辅助函数中。\n1 2 3 4 5 6 7 8 9 func newThing(env string) *Thing { if env == &#34;production&#34; { return NewRealThing() } return NewMockThing() } // 在调用代码中： thing := newThing(os.Getenv(&#34;ENV&#34;)) 这种方法提供了几个具体的好处。从调用者的角度来看，thing 总是 从单个函数调用初始化。条件逻辑被赋予了一个描述性的名称（newThing），最重要的是，newThing 现在是一个简单的、独立的函数，可以独立进行单元测试。Cheney 更进一步指出，因为这是基于环境的 选择，他更喜欢使用 switch 语句，这样意图更清晰，当添加新环境时代码也更容易扩展。\n">
     <link rel="shortcut icon" href="/favicon.png" />
 
       <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
@@ -433,7 +433,7 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 
 
                 <time class="article-time--reading">
-                    阅读时长: 4 分钟
+                    阅读时长: 2 分钟
                 </time>
             </div>
         
@@ -460,25 +460,6 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
     </footer>
     
 
-    
-        <footer class="article-translations">
-            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
-  <path d="M4 5h7" />
-  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
-  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
-  <path d="M12 20l4 -9l4 9" />
-  <path d="M19.1 18h-6.2" />
-</svg>
-
-
-
-            <div>
-                
-                    <a href="https://huizhou92.com/p/" class="link">English</a>
-                
-            </div>
-        </footer>
     
 </div>
 
