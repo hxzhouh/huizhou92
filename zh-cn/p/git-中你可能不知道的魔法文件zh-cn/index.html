@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="zh-cn" dir="ltr">
+    <head>
+
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Git 中你可能不知道的魔法文件 Git 会从仓库中读取一些特殊文件，用它们来控制自身行为。这些文件并不像 .git/ 里的配置那样留在本地，而是会随代码一起提交，从而影响 Git 对文件的处理方式。\n如果你正在开发与 Git 仓库交互的工具（比如 git-pkgs），那么务必确保正确遵守这些配置。\n.gitignore 指定 Git 永远不应追踪的文件模式。每行一个模式，支持通配符和目录标记。\n1 2 3 4 node_modules/ *.log .env dist/ Git 会按顺序检查多个忽略文件：包括每个目录下的 .gitignore、仅限本地的 .git/info/exclude，以及位于 ~/.config/git/ignore（或 core.excludesFile 指定的路径）的全局忽略文件。全局忽略适合 .DS_Store、Thumbs.db 这类操作系统专属文件，避免每个项目的 .gitignore 都要重复写这些内容。\n模式匹配支持通配符（*.log）、目录标记（dist/）、取反（!important.log）和字符范围。** 模式可匹配嵌套目录。\n.gitignore 只影响尚未被追踪的文件。如果某个文件在加入 .gitignore 之前已经被追踪，那么它会继续留在仓库中，并且在各代码托管平台的网页界面上依然可见（需要执行 git rm --cached 才能将其从追踪中移除）。另外，GitHub、GitLab、Forgejo 和 Gitea 的网页编辑器也不会阻止你创建符合忽略模式的文件并提交——它们不会给出任何警告。许多包管理器会附带自身的忽略模式（如 node_modules/、vendor/、target/），需要你手动将它们添加到 .gitignore 中。\n完整的语法请参阅 gitignore 文档。另外，GitHub 维护了一份 .gitignore 模板集合，涵盖各种语言和框架。\n.gitattributes .gitattributes 用来告诉 Git 如何处理特定文件。你可以在这里配置过滤器（filter）、差异驱动（diff driver）、合并驱动（merge driver）、行尾规范化以及语言检测覆盖。\n1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 # Clean/smudge filters *.psd filter=lfs diff=lfs merge=lfs # Line ending normalization *.sh text eol=lf *.bat text eol=crlf # Treat as binary *.png binary # Custom diff driver *.json diff=json # Merge strategy package-lock.json merge=ours # Language detection override for GitHub Linguist vendor/* linguist-vendored *.gen.go linguist-generated docs/* linguist-documentation text 属性告诉 Git 规范化行尾。binary 属性告诉 Git 不进行 diff 或合并，直接选取一个版本。merge=ours 策略在合并冲突时始终保留本地版本。\n">
+<title>Git 中你可能不知道的魔法文件.zh-cn</title>
+
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/git-%E4%B8%AD%E4%BD%A0%E5%8F%AF%E8%83%BD%E4%B8%8D%E7%9F%A5%E9%81%93%E7%9A%84%E9%AD%94%E6%B3%95%E6%96%87%E4%BB%B6zh-cn/'>
+
+<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="Git 中你可能不知道的魔法文件.zh-cn">
+<meta property='og:description' content="Git 中你可能不知道的魔法文件 Git 会从仓库中读取一些特殊文件，用它们来控制自身行为。这些文件并不像 .git/ 里的配置那样留在本地，而是会随代码一起提交，从而影响 Git 对文件的处理方式。\n如果你正在开发与 Git 仓库交互的工具（比如 git-pkgs），那么务必确保正确遵守这些配置。\n.gitignore 指定 Git 永远不应追踪的文件模式。每行一个模式，支持通配符和目录标记。\n1 2 3 4 node_modules/ *.log .env dist/ Git 会按顺序检查多个忽略文件：包括每个目录下的 .gitignore、仅限本地的 .git/info/exclude，以及位于 ~/.config/git/ignore（或 core.excludesFile 指定的路径）的全局忽略文件。全局忽略适合 .DS_Store、Thumbs.db 这类操作系统专属文件，避免每个项目的 .gitignore 都要重复写这些内容。\n模式匹配支持通配符（*.log）、目录标记（dist/）、取反（!important.log）和字符范围。** 模式可匹配嵌套目录。\n.gitignore 只影响尚未被追踪的文件。如果某个文件在加入 .gitignore 之前已经被追踪，那么它会继续留在仓库中，并且在各代码托管平台的网页界面上依然可见（需要执行 git rm --cached 才能将其从追踪中移除）。另外，GitHub、GitLab、Forgejo 和 Gitea 的网页编辑器也不会阻止你创建符合忽略模式的文件并提交——它们不会给出任何警告。许多包管理器会附带自身的忽略模式（如 node_modules/、vendor/、target/），需要你手动将它们添加到 .gitignore 中。\n完整的语法请参阅 gitignore 文档。另外，GitHub 维护了一份 .gitignore 模板集合，涵盖各种语言和框架。\n.gitattributes .gitattributes 用来告诉 Git 如何处理特定文件。你可以在这里配置过滤器（filter）、差异驱动（diff driver）、合并驱动（merge driver）、行尾规范化以及语言检测覆盖。\n1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 # Clean/smudge filters *.psd filter=lfs diff=lfs merge=lfs # Line ending normalization *.sh text eol=lf *.bat text eol=crlf # Treat as binary *.png binary # Custom diff driver *.json diff=json # Merge strategy package-lock.json merge=ours # Language detection override for GitHub Linguist vendor/* linguist-vendored *.gen.go linguist-generated docs/* linguist-documentation text 属性告诉 Git 规范化行尾。binary 属性告诉 Git 不进行 diff 或合并，直接选取一个版本。merge=ours 策略在合并冲突时始终保留本地版本。\n">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/git-%E4%B8%AD%E4%BD%A0%E5%8F%AF%E8%83%BD%E4%B8%8D%E7%9F%A5%E9%81%93%E7%9A%84%E9%AD%94%E6%B3%95%E6%96%87%E4%BB%B6zh-cn/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='git' /><meta property='article:published_time' content='2026-02-26T19:33:17&#43;08:00'/><meta property='article:modified_time' content='2026-02-25T19:56:07&#43;08:00'/><meta property='og:image' content='https://images.hxzhouh.com/blog-images/2026/02/24827da63ee56c7fb3810936e86aa874.png' />
+<meta name="twitter:site" content="@piaopiaopig">
+    <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="Git 中你可能不知道的魔法文件.zh-cn">
+<meta name="twitter:description" content="Git 中你可能不知道的魔法文件 Git 会从仓库中读取一些特殊文件，用它们来控制自身行为。这些文件并不像 .git/ 里的配置那样留在本地，而是会随代码一起提交，从而影响 Git 对文件的处理方式。\n如果你正在开发与 Git 仓库交互的工具（比如 git-pkgs），那么务必确保正确遵守这些配置。\n.gitignore 指定 Git 永远不应追踪的文件模式。每行一个模式，支持通配符和目录标记。\n1 2 3 4 node_modules/ *.log .env dist/ Git 会按顺序检查多个忽略文件：包括每个目录下的 .gitignore、仅限本地的 .git/info/exclude，以及位于 ~/.config/git/ignore（或 core.excludesFile 指定的路径）的全局忽略文件。全局忽略适合 .DS_Store、Thumbs.db 这类操作系统专属文件，避免每个项目的 .gitignore 都要重复写这些内容。\n模式匹配支持通配符（*.log）、目录标记（dist/）、取反（!important.log）和字符范围。** 模式可匹配嵌套目录。\n.gitignore 只影响尚未被追踪的文件。如果某个文件在加入 .gitignore 之前已经被追踪，那么它会继续留在仓库中，并且在各代码托管平台的网页界面上依然可见（需要执行 git rm --cached 才能将其从追踪中移除）。另外，GitHub、GitLab、Forgejo 和 Gitea 的网页编辑器也不会阻止你创建符合忽略模式的文件并提交——它们不会给出任何警告。许多包管理器会附带自身的忽略模式（如 node_modules/、vendor/、target/），需要你手动将它们添加到 .gitignore 中。\n完整的语法请参阅 gitignore 文档。另外，GitHub 维护了一份 .gitignore 模板集合，涵盖各种语言和框架。\n.gitattributes .gitattributes 用来告诉 Git 如何处理特定文件。你可以在这里配置过滤器（filter）、差异驱动（diff driver）、合并驱动（merge driver）、行尾规范化以及语言检测覆盖。\n1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 # Clean/smudge filters *.psd filter=lfs diff=lfs merge=lfs # Line ending normalization *.sh text eol=lf *.bat text eol=crlf # Treat as binary *.png binary # Custom diff driver *.json diff=json # Merge strategy package-lock.json merge=ours # Language detection override for GitHub Linguist vendor/* linguist-vendored *.gen.go linguist-generated docs/* linguist-documentation text 属性告诉 Git 规范化行尾。binary 属性告诉 Git 不进行 diff 或合并，直接选取一个版本。merge=ours 策略在合并冲突时始终保留本地版本。\n"><meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content='https://images.hxzhouh.com/blog-images/2026/02/24827da63ee56c7fb3810936e86aa874.png' />
+    <link rel="shortcut icon" href="/favicon.png" />
+
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="切换菜单">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/zh-cn/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu_e52293b5d2b8c5f7.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/zh-cn">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/zh-cn/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>主页</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/%E5%85%B3%E4%BA%8E/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>关于</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>归档</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>搜索</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" >English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" selected>中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>暗色模式</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">目录</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li>
+      <ol>
+        <li><a href="#gitignore">.gitignore</a></li>
+        <li><a href="#gitattributes">.gitattributes</a></li>
+        <li><a href="#lfsconfig">.lfsconfig</a></li>
+        <li><a href="#gitmodules">.gitmodules</a></li>
+        <li><a href="#mailmap">.mailmap</a></li>
+        <li><a href="#git-blame-ignore-revs">.git-blame-ignore-revs</a></li>
+        <li><a href="#gitmessage">.gitmessage</a></li>
+      </ol>
+    </li>
+    <li><a href="#代码托管平台专属目录">代码托管平台专属目录</a></li>
+    <li><a href="#其他约定">其他约定</a></li>
+    <li><a href="#git-之外">Git 之外</a></li>
+    <li><a href="#支持这些文件">支持这些文件</a></li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+            
+        
+              
+              <section class="widget">
+                 
+                <div class="widget-content">
+                    <iframe frameborder="0"
+                        src="https://support.nodeget.com/page/promotion?id=30795"
+                        style="border-radius:8px; height: 270px; width: 100%; display: block;"></iframe>
+                        
+                </div>
+            </section>
+    </aside>
+  
+
+
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+
+            <main class="main full-width">
+    <article class="has-image main-article">
+    <header class="article-header">
+        <div class="article-image">
+            <a href="/zh-cn/p/git-%E4%B8%AD%E4%BD%A0%E5%8F%AF%E8%83%BD%E4%B8%8D%E7%9F%A5%E9%81%93%E7%9A%84%E9%AD%94%E6%B3%95%E6%96%87%E4%BB%B6zh-cn/">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2026/02/24827da63ee56c7fb3810936e86aa874.png" loading="lazy" alt="Featured image of post Git 中你可能不知道的魔法文件.zh-cn" />
+                
+            </a>
+        </div>
+    
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/zh-cn/categories/tech/" style="background-color: #2a9d8f; color: #fff;">
+                技术
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/zh-cn/p/git-%E4%B8%AD%E4%BD%A0%E5%8F%AF%E8%83%BD%E4%B8%8D%E7%9F%A5%E9%81%93%E7%9A%84%E9%AD%94%E6%B3%95%E6%96%87%E4%BB%B6zh-cn/">Git 中你可能不知道的魔法文件.zh-cn</a>
+        </h2>
+    
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Feb 26, 2026</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    阅读时长: 4 分钟
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <h1 id="git-中你可能不知道的魔法文件">Git 中你可能不知道的魔法文件
+</h1><p>Git 会从仓库中读取一些特殊文件，用它们来控制自身行为。这些文件并不像 <code>.git/</code> 里的配置那样留在本地，而是会随代码一起提交，从而影响 Git 对文件的处理方式。</p>
+<!-- more-->
+<p>如果你正在开发与 Git 仓库交互的工具（比如 <a class="link" href="https://github.com/git-pkgs/git-pkgs"  target="_blank" rel="noopener"
+    >git-pkgs</a>），那么务必确保正确遵守这些配置。</p>
+<h3 id="gitignore">.gitignore
+</h3><p>指定 Git 永远不应追踪的文件模式。每行一个模式，支持通配符和目录标记。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-fallback" data-lang="fallback"><span class="line"><span class="cl">node_modules/
+</span></span><span class="line"><span class="cl">*.log
+</span></span><span class="line"><span class="cl">.env
+</span></span><span class="line"><span class="cl">dist/
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>Git 会按顺序检查多个忽略文件：包括每个目录下的 <code>.gitignore</code>、仅限本地的 <code>.git/info/exclude</code>，以及位于 <code>~/.config/git/ignore</code>（或 <code>core.excludesFile</code> 指定的路径）的全局忽略文件。全局忽略适合 <code>.DS_Store</code>、<code>Thumbs.db</code> 这类操作系统专属文件，避免每个项目的 <code>.gitignore</code> 都要重复写这些内容。</p>
+<p>模式匹配支持通配符（<code>*.log</code>）、目录标记（<code>dist/</code>）、取反（<code>!important.log</code>）和字符范围。<code>**</code> 模式可匹配嵌套目录。</p>
+<p><code>.gitignore</code> 只影响尚未被追踪的文件。如果某个文件在加入 <code>.gitignore</code> 之前已经被追踪，那么它会继续留在仓库中，并且在各代码托管平台的网页界面上依然可见（需要执行 <code>git rm --cached</code> 才能将其从追踪中移除）。另外，GitHub、GitLab、Forgejo 和 Gitea 的网页编辑器也不会阻止你创建符合忽略模式的文件并提交——它们不会给出任何警告。许多包管理器会附带自身的忽略模式（如 <code>node_modules/</code>、<code>vendor/</code>、<code>target/</code>），需要你手动将它们添加到 <code>.gitignore</code> 中。</p>
+<p>完整的语法请参阅 <a class="link" href="https://git-scm.com/docs/gitignore"  target="_blank" rel="noopener"
+    >gitignore 文档</a>。另外，GitHub 维护了一份 <a class="link" href="https://github.com/github/gitignore"  target="_blank" rel="noopener"
+    >.gitignore 模板集合</a>，涵盖各种语言和框架。</p>
+<h3 id="gitattributes">.gitattributes
+</h3><p><code>.gitattributes</code> 用来告诉 Git 如何处理特定文件。你可以在这里配置过滤器（filter）、差异驱动（diff driver）、合并驱动（merge driver）、行尾规范化以及语言检测覆盖。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-shell" data-lang="shell"><span class="line"><span class="cl"><span class="c1"># Clean/smudge filters</span>
+</span></span><span class="line"><span class="cl">*.psd <span class="nv">filter</span><span class="o">=</span>lfs <span class="nv">diff</span><span class="o">=</span>lfs <span class="nv">merge</span><span class="o">=</span>lfs
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># Line ending normalization</span>
+</span></span><span class="line"><span class="cl">*.sh text <span class="nv">eol</span><span class="o">=</span>lf
+</span></span><span class="line"><span class="cl">*.bat text <span class="nv">eol</span><span class="o">=</span>crlf
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># Treat as binary</span>
+</span></span><span class="line"><span class="cl">*.png binary
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># Custom diff driver</span>
+</span></span><span class="line"><span class="cl">*.json <span class="nv">diff</span><span class="o">=</span>json
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># Merge strategy</span>
+</span></span><span class="line"><span class="cl">package-lock.json <span class="nv">merge</span><span class="o">=</span>ours
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># Language detection override for GitHub Linguist</span>
+</span></span><span class="line"><span class="cl">vendor/* linguist-vendored
+</span></span><span class="line"><span class="cl">*.gen.go linguist-generated
+</span></span><span class="line"><span class="cl">docs/* linguist-documentation
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p><code>text</code> 属性告诉 Git 规范化行尾。<code>binary</code> 属性告诉 Git 不进行 diff 或合并，直接选取一个版本。<code>merge=ours</code> 策略在合并冲突时始终保留本地版本。</p>
+<p>GitHub 的 Linguist 工具（用于语言检测）会读取 <code>.gitattributes</code> 来覆盖检测结果。通过 <code>linguist-vendored</code> 可以标记第三方代码，将其排除在语言统计之外；<code>linguist-generated</code> 用来标记自动生成的文件，让它们在 diff 中默认折叠；<code>linguist-documentation</code> 则标记文档，同样不计入统计。</p>
+<p>与 <code>.gitignore</code> 类似，Git 会检查每个目录下的 <code>.gitattributes</code>，同时也支持仅限本地的 <code>.git/info/attributes</code>。</p>
+<p>完整属性列表请参考 <a class="link" href="https://git-scm.com/docs/gitattributes"  target="_blank" rel="noopener"
+    >gitattributes 文档</a>，GitHub Linguist 的专属属性请参考 <a class="link" href="https://github.com/github-linguist/linguist/blob/main/docs/overrides.md"  target="_blank" rel="noopener"
+    >Linguist 覆盖文档</a>。</p>
+<h3 id="lfsconfig">.lfsconfig
+</h3><p><code>.lfsconfig</code> 是随仓库一起提交的 Git LFS 配置文件。它使用 <code>git config</code> 格式来设定 LFS 服务器的端点 URL、传输设置以及其他选项。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-fallback" data-lang="fallback"><span class="line"><span class="cl">[lfs]
+</span></span><span class="line"><span class="cl">    url = https://lfs.example.com/repo
+</span></span><span class="line"><span class="cl">[lfs &#34;transfer&#34;]
+</span></span><span class="line"><span class="cl">    maxretries = 3
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>当执行 LFS 命令时，Git LFS 会自动读取 <code>.lfsconfig</code>。这样一来，你就可以把 LFS 配置也纳入版本控制，让所有协作者使用相同的设置。如果没有这个文件，每个开发者都需要手动配置本地 LFS 环境。</p>
+<p>LFS 还会使用 <code>.gitattributes</code> 来标记哪些文件应由 LFS 处理（即上面示例中的 <code>*.psd filter=lfs diff=lfs merge=lfs</code> 模式）。<code>.lfsconfig</code> 文件则处理 LFS 专属设置，比如 LFS 服务器地址。如果你在文件已经提交之后才添加 LFS 的文件模式，需要运行 <code>git lfs migrate</code> 来重写历史记录，将这些文件迁移到 LFS。</p>
+<p>全部可用选项请参考 <a class="link" href="https://github.com/git-lfs/git-lfs/blob/main/docs/man/git-lfs-config.adoc"  target="_blank" rel="noopener"
+    >Git LFS config 文档</a>。</p>
+<h3 id="gitmodules">.gitmodules
+</h3><p><code>.gitmodules</code> 是 Git 子模块的配置文件。当你运行 <code>git submodule add</code> 时，Git 会自动写入这个文件；当运行 <code>git submodule update</code> 时，Git 则会读取它。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-fallback" data-lang="fallback"><span class="line"><span class="cl">[submodule &#34;vendor/lib&#34;]
+</span></span><span class="line"><span class="cl">    path = vendor/lib
+</span></span><span class="line"><span class="cl">    url = https://github.com/example/lib.git
+</span></span><span class="line"><span class="cl">    branch = main
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>每个子模块对应一条记录，包含路径、URL，以及可选的追踪分支。该文件必须放在仓库根目录。</p>
+<p>通过子模块，你可以把其他 Git 仓库作为依赖项嵌入到当前项目中。不过，<code>git clone</code> 默认不会拉取子模块内容，你需要额外运行 <code>git submodule update --init --recursive</code>，或者在克隆时加上 <code>--recurse-submodules</code> 参数。</p>
+<p>子模块在版本管理上有些笨拙：你追踪的是某个特定 commit，而不是版本范围；它们会创建嵌套的 <code>.git/</code> 目录；如果忘记更新，很容易导致令人困惑的状态。</p>
+<p>不过，对于你自己维护的 vendor 代码管理，或者只需要检出部分目录的 monorepo 结构，子模块仍然是一个可用的方案。</p>
+<p>完整工作流请参考 <a class="link" href="https://git-scm.com/docs/git-submodule"  target="_blank" rel="noopener"
+    >git submodules 文档</a>，文件格式请参考 <a class="link" href="https://git-scm.com/docs/gitmodules"  target="_blank" rel="noopener"
+    >gitmodules 文档</a>。</p>
+<h3 id="mailmap">.mailmap
+</h3><p><code>.mailmap</code> 用来将作者的名字和邮箱地址映射到统一的规范身份。Git 会在 <code>git log</code>、<code>git shortlog</code> 和 <code>git blame</code> 的输出中使用这个映射。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span><span class="lnt">8
+</span><span class="lnt">9
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-fallback" data-lang="fallback"><span class="line"><span class="cl"># Map old email to new email
+</span></span><span class="line"><span class="cl">Jane Developer &lt;jane@company.com&gt; &lt;jane@oldcompany.com&gt;
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"># Standardize name spelling
+</span></span><span class="line"><span class="cl">Jane Developer &lt;jane@company.com&gt; Jane Dev &lt;jane@company.com&gt;
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"># Fix both
+</span></span><span class="line"><span class="cl">Jane Developer &lt;jane@company.com&gt; &lt;janed@personal.com&gt;
+</span></span><span class="line"><span class="cl">Jane Developer &lt;jane@company.com&gt; J Developer &lt;janed@personal.com&gt;
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>格式是 <code>规范名称 &lt;规范邮箱&gt; 提交名称 &lt;提交邮箱&gt;</code>。Git 会查找与提交作者匹配的条目，并在输出时替换为规范身份。</p>
+<p><code>git shortlog -sn</code>、<code>git log</code> 和 <code>git blame</code> 都会遵循 mailmap，将同一作者的不同提交聚合到一起。不过，GitHub 的贡献者图表<a class="link" href="https://github.com/orgs/community/discussions/22518"  target="_blank" rel="noopener"
+    >并不支持</a> mailmap，这意味着即使你的 mailmap 配置正确，网页上仍然会显示重复的条目。</p>
+<p>没有 mailmap，那些更换过邮箱地址或修正过名字拼写的贡献者，就会被当作多个不同的人出现。有了它，他们的所有提交都会聚合到同一个身份下。</p>
+<p>文件格式请参考 <a class="link" href="https://git-scm.com/docs/gitmailmap"  target="_blank" rel="noopener"
+    >gitmailmap 文档</a>。mailmap 默认放在仓库根目录的 <code>.mailmap</code>，也可以通过配置 <code>mailmap.file</code> 指向其他位置。</p>
+<h3 id="git-blame-ignore-revs">.git-blame-ignore-revs
+</h3><p><code>.git-blame-ignore-revs</code> 文件用来列出 <code>git blame</code> 应该跳过的提交。你可以把大规模代码格式化、lint 修复或其他无关紧要的提交的 SHA 写进去，这样 blame 就会穿透这些提交，指向真正有意义的变更。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-fallback" data-lang="fallback"><span class="line"><span class="cl"># .git-blame-ignore-revs
+</span></span><span class="line"><span class="cl"># Ran prettier on entire codebase
+</span></span><span class="line"><span class="cl">a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"># Migrated to ESLint flat config
+</span></span><span class="line"><span class="cl">b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>要让 Git 使用这个文件，需要执行 <code>git config blame.ignoreRevsFile .git-blame-ignore-revs</code>。不过，GitHub、GitLab（15.4 及以上版本）和 Gitea 会自动读取该文件，无需额外配置。需要注意的是，如果你在全局 git config 中设置了 <code>blame.ignoreRevsFile</code>，那么当 <code>git blame</code> 在缺少该文件的仓库中运行时就会报错——因此，要么为每个仓库单独配置，要么确保所有工作仓库中都至少有一个空的 <code>.git-blame-ignore-revs</code> 文件。</p>
+<p>这个文件解决了一个经典问题：对整个代码库运行格式化工具之后，<code>git blame</code> 会变得毫无用处。有了这个文件，blame 就会跳过那些格式化提交，显示真正的代码逻辑作者。</p>
+<p>文件格式很简单：每行一个 commit SHA，<code>#</code> 开头的行为注释。详情请参考 <a class="link" href="https://git-scm.com/docs/git-blame#Documentation/git-blame.txt---ignore-revs-fileltfilegt"  target="_blank" rel="noopener"
+    >git blame 文档</a>。</p>
+<h3 id="gitmessage">.gitmessage
+</h3><p><code>.gitmessage</code> 是提交信息的模板。通过 <code>git config commit.template .gitmessage</code> 配置后，Git 会在打开提交信息编辑器时自动填充这些内容。</p>
+<p>与其他文件不同，<code>.gitmessage</code> 需要每次克隆仓库后手动配置。每个开发者克隆后都要运行 <code>git config commit.template .gitmessage</code>。有些团队会通过初始化脚本自动完成这一步，或者借助 <a class="link" href="https://github.com/typicode/husky"  target="_blank" rel="noopener"
+    >husky</a> 在安装时设置本地配置。正因为多了这个步骤，大多数项目更倾向于使用 <code>commit-msg</code> Hook 来验证提交信息的格式，而不是用模板来引导写作。</p>
+<p><a class="link" href="https://git-scm.com/docs/git-commit#_discussion"  target="_blank" rel="noopener"
+    >git commit 文档</a> 中提到了模板文件。<code>prepare-commit-msg</code> Hook 是另一种替代方案，可以动态生成模板。</p>
+<h2 id="代码托管平台专属目录">代码托管平台专属目录
+</h2><p>各大代码托管平台也在仓库中定义了自己的“魔法目录”：<code>.github/</code>、<code>.gitlab/</code>、<code>.gitea/</code>、<code>.forgejo/</code>、<code>.bitbucket/</code> 等。这些虽然不是 Git 的原生功能，但遵循同样的理念——让配置随代码一起分发。</p>
+<p>这些目录里通常存放 CI/CD 工作流定义、Issue 和 PR 模板、CODEOWNERS 文件（用于指定路径的代码审查者），以及其他平台专属配置。这样一来，托管平台就能在不污染仓库根目录的前提下扩展功能。</p>
+<p>Forgejo 和 Gitea 支持回退机制：Forgejo 的查找顺序是 <code>.forgejo/</code> → <code>.gitea/</code> → <code>.github/</code>；Gitea 的顺序是 <code>.gitea/</code> → <code>.github/</code>。这让你可以在同时托管于多个平台时，覆盖 GitHub 的专属配置。</p>
+<p>SourceHut 使用根目录下的 <code>.build.yml</code> 或 <code>.builds/*.yml</code> 来配置 CI，没有专属的目录命名空间。</p>
+<h2 id="其他约定">其他约定
+</h2><p><strong>.gitkeep</strong> 只是一个惯例，并非 Git 的原生功能。Git 本身不会追踪空目录。如果你想在仓库中保留一个空目录，可以往里面放一个 <code>.gitkeep</code> 文件，这样 Git 就有东西可以追踪了。这个文件名是约定俗成的，实际上你可以起任何名字。</p>
+<p><strong>.gitconfig</strong> 文件有时会出现在仓库中，作为推荐的配置供人参考。Git 不会自动加载这些文件（出于安全原因），但项目会附上说明，让你运行 <code>git config include.path ../.gitconfig</code> 或手动复制相关设置。这种做法常见于 monorepo 或希望统一特定 Git 设置的项目。</p>
+<p><strong>.gitsigners</strong> 或类似文件用于追踪可信贡献者的 GPG/SSH 签名密钥。这不是 Git 的原生功能，但一些项目（尤其是 Linux 内核）在签名工作流中使用它。Git 的 <code>gpg.ssh.allowedSignersFile</code> 配置可以指向一个可信 SSH 密钥文件，供 <code>git log --show-signature</code> 用于验证。</p>
+<p><strong>.gitreview</strong> 配置 <a class="link" href="https://www.gerritcodereview.com/"  target="_blank" rel="noopener"
+    >Gerrit</a> 代码审查集成。托管在 Gerrit 上的项目（如 OpenStack、Android、Eclipse）使用它来指定推送目标的 Gerrit 服务器和项目。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-fallback" data-lang="fallback"><span class="line"><span class="cl">[gerrit]
+</span></span><span class="line"><span class="cl">host=review.opendev.org
+</span></span><span class="line"><span class="cl">port=29418
+</span></span><span class="line"><span class="cl">project=openstack/nova.git
+</span></span><span class="line"><span class="cl">defaultbranch=master
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>运行 <a class="link" href="https://docs.opendev.org/opendev/git-review/latest/"  target="_blank" rel="noopener"
+    ><code>git review</code></a> 时会读取这个文件，并将提交推送到 Gerrit 进行审查，而不是直接推送到分支。这是一个通过提交配置文件来扩展 Git 工作流的典型案例。</p>
+<p><strong>.gitlint</strong> 配置 <a class="link" href="https://jorisroovers.com/gitlint/"  target="_blank" rel="noopener"
+    >gitlint</a>，用于检查提交信息格式。遵循同样的理念：把配置提交到仓库，所有人都使用相同的规则。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-fallback" data-lang="fallback"><span class="line"><span class="cl">[general]
+</span></span><span class="line"><span class="cl">ignore=body-is-missing
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">[title-max-length]
+</span></span><span class="line"><span class="cl">line-length=72
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>gitlint 读取这个文件来验证提交信息格式。类似于使用 <code>commit-msg</code> Hook，但配置随仓库一起分发。</p>
+<p><strong>.jj/</strong> 是 <a class="link" href="https://github.com/jj-vcs/jj"  target="_blank" rel="noopener"
+    >Jujutsu</a> 的工作区状态目录。Jujutsu 是一个兼容 Git 的版本控制系统，它将自己的元数据存储在 <code>.jj/</code> 中，同时遵守所有 Git 魔法文件的规则。如果你使用 <code>jj</code>，你的仓库中会同时存在 <code>.git/</code> 和 <code>.jj/</code>，而 <code>.gitignore</code>、<code>.gitattributes</code>、<code>.mailmap</code> 的行为完全一样。</p>
+<h2 id="git-之外">Git 之外
+</h2><p>这种模式并不止步于 Git。其他工具遵循同样的做法：在仓库中放一个点文件，工具自动检测并改变行为。</p>
+<p><strong>.editorconfig</strong> 跨团队统一编辑器行为。把它放在仓库根目录，编辑器就会读取它来配置缩进风格、行尾、行尾空白和字符编码。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-fallback" data-lang="fallback"><span class="line"><span class="cl">root = true
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">[*]
+</span></span><span class="line"><span class="cl">indent_style = space
+</span></span><span class="line"><span class="cl">indent_size = 2
+</span></span><span class="line"><span class="cl">end_of_line = lf
+</span></span><span class="line"><span class="cl">charset = utf-8
+</span></span><span class="line"><span class="cl">trim_trailing_whitespace = true
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">[*.md]
+</span></span><span class="line"><span class="cl">trim_trailing_whitespace = false
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>VS Code、Vim、Emacs、Sublime 以及大多数其他编辑器要么原生支持，要么有插件支持。完整规范请参考 <a class="link" href="https://editorconfig.org/"  target="_blank" rel="noopener"
+    >editorconfig.org</a>。</p>
+<p><strong>.ruby-version</strong>、<strong>.node-version</strong>、<strong>.python-version</strong> 告诉版本管理器应该使用哪个语言版本。rbenv、nodenv、pyenv、nvm 和 asdf 等工具在你 <code>cd</code> 进该目录时会自动读取这些文件并切换版本。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-fallback" data-lang="fallback"><span class="line"><span class="cl"># .ruby-version
+</span></span><span class="line"><span class="cl">3.3.0
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"># .node-version
+</span></span><span class="line"><span class="cl">20.11.0
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p><strong>.tool-versions</strong> 是 asdf 的多语言版本文件。用一个文件管理所有语言版本。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-fallback" data-lang="fallback"><span class="line"><span class="cl">ruby 3.3.0
+</span></span><span class="line"><span class="cl">nodejs 20.11.0
+</span></span><span class="line"><span class="cl">python 3.12.0
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p><strong>.dockerignore</strong> 的工作方式类似 <code>.gitignore</code>，但针对 Docker 构建上下文。运行 <code>docker build</code> 时，Docker 会将文件发送给守护进程。在 <code>.dockerignore</code> 中列出模式，Docker 就不会发送这些文件。</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-fallback" data-lang="fallback"><span class="line"><span class="cl">.git
+</span></span><span class="line"><span class="cl">node_modules
+</span></span><span class="line"><span class="cl">*.log
+</span></span><span class="line"><span class="cl">.env
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>这可以加速构建，并防止密钥泄露到镜像中。语法与 <code>.gitignore</code> 一致：通配符、取反、目录标记。</p>
+<h2 id="支持这些文件">支持这些文件
+</h2><p>如果你正在开发与 Git 仓库交互的工具，可能需要留意并处理这些文件：</p>
+<ul>
+<li>遍历仓库目录树时，需要读取 <code>.gitignore</code></li>
+<li>读取 <code>.gitattributes</code>，了解哪些文件是二进制文件、第三方代码或生成代码</li>
+<li>显示作者信息时，读取 <code>.mailmap</code></li>
+<li>如果需要处理子模块，读取 <code>.gitmodules</code></li>
+</ul>
+<p>git config 格式（<code>.gitmodules</code> 和其他各种文件使用的格式）为 <code>[section &quot;subsection&quot;] key = value</code>。Git 自带 <code>git config</code> 命令可以正确地读写这些文件。大多数语言的 Git 库都内置了 git config 解析器。</p>
+<hr>
+<ul>
+<li><a class="link" href="https://huizhou92.com/zh-cn/p/git-%E4%B8%AD%E4%BD%A0%E5%8F%AF%E8%83%BD%E4%B8%8D%E7%9F%A5%E9%81%93%E7%9A%84%E9%AD%94%E6%B3%95%E6%96%87%E4%BB%B6zh-cn/"  target="_blank" rel="noopener"
+    >本文长期链接</a></li>
+<li>如果您觉得我的博客对你有帮助，请通过 <a class="link" href="https://huizhou92.com/index.xml"  target="_blank" rel="noopener"
+    >RSS</a>订阅我。</li>
+<li>或者在<a class="link" href="https://x.com/@piaopiaopig"  target="_blank" rel="noopener"
+    >X</a>上关注我。</li>
+<li>如果您有<a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >Medium</a>账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。</li>
+</ul>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/zh-cn/tags/git/">Git</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            最后更新于 Feb 25, 2026 19:56 CST
+        </span>
+    </section></footer>
+
+
+    
+        <link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI&#43;WdtXRGWt2kTvGFasHpSy3SV"crossorigin="anonymous"
+            ><script 
+                src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG&#43;vnGctmUb0ZY0l8"crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"integrity="sha384-&#43;VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4&#43;/RRE05"crossorigin="anonymous"
+                defer
+                >
+            </script><script>
+    window.addEventListener("DOMContentLoaded", () => {
+        renderMathInElement(document.body, {
+            delimiters: [
+                { left: "$$", right: "$$", display: true },
+                { left: "$", right: "$", display: false },
+                { left: "\\(", right: "\\)", display: false },
+                { left: "\\[", right: "\\]", display: true }
+            ],
+            ignoredClasses: ["gist"]
+        });})
+</script>
+    
+</article>
+
+    
+
+    
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+<aside class="related-content--wrapper">
+    <h2 class="section-title">相关文章</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="">
+    <a href="/zh-cn/p/claude-code-picks-ai-advertisingzh-cn/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Claude 选了 Vercel 100 次，AI 编程助手是如何在悄无声息中，成为史上最强大的广告渠道的。</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/go-1.26-%E9%BB%91%E7%A7%91%E6%8A%80%E8%B7%B3%E8%BF%87-gc-%E7%9B%B4%E6%8E%A5%E9%87%8A%E6%94%BE%E5%86%85%E5%AD%98%E6%80%A7%E8%83%BD%E9%A3%99%E5%8D%87-200/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 1.26 黑科技：跳过 GC 直接释放内存，性能飙升 200%</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/http3%E7%9C%8B%E4%BC%BC%E6%97%A0%E5%A4%84%E4%B8%8D%E5%9C%A8%E5%AE%9E%E5%88%99%E9%9A%BE%E8%A7%85%E8%B8%AA%E5%BD%B1/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://httptoolkit.com/images/header-images/http-toolkit-assets/h-sign-opt-640.WEBP" loading="lazy" data-key="http3%E7%9C%8B%E4%BC%BC%E6%97%A0%E5%A4%84%E4%B8%8D%E5%9C%A8%E5%AE%9E%E5%88%99%E9%9A%BE%E8%A7%85%E8%B8%AA%E5%BD%B1" data-hash="https://httptoolkit.com/images/header-images/http-toolkit-assets/h-sign-opt-640.WEBP"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">HTTP/3：看似无处不在，实则难觅踪影</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/go-%E5%AE%98%E6%96%B9%E5%86%8D%E8%B0%88%E9%94%99%E8%AF%AF%E5%A4%84%E7%90%86%E6%96%B0%E8%AF%AD%E6%B3%95%E4%B8%BA%E4%BD%95%E8%BF%9F%E8%BF%9F%E6%97%A0%E6%B3%95%E8%90%BD%E5%9C%B0/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 官方再谈错误处理：新语法为何迟迟无法落地？</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/go-%E7%9A%84-map-%E4%B8%BA%E4%BB%80%E4%B9%88%E5%8F%98%E6%85%A2%E4%BA%86.zh-cn/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2025/05/a7748f1ab7e01c49c0f35f9591f6cfd3.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2025/05/a7748f1ab7e01c49c0f35f9591f6cfd3.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 的 map 为什么变慢了?.zh-cn</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+
+    
+        
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2026 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+    </section>
+    <script src="/js/adblock-detection.js" defer></script>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>
