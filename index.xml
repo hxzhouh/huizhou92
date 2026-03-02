@@ -7,7 +7,668 @@
         <generator>Hugo -- gohugo.io</generator>
         <language>en</language>
         <copyright>Copyright © 2023 huizhou92</copyright>
-        <lastBuildDate>Mon, 23 Feb 2026 15:01:55 +0800</lastBuildDate><atom:link href="https://huizhou92.com/index.xml" rel="self" type="application/rss+xml" /><item>
+        <lastBuildDate>Mon, 02 Mar 2026 23:03:33 +0800</lastBuildDate><atom:link href="https://huizhou92.com/index.xml" rel="self" type="application/rss+xml" /><item>
+        <title>Why Your AI Agent Keeps Forgetting: A Practical Memory Architecture for Individual Users</title>
+        <link>https://huizhou92.com/p/why-your-ai-agent-keeps-forgetting-a-practical-memory-architecture-for-individual-users/</link>
+        <pubDate>Mon, 02 Mar 2026 23:03:33 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/p/why-your-ai-agent-keeps-forgetting-a-practical-memory-architecture-for-individual-users/</guid>
+        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2026/03/8b8971ca1398b1df35a88d5ba9c7934a.png" alt="Featured image of post Why Your AI Agent Keeps Forgetting: A Practical Memory Architecture for Individual Users" /&gt;&lt;h3 id=&#34;the-problem-why-does-your-agent-get-dumber-over-time&#34;&gt;The Problem: Why Does Your Agent Get Dumber Over Time?
+&lt;/h3&gt;&lt;p&gt;Picture this: you&amp;rsquo;ve been working with an AI agent for weeks, patiently teaching it your project structure, personal preferences, and workflows. Within a single conversation, it remembers your instructions just fine — but the next day, when you start a new session, it&amp;rsquo;s like meeting a stranger. Worse still, it starts &lt;strong&gt;confidently fabricating events that never happened&lt;/strong&gt;, asks you the same questions again, and forgets critical decisions made just hours ago.&lt;/p&gt;
+&lt;!-- more--&gt;
+&lt;p&gt;If this sounds familiar, don&amp;rsquo;t blame the agent&amp;rsquo;s intelligence — &lt;strong&gt;the problem is a fundamental flaw in memory system design&lt;/strong&gt;.&lt;/p&gt;
+&lt;p&gt;Most people assume AI &amp;ldquo;has memory&amp;rdquo; because it can recall earlier parts of a conversation. What&amp;rsquo;s actually happening is far simpler: the agent is using its &lt;strong&gt;Context Window&lt;/strong&gt; — a temporary workspace, not permanent storage. When the conversation gets too long and triggers compaction, or when you start a new session, that workspace gets wiped clean.&lt;/p&gt;
+&lt;p&gt;OpenClaw tries to fix this by persisting long-term memory to local Markdown files (&lt;code&gt;MEMORY.md&lt;/code&gt;, daily logs, etc.). In theory, memories can span months or even years. Files live on disk, are human-readable, editable, and git-versionable — sounds perfect, right?&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Yet countless users report that their agents become progressively &amp;ldquo;demented&amp;rdquo; over time.&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;The root causes boil down to three layers:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Compaction-induced &amp;ldquo;summary amnesia&amp;rdquo;&lt;/strong&gt;: When the Context Window approaches its ceiling (say, Claude Opus 4.6&amp;rsquo;s 200K token boundary), OpenClaw automatically triggers compaction — it asks the model to &amp;ldquo;summarize&amp;rdquo; earlier conversation into shorter chunks, then discards the originals. Critical details get lost in translation.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Retrieval failure — &amp;ldquo;remembered but can&amp;rsquo;t recall&amp;rdquo;&lt;/strong&gt;: Important information does get written to disk (&lt;code&gt;MEMORY.md&lt;/code&gt;, &lt;code&gt;daily/YYYY-MM-DD.md&lt;/code&gt;), but retrieval depends on &lt;code&gt;memory_search&lt;/code&gt; / &lt;code&gt;memory_get&lt;/code&gt; tools. Missed recalls happen because the underlying embedding model isn&amp;rsquo;t strong enough, pure semantic search misses keyword matches, and &lt;code&gt;MEMORY.md&lt;/code&gt; bloats into an unwieldy mess over time.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;No forgetting + no conflict resolution&lt;/strong&gt;: OpenClaw almost never forgets — files only grow, never shrink. Outdated preferences, abandoned project decisions, early incorrect instructions — they all pile up. When new information arrives, the system doesn&amp;rsquo;t &amp;ldquo;update&amp;rdquo;; it only appends. Contradictions accumulate, noise dilutes signal during retrieval. &lt;strong&gt;Eventually the agent gets confused and starts fabricating stories to reconcile conflicting &amp;ldquo;facts.&amp;rdquo;&lt;/strong&gt;&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2026/03/d44ca3ec9ba8f709634a5755489a4d53.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Context Window vs. Persistent Memory&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;h3 id=&#34;six-structural-flaws-in-current-memory-systems&#34;&gt;Six Structural Flaws in Current Memory Systems
+&lt;/h3&gt;&lt;p&gt;OpenClaw&amp;rsquo;s default memory scheme — &lt;strong&gt;Markdown files + vector search&lt;/strong&gt; — has obvious strengths: human-readable, git-versionable, zero external dependencies. But in practice, I&amp;rsquo;ve found six structural weaknesses, and none of them are trivial:&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;1. Flat and undifferentiated&lt;/strong&gt;: A casual chat from a year ago carries the same weight as yesterday&amp;rsquo;s architecture decision. Search results drown in noise.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;2. No forgetting mechanism&lt;/strong&gt;: Append-only, never delete. The memory system eventually drowns itself — stale information masquerades as &amp;ldquo;facts&amp;rdquo; and pollutes current decisions.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;3. No automatic consolidation&lt;/strong&gt;: Important insights must be manually distilled and written in. The agent never proactively &amp;ldquo;digests&amp;rdquo; what happened today.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;4. No temporal reasoning&lt;/strong&gt;: The agent knows &amp;ldquo;something happened&amp;rdquo; but not whether it was 3 days or 3 months ago — it simply can&amp;rsquo;t judge whether information is stale.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;5. No memory promotion&lt;/strong&gt;: Critical decisions buried in logs stay buried forever. No mechanism promotes them to the long-term knowledge base.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;6. No knowledge graph&lt;/strong&gt;: Unable to express relational knowledge like &amp;ldquo;A knows B&amp;rdquo; or &amp;ldquo;Project X depends on tool Y.&amp;rdquo; Every memory is an isolated, flat entry.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2026/03/cb1fc4a1b90759dbfd5f329e89cdcd56.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Six Structural Flaws — Diagnostic Diagram&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;h3 id=&#34;what-does-academia-say-february-2026-research-review&#34;&gt;What Does Academia Say? (February 2026 Research Review)
+&lt;/h3&gt;&lt;p&gt;In February 2026, agent memory suddenly became a hot academic battleground — 10+ papers published in a single month. One survey paper with 59 co-authors proposed a three-dimensional taxonomy for memory systems.&lt;/p&gt;
+&lt;p&gt;Let me highlight the key ones:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;A-MEM&lt;/strong&gt; (NeurIPS 2025): Borrows from the Zettelkasten note-taking method — new memories auto-generate keywords and associative links, building an interconnected knowledge network. A fascinating approach.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;xMemory&lt;/strong&gt; (ICML 2026): Decouples memory into semantic components, organizes them hierarchically, and supports top-down retrieval, dramatically reducing retrieval noise.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;BudgetMem&lt;/strong&gt;: Three-layer budget structure + RL router that prioritizes retrieval resources for the most important memories.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;InfMem&lt;/strong&gt;: PreThink-Retrieve-Write protocol — the agent &amp;ldquo;thinks about what to look for&amp;rdquo; before retrieval, boosting accuracy by 10–12%.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;But what&amp;rsquo;s even more worth noting are two &lt;strong&gt;industry warnings&lt;/strong&gt;:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;⚠️ &lt;strong&gt;Serial Collapse&lt;/strong&gt; (Dark Side of the Moon paper): Agents may gradually degenerate into not using memory at all — even when the memory system is running perfectly. Memory existing ≠ Agent using it.&lt;/p&gt;
+&lt;p&gt;⚠️ &lt;strong&gt;Memory Misevolution&lt;/strong&gt; (TAME paper): Accumulation of &amp;ldquo;toxic shortcuts&amp;rdquo; during normal iteration — memory strategies that appear efficient but violate constraints.&lt;/p&gt;&lt;/blockquote&gt;
+&lt;p&gt;These two warnings are extremely common in practice. You&amp;rsquo;ve probably noticed it yourself: sometimes the agent has memory files right there but simply never queries them.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2026/03/523749e958151f2da7d8c8f77a2a493b.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Agent Memory Research Taxonomy (February 2026)&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;h3 id=&#34;the-solution-three-layer-memory-architecture&#34;&gt;The Solution: Three-Layer Memory Architecture
+&lt;/h3&gt;&lt;p&gt;Synthesizing all the research above plus my own hands-on experience, here&amp;rsquo;s a &lt;strong&gt;deterministic, zero-cost architecture&lt;/strong&gt; for individual users.&lt;/p&gt;
+&lt;p&gt;First, let me show you my own memory system directory structure:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;14
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;15
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;16
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;17
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;18
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;19
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;20
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;21
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;22
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;23
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;24
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;25
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;26
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-shell&#34; data-lang=&#34;shell&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;root@ubuntu-4gb-openclaw:~/.openclaw/workspace/memory# tree
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;.
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;├── daily
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;│   └── 2026-03-01.md
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;├── episodic
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;├── hotspots_2026-02-18.md
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;├── hot-topics-2026-02-17.md
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;├── hot-trends-2026-02-18.md
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;├── INDEX.md
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;├── keywords_20260217_1600.json
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;├── lessons
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;│   ├── api-guide.md
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;│   ├── mistakes.md
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;│   └── system-deployment.md
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;├── NOW.md
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;├── people
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;│   └── 老板.md
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;├── rules
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;│   └── storage-routing.md
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;├── scripts
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;│   ├── archive-stale.sh
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;│   └── daily_digest.py
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;└── semantic
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    ├── golang-patterns.md
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    ├── writing-frameworks.md
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    └── writing-style-guide-huizhou92.md
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;Let&amp;rsquo;s walk through each layer.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Short-term layer: &lt;code&gt;NOW.md&lt;/code&gt; (the most overlooked design)&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;NOW.md&lt;/code&gt; is the &lt;strong&gt;highest information-density&lt;/strong&gt; file in the entire architecture.&lt;/p&gt;
+&lt;p&gt;The core idea is straightforward: after every restart, the agent&amp;rsquo;s first action should be reading &lt;code&gt;NOW.md&lt;/code&gt; — not searching through a massive memory library. It&amp;rsquo;s the essence extractor, the &amp;ldquo;where did I leave off&amp;rdquo; quick-recovery tool, the life raft after compaction.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-markdown&#34; data-lang=&#34;markdown&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;gh&#34;&gt;# NOW.md — Workspace
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;gh&#34;&gt;&lt;/span&gt;Updated: YYYY-MM-DD HH:MM
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;gu&#34;&gt;## Today&amp;#39;s Focus
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;gu&#34;&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;-&lt;/span&gt; ✅ Completed items
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;gu&#34;&gt;## In Progress
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;gu&#34;&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;-&lt;/span&gt; 🔄 Unfinished tasks (including blockers)
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;gu&#34;&gt;## Current Priorities
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;gu&#34;&gt;&lt;/span&gt;| Priority | Task | Status |
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;|----------|------|--------|
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;| P0 | Most important thing | In progress |
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;&lt;strong&gt;Key rule&lt;/strong&gt;: &lt;code&gt;NOW.md&lt;/code&gt; is the &lt;strong&gt;only file allowed to be overwritten&lt;/strong&gt;. All other memory files are append-only.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Medium-term layer: Daily logs&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Filename: &lt;code&gt;memory/YYYY-MM-DD.md&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;Write mode: &lt;strong&gt;Append-only, never overwrite&lt;/strong&gt;&lt;/li&gt;
+&lt;li&gt;Format suggestion: &lt;code&gt;### HH:MM — Event title + content description&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;Principle: Better too much than too little. Logs are raw material; distillation happens through nightly automation.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;Long-term layer: Structured subdirectories&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Knowledge files use a standardized YAML frontmatter:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;7
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-yaml&#34; data-lang=&#34;yaml&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nt&#34;&gt;title&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;s2&#34;&gt;&amp;#34;File Title&amp;#34;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;date&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;ld&#34;&gt;2026-02-28&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;category&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;l&#34;&gt;lessons&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;priority&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;l&#34;&gt;🔴         &lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;c&#34;&gt;# 🔴 Core | 🟡 Important | 🟢 Reference&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;status&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;l&#34;&gt;active       &lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;c&#34;&gt;# active | stale | superseded | conflict&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;last_verified&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;ld&#34;&gt;2026-02-28&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;tags&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;l&#34;&gt;relevant tags]&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;Entries with &lt;code&gt;last_verified&lt;/code&gt; older than 30 days are auto-flagged as ⚠️ &lt;code&gt;stale&lt;/code&gt;, prompting manual review.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;&lt;code&gt;INDEX.md&lt;/code&gt;: Knowledge base health dashboard&lt;/strong&gt;&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-markdown&#34; data-lang=&#34;markdown&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;| File | Priority | Status | Last Verified | Description |
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;|------|----------|--------|---------------|-------------|
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;| tools | 🔴 | ✅ active | 2026-02-28 | Verified tool list |
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;| api-guide | 🟡 | ⚠️ stale | 2026-01-10 | Possibly outdated, needs review |
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;| old-workflow | ⚪ | &lt;span class=&#34;gd&#34;&gt;~~superseded~~&lt;/span&gt; | 2025-12-01 | Replaced by new approach |
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;On startup, the agent glances at &lt;code&gt;INDEX.md&lt;/code&gt; and knows the health status of the entire knowledge base in seconds.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2026/03/def61d6ad3edb44d3f17ebfef951f1f4.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Three-Layer Memory Architecture&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;h3 id=&#34;lightweight-knowledge-graph-sqlite-triple-table&#34;&gt;Lightweight Knowledge Graph: SQLite Triple Table
+&lt;/h3&gt;&lt;p&gt;This is the most complex of the six flaws, and the fundamental limitation that pure Markdown cannot break through.&lt;/p&gt;
+&lt;h4 id=&#34;why-do-we-need-a-knowledge-graph&#34;&gt;Why Do We Need a Knowledge Graph?
+&lt;/h4&gt;&lt;p&gt;Markdown files can only store &lt;strong&gt;flat facts&lt;/strong&gt;:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;Brian prefers concise communication. Project X uses PostgreSQL. Tool Y requires an API Key.&lt;/p&gt;&lt;/blockquote&gt;
+&lt;p&gt;But real-world knowledge has &lt;strong&gt;relationships&lt;/strong&gt;:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;Brian → responsible for → Project X → depends on → Tool Y → requires → API Key (stored in secrets/)&lt;/p&gt;&lt;/blockquote&gt;
+&lt;p&gt;When the agent is asked &amp;ldquo;What API Key does Brian&amp;rsquo;s project need?&amp;rdquo;, pure vector search simply cannot complete this three-hop inference.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;The solution: a SQLite triple table.&lt;/strong&gt; No external dependencies, no deployment overhead — perfectly sufficient for personal knowledge relationship management:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;7
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-sql&#34; data-lang=&#34;sql&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;k&#34;&gt;CREATE&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;TABLE&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;triples&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;subject&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;TEXT&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;-- Entity (e.g., &amp;#34;Brian&amp;#34;)
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;predicate&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;TEXT&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;  &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;-- Relationship (e.g., &amp;#34;responsible for&amp;#34;)
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;object&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;TEXT&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;     &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;-- Object (e.g., &amp;#34;Project Alpha&amp;#34;)
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;added_date&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;TEXT&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;confidence&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;REAL&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;DEFAULT&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;);&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;Use Python or Node for reads, writes, and queries. The entire database is a single &lt;code&gt;.db&lt;/code&gt; file sitting alongside your Markdown memory — portable and trivially easy to back up.&lt;/p&gt;
+&lt;h4 id=&#34;when-to-write-to-the-knowledge-graph&#34;&gt;When to Write to the Knowledge Graph
+&lt;/h4&gt;&lt;p&gt;Not all information deserves graphing. My recommendation is to limit it to these scenarios:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;System dependencies&lt;/strong&gt;: Project A depends on tool B, which requires configuration C&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Resource locations&lt;/strong&gt;: Where credentials / files / APIs are stored&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Historical associations&lt;/strong&gt;: Decision X was made because of event Y&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Daily facts (preferences, operation logs) are fine in Markdown — don&amp;rsquo;t over-graph.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;file:///Users/hxzhouh/lobsterai/project/illustrations/ai-agent-memory-architecture/05-framework-knowledge-graph.png?lastModify=1772375639&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Knowledge Graph Example — Multi-hop Relational Reasoning&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;h3 id=&#34;forgetting-mechanism-active-forgetting-matters-more-than-passive-retention&#34;&gt;Forgetting Mechanism: Active Forgetting Matters More Than Passive Retention
+&lt;/h3&gt;&lt;p&gt;This might sound counterintuitive, but &lt;strong&gt;forgetting is one of the most critical capabilities of a memory system&lt;/strong&gt;.&lt;/p&gt;
+&lt;p&gt;Each memory entry is tagged with priority and expiration:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-markdown&#34; data-lang=&#34;markdown&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;k&#34;&gt;-&lt;/span&gt; [🟢LOW][CONTEXT] added:2026-02-01 expires:2026-03-01 · Context for a temporary task
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;The retention policy is simple:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-markdown&#34; data-lang=&#34;markdown&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;k&#34;&gt;-&lt;/span&gt; 🔴 HIGH — Core knowledge, never expires, never archives
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;k&#34;&gt;-&lt;/span&gt; 🟡 MED — Important knowledge, long-term retention, manually evaluate for staleness
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;k&#34;&gt;-&lt;/span&gt; 🟢 LOW — Reference information, proactively add &lt;span class=&#34;sb&#34;&gt;`expires:`&lt;/span&gt; field for system auto-cleanup
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;&lt;strong&gt;&lt;code&gt;.archive/&lt;/code&gt; cold storage design&lt;/strong&gt;: Name the directory with a dot prefix. OpenClaw&amp;rsquo;s QMD vector engine automatically skips dot-prefixed directories, giving you zero-configuration hot/cold index separation. Archived files aren&amp;rsquo;t deleted — they remain directly accessible via the filesystem.&lt;/p&gt;
+&lt;p&gt;A simple weekly cron script handles cleanup: scan for expired &lt;code&gt;expires:&lt;/code&gt; fields, move those entries into &lt;code&gt;.archive/&lt;/code&gt;, and update &lt;code&gt;INDEX.md&lt;/code&gt; accordingly.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2026/03/610af8262101fa80fbecdd43ea732d89.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Forgetting Mechanism — Expiration and Archiving Workflow&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;h3 id=&#34;automatic-consolidation-teaching-your-memory-system-to-digest&#34;&gt;Automatic Consolidation: Teaching Your Memory System to Digest
+&lt;/h3&gt;&lt;p&gt;Good storage structure alone isn&amp;rsquo;t enough — if memories can&amp;rsquo;t auto-consolidate, it&amp;rsquo;s just a manually maintained folder.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Temporal annotation is key.&lt;/strong&gt; Every memory entry must include time-relationship markers, solving the &amp;ldquo;no temporal reasoning&amp;rdquo; problem mentioned earlier:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&amp;ldquo;First appeared: …&amp;rdquo;&lt;/li&gt;
+&lt;li&gt;&amp;ldquo;Following previous X, today completed Y&amp;rdquo;&lt;/li&gt;
+&lt;li&gt;&amp;ldquo;N days since first discussion, status: completed&amp;rdquo;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;Nightly consolidation (via cron)&lt;/strong&gt;: Set up a nightly cron job that calls your existing LLM API to:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Read today&amp;rsquo;s daily log (&lt;code&gt;memory/YYYY-MM-DD.md&lt;/code&gt;)&lt;/li&gt;
+&lt;li&gt;Extract key decisions, lessons learned, and status changes&lt;/li&gt;
+&lt;li&gt;Promote important entries to long-term knowledge files (with proper YAML frontmatter)&lt;/li&gt;
+&lt;li&gt;Update &lt;code&gt;NOW.md&lt;/code&gt; with tomorrow&amp;rsquo;s priorities&lt;/li&gt;
+&lt;li&gt;Update &lt;code&gt;INDEX.md&lt;/code&gt; health dashboard&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;One easy pitfall here: &lt;strong&gt;always read the target file before writing&lt;/strong&gt;, check whether similar content already exists, and avoid duplicate entries and memory conflicts (a.k.a. the HaluMem problem).&lt;/p&gt;
+&lt;h3 id=&#34;the-setup-checklist&#34;&gt;The Setup Checklist
+&lt;/h3&gt;&lt;p&gt;Here&amp;rsquo;s everything you need to implement this architecture:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Three-layer file structure&lt;/strong&gt;: &lt;code&gt;NOW.md&lt;/code&gt; + &lt;code&gt;memory/YYYY-MM-DD.md&lt;/code&gt; + structured subdirectories (&lt;code&gt;lessons/&lt;/code&gt;, &lt;code&gt;tools/&lt;/code&gt;, etc.)&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;INDEX.md&lt;/code&gt;&lt;/strong&gt;: Knowledge base health dashboard, read on startup&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Nightly cron job&lt;/strong&gt;: Calls your existing LLM API for auto-consolidation&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;expires&lt;/code&gt; field + weekly cleanup script&lt;/strong&gt;: Active forgetting mechanism&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Built-in vector search&lt;/strong&gt;: No extra deployment (OpenClaw ships with it)&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;SQLite triple table&lt;/strong&gt; (optional): Only add if you genuinely need multi-hop relational reasoning&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;No extra resources needed&lt;/strong&gt; — everything runs on what you already have.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2026/03/ac15bda116079c89680fa5a7daf01b44.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Memory Configuration Recommendations — Scenario Comparison&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;h3 id=&#34;three-common-misconceptions&#34;&gt;Three Common Misconceptions
+&lt;/h3&gt;&lt;p&gt;In practice, I&amp;rsquo;ve seen plenty of people stumble into these traps. Here are the three most common:&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Misconception #1: More memory is always better.&lt;/strong&gt; Quite the opposite — stale, low-quality memories are more dangerous than no memory at all. They masquerade as &amp;ldquo;facts&amp;rdquo; and skew the agent&amp;rsquo;s judgment. Forgetting mechanisms are just as important as writing mechanisms.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Misconception #2: Write-only, never read.&lt;/strong&gt; Writing information into memory doesn&amp;rsquo;t mean the agent will use it. Serial Collapse — where agents gradually stop querying memory — is a real phenomenon. Regularly verifying that the agent actually uses its memory is as critical as building the memory system itself.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Misconception #3: Everything belongs in the knowledge graph.&lt;/strong&gt; The value of a knowledge graph lies in relational reasoning, not storage. Daily preferences and operation logs are perfectly fine in Markdown — only knowledge that genuinely requires multi-hop reasoning deserves to be graphed.&lt;/p&gt;
+&lt;h3 id=&#34;summary&#34;&gt;Summary
+&lt;/h3&gt;&lt;blockquote&gt;
+&lt;p&gt;A good memory system isn&amp;rsquo;t the one that stores the most — it&amp;rsquo;s the one that &lt;strong&gt;delivers the right information, in the right form, at the right moment&lt;/strong&gt;.&lt;/p&gt;&lt;/blockquote&gt;
+&lt;p&gt;Start with the three-layer architecture (&lt;code&gt;NOW.md&lt;/code&gt; + daily logs + structured long-term files), add nightly auto-consolidation and a simple forgetting mechanism — for any individual user, this is more than enough, and it costs nothing beyond your existing LLM API. Add a SQLite triple table only when you genuinely need multi-hop relational reasoning.&lt;/p&gt;
+&lt;p&gt;Don&amp;rsquo;t overcomplicate it. The architecture above addresses all six fundamental flaws — and you can set it up in an afternoon.&lt;/p&gt;
+&lt;p&gt;You can also just copy this article to OpenClaw and let it set everything up for you.&lt;/p&gt;
+&lt;hr&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/p/why-your-ai-agent-keeps-forgetting-a-practical-memory-architecture-for-individual-users/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Long Time Link&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;If you find my blog helpful, please subscribe to me via &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RSS&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Or follow me on &lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;X&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;If you have a &lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt; account, follow me there. My articles will be published there as soon as possible.&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+        </item>
+        <item>
+        <title>五年了， JSON/V2 还是没有转正</title>
+        <link>https://huizhou92.com/p/%E4%BA%94%E5%B9%B4%E4%BA%86-json/v2-%E8%BF%98%E6%98%AF%E6%B2%A1%E6%9C%89%E8%BD%AC%E6%AD%A3/</link>
+        <pubDate>Fri, 27 Feb 2026 21:50:53 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/p/%E4%BA%94%E5%B9%B4%E4%BA%86-json/v2-%E8%BF%98%E6%98%AF%E6%B2%A1%E6%9C%89%E8%BD%AC%E6%AD%A3/</guid>
+        <description>&lt;!-- more--&gt;
+&lt;h1 id=&#34;五年了-jsonv2-还是没有转正&#34;&gt;五年了， JSON/V2 还是没有转正
+&lt;/h1&gt;&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2026/02/605cdeab11eca0ae50d948387214af5b.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;cover&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;2026 年 2 月 10 日，Go 1.26 重磅发布。&lt;strong&gt;Green Tea&lt;/strong&gt; 垃圾回收器正式成为默认选项。&lt;code&gt;go fix&lt;/code&gt; 工具经历了全面的现代化改造。cgo 调用开销降低了 &lt;strong&gt;30%&lt;/strong&gt;。64 位平台迎来了堆地址随机化（Heap Address Randomization）安全增强。无论从哪个角度看，这都是一个里程碑式的版本。&lt;/p&gt;
+&lt;p&gt;然而，许多开发者翘首以盼的功能——&lt;code&gt;encoding/json/v2&lt;/code&gt;——却明显缺席于稳定 API 之中。它依然躲在 &lt;code&gt;GOEXPERIMENT=jsonv2&lt;/code&gt; 的实验性标志背后，尚未就绪。&lt;/p&gt;
+&lt;p&gt;我从Golang 1.25 就开始期待&lt;code&gt;JSON/v2&lt;/code&gt; 了。&lt;strong&gt;五年&lt;/strong&gt;的开发，居然还没完成？但如果你深入研究核心追踪议题 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/76406&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;#76406&lt;/a&gt; 和相关提案 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/71497&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;#71497&lt;/a&gt;，画面就变得清晰了：这种延迟不是工程效率的问题。它源于对 &lt;strong&gt;API 完美主义&lt;/strong&gt;的执着追求、一场艰苦卓绝的&lt;strong&gt;向后兼容性&lt;/strong&gt;攻坚战，以及一个几乎让整个项目脱轨的&lt;strong&gt;内存回退&lt;/strong&gt;问题。&lt;/p&gt;
+&lt;p&gt;我们逐一拆解。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2026/02/e17a40bcd89d60d0337cfb1ab11085bd.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20260212150624&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;h3 id=&#34;宏观视角为什么-json-v2-如此重要&#34;&gt;宏观视角：为什么 JSON V2 如此重要
+&lt;/h3&gt;&lt;p&gt;当前的 &lt;code&gt;encoding/json&lt;/code&gt;（我们姑且称之为 v1）已经忠实服务 Go 开发者超过十年。但它的设计缺陷一直在累积，就像一个从不重构的创业公司的技术债务。以下是主要问题清单：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;它会&lt;strong&gt;默默接受无效的 UTF-8&lt;/strong&gt; JSON 字符串&lt;/li&gt;
+&lt;li&gt;它&lt;strong&gt;允许重复键名&lt;/strong&gt;而毫无怨言&lt;/li&gt;
+&lt;li&gt;自定义 &lt;code&gt;Marshaler&lt;/code&gt; 实现&lt;strong&gt;无法访问配置选项&lt;/strong&gt;&lt;/li&gt;
+&lt;li&gt;没有办法&lt;strong&gt;拒绝有效 JSON 文档之后的多余数据&lt;/strong&gt;&lt;/li&gt;
+&lt;li&gt;所谓的&amp;quot;流式&amp;quot;API 基本上是个幌子——底层实际上会缓冲所有内容&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这些绝非小问题。在生产环境中，它们是&lt;strong&gt;安全攻击向量&lt;/strong&gt;和&lt;strong&gt;静默数据损坏&lt;/strong&gt;的风险源。符合 RFC 8259 标准？差得远呢。&lt;/p&gt;
+&lt;p&gt;由 &lt;strong&gt;Joe Tsai&lt;/strong&gt; 和 &lt;strong&gt;Daniel Martí&lt;/strong&gt; 领导的 JSON v2，是自泛型（Generics）落地以来最具雄心的标准库重写。它旨在修复上述所有问题——同时带来巨大的性能提升。&lt;/p&gt;
+&lt;h3 id=&#34;全新架构语法层与语义层的分离&#34;&gt;全新架构：语法层与语义层的分离
+&lt;/h3&gt;&lt;p&gt;v2 最精妙的设计决策之一，是将 JSON 处理&lt;strong&gt;严格拆分&lt;/strong&gt;为两层：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;encoding/json/jsontext&lt;/code&gt;&lt;/strong&gt; —— 语法层（Syntactic Layer）。负责纯粹的 JSON 标记化（Tokenizing）、解析和编码。无反射，不涉及 Go 类型。你可以把它理解为一个高性能 JSON 扫描器。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;encoding/json/v2&lt;/code&gt;&lt;/strong&gt; —— 语义层（Semantic Layer）。基于 &lt;code&gt;jsontext&lt;/code&gt; 构建，实现 Go 类型与 JSON 数据之间的映射。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这种分离的威力在于：如果你只需要验证或转换原始 JSON 而不涉及 Go 结构体，可以直接使用 &lt;code&gt;jsontext&lt;/code&gt;——零反射开销、真正的流式处理、最小化内存分配。&lt;/p&gt;
+&lt;p&gt;以下是两个版本的对比：&lt;/p&gt;
+&lt;table&gt;
+  &lt;thead&gt;
+      &lt;tr&gt;
+          &lt;th&gt;&lt;strong&gt;维度&lt;/strong&gt;&lt;/th&gt;
+          &lt;th&gt;&lt;strong&gt;encoding/json (v1)&lt;/strong&gt;&lt;/th&gt;
+          &lt;th&gt;&lt;strong&gt;encoding/json/v2 (实验性)&lt;/strong&gt;&lt;/th&gt;
+      &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+      &lt;tr&gt;
+          &lt;td&gt;&lt;strong&gt;架构&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;语法与语义耦合，重度依赖反射&lt;/td&gt;
+          &lt;td&gt;清晰分离：&lt;code&gt;jsontext&lt;/code&gt;（语法） + &lt;code&gt;v2&lt;/code&gt;（语义）&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;td&gt;&lt;strong&gt;流式处理&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;伪流式；底层往往需要全量缓冲&lt;/td&gt;
+          &lt;td&gt;真正的流式编码与解码&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;td&gt;&lt;strong&gt;默认安全性&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;接受无效 UTF-8，允许重复键名&lt;/td&gt;
+          &lt;td&gt;拒绝无效 UTF-8，拒绝重复键名（符合 RFC 8259）&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;td&gt;&lt;strong&gt;性能&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;基准&lt;/td&gt;
+          &lt;td&gt;Unmarshal 最高提升 &lt;strong&gt;10 倍&lt;/strong&gt;；Marshal 提升 &lt;strong&gt;1.6–3.6 倍&lt;/strong&gt;&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;td&gt;&lt;strong&gt;unsafe 使用&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;无&lt;/td&gt;
+          &lt;td&gt;无——在不使用 &lt;code&gt;unsafe&lt;/code&gt; 的前提下达到第三方库级别的性能&lt;/td&gt;
+      &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;最后一行值得着重强调。像 &lt;strong&gt;Sonic&lt;/strong&gt;（字节跳动）这样的库通过大量使用 &lt;code&gt;unsafe&lt;/code&gt; 来实现极致速度。而 JSON v2 在&lt;strong&gt;不牺牲内存安全&lt;/strong&gt;的前提下达到了同等性能水平。这就是标准库的承诺：你不需要用正确性换取速度。
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2026/02/1823afa2454141bdb6436bfa9bd64c14.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20260212150646&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;h3 id=&#34;为什么没有随-126-发布四大阻碍&#34;&gt;为什么没有随 1.26 发布：四大阻碍
+&lt;/h3&gt;&lt;p&gt;既然 v2 这么好，为什么不在 Go 1.26 中发布？追踪议题 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/76406&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;#76406&lt;/a&gt; 揭示了四个截然不同的战场。&lt;/p&gt;
+&lt;h4 id=&#34;1-永久-api-约束&#34;&gt;1. &amp;ldquo;永久 API&amp;rdquo; 约束
+&lt;/h4&gt;&lt;p&gt;在 Go 的标准库哲学中，一旦 API 脱离实验阶段进入 &lt;code&gt;encoding/json&lt;/code&gt; 路径，它就必须受到 &lt;strong&gt;Go 1 兼容性承诺&lt;/strong&gt;的保护。永远如此，不可撤回。&lt;/p&gt;
+&lt;p&gt;Joe Tsai 对此态度明确：性能问题可以后续通过优化来解决，但 &lt;strong&gt;API 设计缺陷一旦固化，就会成为未来几十年的技术债务&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;目前的审计重点集中在 &lt;code&gt;jsontext&lt;/code&gt; 的公共接口。作为基础层，它的设计需要在高性能与易用性之间取得平衡——尤其是在 Token 处理以及与 &lt;code&gt;io.Reader&lt;/code&gt;/&lt;code&gt;io.Writer&lt;/code&gt; 的最佳交互模式上。&lt;/p&gt;
+&lt;p&gt;此外还有关于 &lt;code&gt;time.Duration&lt;/code&gt; 的激烈争论。v1 将持续时间序列化为&lt;strong&gt;纳秒整数&lt;/strong&gt;——虽然广泛使用，但跨语言互操作性极差。v2 倾向于采用 Go 风格的字符串如 &lt;code&gt;&amp;quot;1h2m3s&amp;quot;&lt;/code&gt;，但这引发了关于标准化程度的热烈讨论。双方各执己见，API 签名悬而未决。&lt;/p&gt;
+&lt;h4 id=&#34;2-完美兼容-jsonv1&#34;&gt;2. &amp;ldquo;完美兼容 json/v1
+&lt;/h4&gt;&lt;p&gt;以下是 Go 团队的雄心壮志：一旦 v2 落地，他们希望&lt;strong&gt;只维护一套代码库&lt;/strong&gt;。现有的 &lt;code&gt;encoding/json&lt;/code&gt; 将变成 v2 引擎的一个薄包装层（Shim）。&lt;/p&gt;
+&lt;p&gt;问题在于：v2 引擎必须完美复刻 v1 的&lt;strong&gt;所有行为&lt;/strong&gt;——包括 bug、未文档化的怪癖，以及成千上万生产应用无意中依赖的边缘情况。&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;例如，v1 在处理非寻址值（Non-addressable Values）的指针接收者 Marshaler 时存在特定的不一致性。许多现有应用在不知情的情况下已经依赖了这种行为。&lt;/p&gt;&lt;/blockquote&gt;
+&lt;p&gt;在一个架构完全不同的引擎中复刻这些细微的、难以文档化的行为偏差，是一项极其艰巨的工程挑战。团队目前正在通过大规模测试逐步&amp;quot;烧除&amp;rdquo;（Burning Down）发现的每一个微小行为差异。进展稳步推进，但长尾效应依然明显。&lt;/p&gt;
+&lt;h4 id=&#34;3-内存回退问题issue-75026&#34;&gt;3. 内存回退问题：Issue #75026
+&lt;/h4&gt;&lt;p&gt;这是最令人警醒的阻碍。在 Go 1.25 和 1.26 的实验周期中，Issue &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/75026&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;#75026&lt;/a&gt; 报告了在特定 Map 序列化场景下&lt;strong&gt;灾难性的内存分配回退&lt;/strong&gt;。&lt;/p&gt;
+&lt;table&gt;
+  &lt;thead&gt;
+      &lt;tr&gt;
+          &lt;th&gt;&lt;strong&gt;场景（Map 编码）&lt;/strong&gt;&lt;/th&gt;
+          &lt;th&gt;&lt;strong&gt;内存分配 (B/op) — v1 原生&lt;/strong&gt;&lt;/th&gt;
+          &lt;th&gt;&lt;strong&gt;内存分配 (B/op) — v2 实验&lt;/strong&gt;&lt;/th&gt;
+          &lt;th&gt;&lt;strong&gt;增幅&lt;/strong&gt;&lt;/th&gt;
+      &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+      &lt;tr&gt;
+          &lt;td&gt;KeyCount: 10, ValLength: 1000&lt;/td&gt;
+          &lt;td&gt;832&lt;/td&gt;
+          &lt;td&gt;33,139&lt;/td&gt;
+          &lt;td&gt;&lt;strong&gt;+3,883%&lt;/strong&gt;&lt;/td&gt;
+      &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;没有看错。一个常见的 Map 编码模式，内存分配量增加了 &lt;strong&gt;39 倍&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;性能分析显示，&lt;strong&gt;92.98%&lt;/strong&gt; 的内存分配集中在 &lt;code&gt;bytes.growSlice&lt;/code&gt; 中，这表明新架构在处理复杂对象树或特定 Map 结构时存在严重的缓冲区管理缺陷。虽然总的分配次数（&lt;code&gt;Allocs/op&lt;/code&gt;）实际上有所下降，但单次分配的体积暴增，给 GC 带来了巨大压力。&lt;/p&gt;
+&lt;p&gt;如果这种回退作为 v1 用户的默认行为发布，后果将是灾难性的。修复这些极端场景下的分配逻辑是目前&lt;strong&gt;最高优先级&lt;/strong&gt;的工作。&lt;/p&gt;
+&lt;h4 id=&#34;4-生态成熟度与联合类型之争&#34;&gt;4. 生态成熟度与联合类型之争
+&lt;/h4&gt;&lt;p&gt;JSON v2 项目已经开发了&lt;strong&gt;五年&lt;/strong&gt;。虽然已在许多生产环境中得到验证，但在成为默认标准之前，仍需经历更广泛的生态系统压力测试。Project 50 的追踪显示，44 个子任务中仍有约 &lt;strong&gt;18 个处于开放状态&lt;/strong&gt;或需要进一步审计。&lt;/p&gt;
+&lt;p&gt;此外，关于 v2 是否应该支持 JSON 反序列化中的&lt;strong&gt;联合类型&lt;/strong&gt;（Union Types / Sum Types），也引发了设计上的分歧。部分开发者认为这是现代 JSON 处理的标配功能。Go 团队的立场？等待语言层面的&lt;strong&gt;总和类型提案&lt;/strong&gt;（如 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/57644&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;#57644&lt;/a&gt;）成熟后再做集成，而不是在 JSON 包中塞入一个临时的、不兼容的实现。&lt;/p&gt;
+&lt;p&gt;这就是典型的 Go 式实用主义：不在库层面解决语言层面的问题。&lt;/p&gt;
+&lt;h3 id=&#34;值得等待的核心特性&#34;&gt;值得等待的核心特性
+&lt;/h3&gt;&lt;p&gt;尽管发布延迟，v2 的实验性版本已经展示了多项将从根本上改变 Go JSON 处理模式的特性。&lt;/p&gt;
+&lt;h4 id=&#34;omitzero--终于有了合理的省略逻辑&#34;&gt;&lt;code&gt;omitzero&lt;/code&gt; —— 终于有了合理的省略逻辑
+&lt;/h4&gt;&lt;p&gt;v1 的 &lt;code&gt;omitempty&lt;/code&gt; 让开发者困惑了多年。&lt;code&gt;time.Time{}&lt;/code&gt; 算空吗？&lt;code&gt;false&lt;/code&gt; 算空吗？答案是不一致的，而且常常出人意料。&lt;/p&gt;
+&lt;p&gt;v2 引入了 &lt;code&gt;omitzero&lt;/code&gt;，它严格按照 Go 的&lt;strong&gt;零值&lt;/strong&gt;语义进行判断，并支持自定义 &lt;code&gt;IsZero() bool&lt;/code&gt; 接口：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;type&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;Event&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;Name&lt;/span&gt;      &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;    &lt;span class=&#34;s&#34;&gt;`json:&amp;#34;name&amp;#34;`&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;StartTime&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;time&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Time&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;`json:&amp;#34;start_time,omitzero&amp;#34;`&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;EndTime&lt;/span&gt;   &lt;span class=&#34;nx&#34;&gt;time&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Time&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;`json:&amp;#34;end_time,omitzero&amp;#34;`&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;这对于 &lt;strong&gt;PATCH 风格的 API&lt;/strong&gt; 尤其有用——你只需序列化那些被明确修改过的字段，而不会因为字段恰好持有类型的默认零值而意外忽略它们。&lt;/p&gt;
+&lt;h4 id=&#34;inline-和-unknown--灵活的数据建模&#34;&gt;&lt;code&gt;inline&lt;/code&gt; 和 &lt;code&gt;unknown&lt;/code&gt; —— 灵活的数据建模
+&lt;/h4&gt;&lt;p&gt;两个新的结构体标签解决了长期存在的痛点：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;inline&lt;/code&gt;&lt;/strong&gt;：将嵌套结构体或 Map 的内容&amp;quot;平铺&amp;quot;到父 JSON 对象中——无需匿名嵌入。对于包含动态键值对的 API 来说，这是一个巨大的改进。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;unknown&lt;/code&gt;&lt;/strong&gt;：指定一个字段（通常是 &lt;code&gt;map[string]jsontext.Value&lt;/code&gt;）来捕获结构体中未定义的所有 JSON 成员。彻底告别&amp;quot;二次反序列化&amp;quot;的开销。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;type&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;Config&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;Version&lt;/span&gt;  &lt;span class=&#34;kt&#34;&gt;int&lt;/span&gt;                          &lt;span class=&#34;s&#34;&gt;`json:&amp;#34;version&amp;#34;`&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;Name&lt;/span&gt;     &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;                       &lt;span class=&#34;s&#34;&gt;`json:&amp;#34;name&amp;#34;`&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;Extra&lt;/span&gt;    &lt;span class=&#34;kd&#34;&gt;map&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;jsontext&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Value&lt;/span&gt;    &lt;span class=&#34;s&#34;&gt;`json:&amp;#34;,unknown&amp;#34;`&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;h4 id=&#34;format--内置编码定制&#34;&gt;&lt;code&gt;format&lt;/code&gt; —— 内置编码定制
+&lt;/h4&gt;&lt;p&gt;&lt;code&gt;format&lt;/code&gt; 选项支持按字段定制编码方式：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;为 &lt;code&gt;[]byte&lt;/code&gt; 字段定制 Base64 或 Hex 编码&lt;/li&gt;
+&lt;li&gt;为 &lt;code&gt;time.Time&lt;/code&gt; 使用自定义布局字符串&lt;/li&gt;
+&lt;li&gt;不再需要为常见格式化需求编写自定义 Marshaler/Unmarshaler 实现&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;性能benchmark-数据说话&#34;&gt;性能：Benchmark 数据说话
+&lt;/h3&gt;&lt;p&gt;基于 &lt;code&gt;jsonbench&lt;/code&gt; 评估套件，以下是 v2 与竞品的对比：&lt;/p&gt;
+&lt;table&gt;
+  &lt;thead&gt;
+      &lt;tr&gt;
+          &lt;th&gt;&lt;strong&gt;库&lt;/strong&gt;&lt;/th&gt;
+          &lt;th&gt;&lt;strong&gt;Marshal 速度&lt;/strong&gt;&lt;/th&gt;
+          &lt;th&gt;&lt;strong&gt;Unmarshal 速度&lt;/strong&gt;&lt;/th&gt;
+          &lt;th&gt;&lt;strong&gt;内存安全性&lt;/strong&gt;&lt;/th&gt;
+      &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+      &lt;tr&gt;
+          &lt;td&gt;&lt;strong&gt;JSON v1&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;基准&lt;/td&gt;
+          &lt;td&gt;基准&lt;/td&gt;
+          &lt;td&gt;高（无 unsafe）&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;td&gt;&lt;strong&gt;JSON v2&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;&lt;strong&gt;提升 1.6–3.6 倍&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;&lt;strong&gt;提升 2.7–10.2 倍&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;高（无 unsafe）&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;td&gt;&lt;strong&gt;Sonic（字节跳动）&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;与 v2 相当&lt;/td&gt;
+          &lt;td&gt;极快（部分使用 unsafe）&lt;/td&gt;
+          &lt;td&gt;中（大量使用 unsafe）&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;td&gt;&lt;strong&gt;JSON-Iterator&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;慢于 v2&lt;/td&gt;
+          &lt;td&gt;慢于 v2&lt;/td&gt;
+          &lt;td&gt;中&lt;/td&gt;
+      &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;关键洞察：v2 通过&lt;strong&gt;迭代式线性解析&lt;/strong&gt;实现性能飞跃，而非 v1 的逐字节虚函数扫描模式。而且它没有使用一个 &lt;code&gt;unsafe.Pointer&lt;/code&gt;。这不仅仅是快——这是&lt;strong&gt;负责任地快&lt;/strong&gt;。&lt;/p&gt;
+&lt;h3 id=&#34;前路v2-何时落地&#34;&gt;前路：v2 何时落地？
+&lt;/h3&gt;&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2026/02/44e7b95ea138d8dd9d69c62bc2139da6.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20260212150729&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;基于当前的任务处理速度和 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/76406&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;#76406&lt;/a&gt; 上的开发者活跃度，以下是务实的时间线：
+&lt;strong&gt;2026 年上半年：&lt;/strong&gt;&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;修复 Issue #75026&lt;/strong&gt; —— 解决 Map 编码的内存回退问题。这是脱离实验阶段的唯一最关键前提。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;API 定稿&lt;/strong&gt; —— 完成 &lt;code&gt;jsontext&lt;/code&gt; 中所有公共函数的审计，特别是 &lt;code&gt;Encoder&lt;/code&gt;/&lt;code&gt;Decoder&lt;/code&gt; 在流式场景中的状态机健壮性。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;v1 兼容层完善&lt;/strong&gt; —— 确保所有已知的 v1 行为（包括那些&amp;quot;有 bug 的&amp;quot;行为）在 v2 引擎中都有对应的配置选项支持。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;&lt;strong&gt;Go 1.27（预计 2026 年 8 月）：&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;这被广泛认为是 JSON v2 移除实验性标签、进入稳定标准库的&lt;strong&gt;最早也是最可能的窗口&lt;/strong&gt;。1.27 开发周期中代码树（Tree）的重新开放将是需要密切关注的关键信号。&lt;/p&gt;
+&lt;p&gt;Go 团队还计划在 v2 正式发布时同步推出&lt;strong&gt;现代化迁移工具&lt;/strong&gt;。重新设计的 &lt;code&gt;go fix&lt;/code&gt; 将支持从 v1 到 v2 默认配置的一键迁移——不只是简单的字符串替换，而是感知类型信息的智能转换。例如，它能检测到手动实现的 Base64 转换逻辑，并建议替换为 v2 的 &lt;code&gt;format:base64&lt;/code&gt; 结构体标签。&lt;/p&gt;
+&lt;h3 id=&#34;总结&#34;&gt;总结
+&lt;/h3&gt;&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;JSON v2 的延迟不是失败——而是纪律。&lt;/strong&gt; Go 团队拒绝发布一个存在设计缺陷的 API，因为在 Go 1 兼容性保证下，这些缺陷将永久存在。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;架构设计是扎实的。&lt;/strong&gt; 通过 &lt;code&gt;jsontext&lt;/code&gt; 和 &lt;code&gt;v2&lt;/code&gt; 实现的语法/语义分离是一种精妙且面向未来的设计。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;性能已经得到验证。&lt;/strong&gt; Unmarshal 最高提升 10 倍，Marshal 提升 3.6 倍——全程不使用 &lt;code&gt;unsafe&lt;/code&gt;。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;内存回退（#75026）是关键阻碍。&lt;/strong&gt; Map 编码中 39 倍的分配增长必须在 v2 成为默认之前解决。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Go 1.27（2026 年 8 月）是目标。&lt;/strong&gt; 社区应据此做好规划。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;&lt;strong&gt;对开发者的实用建议：&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;内部工具&lt;/strong&gt;：放心在非核心系统中尝试 &lt;code&gt;GOEXPERIMENT=jsonv2&lt;/code&gt;。仅 &lt;code&gt;omitzero&lt;/code&gt; 和 &lt;code&gt;unknown&lt;/code&gt; 特性就能显著简化你的代码。提交 Bug 报告——团队需要它们。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;性能敏感型应用&lt;/strong&gt;：如果 JSON 反序列化是你的 CPU 瓶颈，v2 的实验版本可能已经优于 v1——而且比第三方 &lt;code&gt;unsafe&lt;/code&gt; 库更安全。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;公共组件库&lt;/strong&gt;：目前继续使用 &lt;code&gt;encoding/json&lt;/code&gt;（v1）。v2 的 API 仍有可能发生破坏性变更，你的用户不会欣赏这种不稳定性。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;JSON v2 将是 Go 语言自泛型以来最重要的库级演进。它不仅让速度更快——更补全了 Go 在现代数据交换标准合规性上长达十年的缺口。随着阻碍一个接一个地被清除，一个更安全、更快速、更灵活的 JSON 处理时代即将随 Go 1.27 到来。&lt;/p&gt;
+&lt;p&gt;等待即将结束。而且，值得。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;参考资料：&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Go Issue &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/76406&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;#76406&lt;/a&gt; — JSON v2 追踪议题&lt;/li&gt;
+&lt;li&gt;Go Proposal &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/71497&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;#71497&lt;/a&gt; — encoding/json/v2 提案&lt;/li&gt;
+&lt;li&gt;Go Issue &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/75026&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;#75026&lt;/a&gt; — jsonv2 实验中的内存分配回退&lt;/li&gt;
+&lt;li&gt;Go Issue &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/57644&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;#57644&lt;/a&gt; — 总和类型语言提案&lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://go.dev/doc/go1.26&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Go 1.26 Release Notes&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+        </item>
+        <item>
         <title>10 Quiet Side Projects Making Real Money in 2025</title>
         <link>https://huizhou92.com/p/10-quiet-side-projects-making-real-money-in-2025/</link>
         <pubDate>Thu, 25 Dec 2025 09:53:08 +0800</pubDate>
@@ -1322,348 +1983,6 @@ With heaps up to 200GB, GC pauses stayed under 20ms, often around 1ms in normal 
 &lt;hr&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/p/a-deep-dive-into-gos-garbage-collector-bottlenecks-benchmarks-and-green-tea-gc-improvements/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Long Time Link&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;If you find my blog helpful, please subscribe to me via &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;RSS&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;Or follow me on &lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;X&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;If you have a &lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Medium&lt;/a&gt; account, follow me there. My articles will be published there as soon as possible.&lt;/li&gt;
-&lt;/ul&gt;
-</description>
-        </item>
-        <item>
-        <title>The Importance of Website Icons (Favicon)</title>
-        <link>https://huizhou92.com/p/the-importance-of-website-icons-favicon/</link>
-        <pubDate>Tue, 18 Feb 2025 11:30:38 +0800</pubDate>
-        
-        <guid>https://huizhou92.com/p/the-importance-of-website-icons-favicon/</guid>
-        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2025/02/65e64661a046efca8dcbc39b98ae2b91.png" alt="Featured image of post The Importance of Website Icons (Favicon)" /&gt;&lt;p&gt;Recently, &lt;a class=&#34;link&#34; href=&#34;https://taoshu.in/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Tao Shu&amp;rsquo;s Blog&lt;/a&gt; published an article about reciprocal links, and I took the initiative to request a link exchange. Tao Shu promptly responded and kindly reminded me that adding a &lt;code&gt;favicon (icon)&lt;/code&gt; to my blog would help RSS subscribers quickly identify it. At that moment, I wondered, &amp;ldquo;What is a &lt;code&gt;favicon&lt;/code&gt;?&amp;rdquo; (The struggles of a backend developer!)&lt;/p&gt;
-&lt;p&gt;Later, I consulted DeepSeek:&lt;br&gt;
-In web design, icons are small yet significant elements. They assist users in quickly identifying a website and enhancing the overall user experience.&lt;/p&gt;
-&lt;h3 id=&#34;common-usage-scenarios&#34;&gt;Common Usage Scenarios:
-&lt;/h3&gt;&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;Browser Tab&lt;/strong&gt;: Displayed next to the webpage title.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Bookmark Bar&lt;/strong&gt;: Shown when users save a webpage.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Home Screen Icon&lt;/strong&gt;: Displayed when a webpage is added to the home screen on mobile devices.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;PWA (Progressive Web App)&lt;/strong&gt;: Used as the application icon.&lt;br&gt;
-For example:&lt;br&gt;
-&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/6df56f22e8fad0c4fe55bffcab3ed090.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-		alt=&#34;Icon displayed in the browser tab&#34;
-	
-	
-&gt;&lt;br&gt;
-Icon displayed in the browser tab.&lt;br&gt;
-&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/c2530b4f9491c01730c710dcd24a325f.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-		alt=&#34;Icon displayed in the bookmark bar.&#34;
-	
-	
-&gt;&lt;br&gt;
-The icon displayed in the bookmark bar.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;The icon can be displayed even on Android devices, as the Chrome browser&amp;rsquo;s feature to add a webpage to the home screen allows this.&lt;br&gt;
-&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/861e9e820063fe4d7bbff32e9f8de05b.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-		alt=&#34;Using Android Chrome to add a webpage to the phone’s home screen&#34;
-	
-	
-&gt;&lt;/p&gt;
-&lt;h2 id=&#34;how-to-set-up&#34;&gt;How to Set Up
-&lt;/h2&gt;&lt;p&gt;The simplest way to set an icon is to add a line in the &lt;code&gt;&amp;lt;head&amp;gt;&lt;/code&gt; section of the webpage.&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-html&#34; data-lang=&#34;html&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;link&lt;/span&gt; &lt;span class=&#34;na&#34;&gt;rel&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;icon&amp;#34;&lt;/span&gt; &lt;span class=&#34;na&#34;&gt;type&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;image/png&amp;#34;&lt;/span&gt; &lt;span class=&#34;na&#34;&gt;href&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;/favicon.png&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;&amp;gt;&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;If you are using Hugo or other tools, there may be specific settings for the favicon.&lt;br&gt;
-Some large websites, such as &lt;code&gt;google.com&lt;/code&gt; and &lt;code&gt;apple.com&lt;/code&gt;, may have more considerations, and their setups may differ.&lt;/p&gt;
-&lt;h2 id=&#34;important-considerations&#34;&gt;Important Considerations
-&lt;/h2&gt;&lt;p&gt;The icon size is also essential to optimize the user experience and achieve the best display effect across various scenarios.&lt;/p&gt;
-&lt;h3 id=&#34;common-sizes&#34;&gt;Common Sizes:
-&lt;/h3&gt;&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;16x16&lt;/strong&gt;: Browser tab icon.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;32x32&lt;/strong&gt;: Bookmark bar icon.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;64x64&lt;/strong&gt;: High-resolution screen icon.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;180x180&lt;/strong&gt;: iOS device home screen icon.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;192x192&lt;/strong&gt; and &lt;strong&gt;512x512&lt;/strong&gt;: PWA icons.&lt;br&gt;
-This is why we often see multiple icons set on some websites, such as the &lt;a class=&#34;link&#34; href=&#34;https://gohugo.io/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Hugo website&lt;/a&gt;.&lt;br&gt;
-&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/4d83d2d0666f924072095b981ba2ff0e.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-		alt=&#34;Hugo website has set two icons&#34;
-	
-	
-&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;Modern browsers support selecting different icon sizes based on various scenarios and screen PPI, striving to achieve the best display effect in all situations.&lt;/p&gt;
-&lt;h3 id=&#34;choosing-icon-formats&#34;&gt;Choosing Icon Formats
-&lt;/h3&gt;&lt;p&gt;Icons can be created in different image formats, specified by the type attribute. Standard icon formats include:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;ICO&lt;/strong&gt;: Traditional format, good compatibility, supports multiple sizes.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;PNG&lt;/strong&gt;: Modern format, supports transparent backgrounds, and is suitable for high-resolution screens.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;SVG&lt;/strong&gt;: Vector format, infinitely scalable without losing quality, suitable for responsive design.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3 id=&#34;multi-resolution-icons&#34;&gt;Multi-Resolution Icons
-&lt;/h3&gt;&lt;p&gt;If maintaining multiple icon files seems cumbersome, you can use a multi-resolution icon (Multi-Resolution ICO or Multi-Size ICO), a single file containing various sizes and color depths. This allows multiple bitmaps (BMP or PNG format) to be stored in one file.&lt;br&gt;
-An ICO file includes:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;File Header&lt;/strong&gt;: Defines the ICO file type and the number of images it contains.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Image Directory&lt;/strong&gt;: Describes the size, color depth, offset, and other information for each image.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Image Data&lt;/strong&gt;: Contains the actual pixel data for the images.&lt;br&gt;
-When a browser needs an icon, it selects the most appropriate size from the ICO file. The downside is that an ICO file containing multiple sizes may be larger than a file with a single size.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;This article does not delve deeper into topics such as the &lt;code&gt;manifest.json&lt;/code&gt; unique to Android Chrome or the &lt;code&gt;apple-mobile-web-app-capable&lt;/code&gt; for Apple devices. Interested readers are encouraged to explore further.&lt;/p&gt;
-&lt;hr&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/p/the-importance-of-website-icons-favicon/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Long Time Link&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;If you find my blog helpful, please subscribe to me via &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;RSS&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;Or follow me on &lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;X&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;If you have a &lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Medium&lt;/a&gt; account, follow me there. My articles will be published there as soon as possible.&lt;/li&gt;
-&lt;/ul&gt;
-</description>
-        </item>
-        <item>
-        <title>Unmasking Go Memory Leaks: CloudWeGo Open Sources goref for Deep Heap Analysis</title>
-        <link>https://huizhou92.com/p/unmasking-go-memory-leaks-cloudwego-open-sources-goref-for-deep-heap-analysis/</link>
-        <pubDate>Thu, 13 Feb 2025 15:05:56 +0800</pubDate>
-        
-        <guid>https://huizhou92.com/p/unmasking-go-memory-leaks-cloudwego-open-sources-goref-for-deep-heap-analysis/</guid>
-        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2025/02/f1e888e98523470202649a4a1fe3d769.png" alt="Featured image of post Unmasking Go Memory Leaks: CloudWeGo Open Sources goref for Deep Heap Analysis" /&gt;&lt;p&gt;In Go language development, memory leak issues are often challenging to pinpoint. While traditional pprof tools can provide some assistance, their capabilities are limited in complex scenarios. To analyze and resolve these issues more effectively, the CloudWeGo team has developed a new tool called &lt;a class=&#34;link&#34; href=&#34;https://github.com/cloudwego/goref&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;goref&lt;/a&gt;.&lt;br&gt;
-Based on Delve, goref can deeply analyze heap object references in Go programs, displaying the distribution of memory references to help developers quickly locate memory leaks or optimize garbage collection (GC) overhead. This tool supports the analysis of runtime processes and core dump files, providing Go developers with a powerful memory analysis tool.&lt;/p&gt;
-&lt;!-- more--&gt;
-&lt;h2 id=&#34;limitations-of&#34;&gt;&lt;strong&gt;Limitations Of &lt;code&gt;pprof&lt;/code&gt;&lt;/strong&gt;
-&lt;/h2&gt;&lt;p&gt;When encountering memory leaks in Go development, most people first attempt to generate a heap profile to investigate the issue. However, the heap profile flame graph often does not provide much help in troubleshooting because it only records where objects are created. In complex business scenarios, where objects are passed through multiple layers of dependencies or reused from memory pools, it becomes nearly impossible to identify the root cause based solely on the stack information of the creation.&lt;/p&gt;
-&lt;p&gt;For example, in the following heap profile, the FastRead function stack is a deserialization function from the Kitex framework. If a business coroutine leaks a request object, it does not reflect the corresponding leaking code location but only shows that the FastRead function stack occupies memory.&lt;/p&gt;
-&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/239158570664af753f62f917f60a488c.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-		alt=&#34;Heap Profile Example&#34;
-	
-	
-&gt;&lt;/p&gt;
-&lt;p&gt;As we know, Go is a garbage-collected language, and an object cannot be released primarily because the GC marks it as alive through reference analysis. Similarly, as a GC language, Java has more sophisticated analysis tools, such as &lt;code&gt;JProfiler&lt;/code&gt;, which can effectively display object reference relationships. Therefore, we also wanted to implement an efficient reference analysis tool in Go that can accurately and directly inform us of memory reference distribution and relationships, liberating us from the arduous task of static analysis. The good news is that we have nearly completed the development of this tool, which is open-sourced in the &lt;a class=&#34;link&#34; href=&#34;https://github.com/cloudwego/goref&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;goref repository&lt;/a&gt;, with usage instructions available in the README document.&lt;/p&gt;
-&lt;p&gt;The following sections will share the design ideas and detailed implementation of this tool.&lt;/p&gt;
-&lt;h2 id=&#34;implementation-ideas-of-goref&#34;&gt;Implementation Ideas of Goref
-&lt;/h2&gt;&lt;h3 id=&#34;gc-marking-process&#34;&gt;&lt;strong&gt;GC Marking Process&lt;/strong&gt;
-&lt;/h3&gt;&lt;p&gt;Before discussing the specific implementation, let’s review how the GC marks objects as alive.&lt;/p&gt;
-&lt;p&gt;Go employs a tiered allocation scheme similar to tcmalloc, where each heap object is assigned to an &lt;code&gt;mspan&lt;/code&gt; during allocation, with a fixed size. During GC, a heap address calls &lt;code&gt;runtime.spanOf&lt;/code&gt; to find this &lt;code&gt;mspan&lt;/code&gt; from a multi-level index, thus obtaining the base address and size of the original object.&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// simplified code&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;spanOf&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;p&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;uintptr&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;mspan&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;ri&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;arenaIndex&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;p&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;ha&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;mheap_&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;arenas&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ri&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;l1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()][&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;ri&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;l2&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()]&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;ha&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;spans&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;p&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;/&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;pageSize&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;%&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;pagesPerArena&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;By using the &lt;code&gt;runtime.heapBitsForAddr&lt;/code&gt; function, we can obtain a GC bitmap for an object address range. The GC bitmap indicates whether each 8-byte aligned address in the memory of an object is a pointer type, thus determining whether to further mark downstream objects.&lt;/p&gt;
-&lt;p&gt;For example, consider the following Go code snippet:&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;type&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;Object&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;A&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;B&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int64&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;C&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[]&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;byte&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// global variables&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;var&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;a&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;echo&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;var&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;b&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;int64&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;echo&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;().&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;B&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;echo&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Object&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;bytes&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;make&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;([]&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;byte&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1024&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Object&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;A&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;bytes&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;),&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;C&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;bytes&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;When the GC scans the variable &lt;code&gt;b&lt;/code&gt;, it does not simply scan the memory of the &lt;code&gt;B int64&lt;/code&gt; field; instead, it looks up the &lt;code&gt;base&lt;/code&gt; and &lt;code&gt;elem size&lt;/code&gt; through the &lt;code&gt;mspan&lt;/code&gt; index and then scans, marking the memory of fields A and C, as well as their downstream objects, as alive.&lt;/p&gt;
-&lt;p&gt;When scanning the variable &lt;code&gt;a&lt;/code&gt;, the corresponding GC bit is &lt;code&gt;1001&lt;/code&gt;. How should we interpret this? We can consider that the addresses &lt;code&gt;base+0&lt;/code&gt; and &lt;code&gt;base+24&lt;/code&gt; are pointers, indicating that downstream objects should be scanned further. Here, both &lt;code&gt;A string&lt;/code&gt; and &lt;code&gt;C *[]byte&lt;/code&gt; contain pointers to downstream objects.&lt;/p&gt;
-&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/0508442cfe2fa8bed8f129f0e12c450e.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-		alt=&#34;GC Bitmap Example&#34;
-	
-	
-&gt;&lt;/p&gt;
-&lt;p&gt;Based on the above brief analysis, we can see that to find all live objects, the simple principle is to start from the GC Root and scan the GC bits of each object. If an address is marked as &lt;code&gt;1&lt;/code&gt;, we continue scanning downstream. Each downstream address must determine its &lt;code&gt;mspan&lt;/code&gt; to obtain the complete object base address, size, and GC bit.&lt;/p&gt;
-&lt;h3 id=&#34;dwarf-type-information&#34;&gt;&lt;strong&gt;DWARF Type Information&lt;/strong&gt;
-&lt;/h3&gt;&lt;p&gt;However, merely knowing the reference relationships of objects is almost useless for troubleshooting, as it does not output any effective variable names or type information for developers to locate issues. Therefore, another crucial step is to obtain the variable names and type information of these objects.&lt;/p&gt;
-&lt;p&gt;Go is a statically typed language, and objects generally do not directly contain their type information. For instance, when we create an object using &lt;code&gt;obj=new(Object)&lt;/code&gt;, the actual memory only stores the values of fields &lt;code&gt;A/B/C&lt;/code&gt;, occupying only 32 bytes in memory. Given this, how can we obtain type information?&lt;/p&gt;
-&lt;h2 id=&#34;implementation-of-goref&#34;&gt;&lt;strong&gt;Implementation Of goref&lt;/strong&gt;
-&lt;/h2&gt;&lt;h3 id=&#34;introduction-to-delve-tool&#34;&gt;&lt;strong&gt;Introduction To Delve Tool&lt;/strong&gt;
-&lt;/h3&gt;&lt;p&gt;Those who have experience in Go development should be familiar with Delve. If you think you haven’t used it, don’t doubt yourself; the debugging functionality you use in the Goland IDE is fundamentally based on Delve. At this point, you may recall the debugging window during your debugging sessions. Indeed, the variable names, values, and types displayed in the debugging window are precisely the type information we need!&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-makefile&#34; data-lang=&#34;makefile&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;$&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;./dlv&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;attach&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;270&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;(dlv)&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;...&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;(dlv)&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;locals&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nv&#34;&gt;tccCli&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;se&#34;&gt;\&amp;#34;&lt;/span&gt;*code.byted.org/gopkg/tccclient.ClientV2&lt;span class=&#34;se&#34;&gt;\&amp;#34;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)(&lt;/span&gt;0xc000782240&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nv&#34;&gt;ticker&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;*time.Ticker&lt;span class=&#34;o&#34;&gt;)(&lt;/span&gt;0xc001086be0&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;So, how does Delve obtain this variable information? Delve reads the executable file path from the soft link in&lt;code&gt; /proc/&amp;lt;pid&amp;gt;/exe&lt;/code&gt; when we attach it to a process. Go generates debugging information during compilation, stored in sections with the &lt;code&gt;.debug_*&lt;/code&gt; prefix in the executable file, following the DWARF standard format. The type of information required for reference analysis for global and local variables can be parsed from this DWARF information.&lt;/p&gt;
-&lt;p&gt;For global variables, Delve iterates through all DWARF Entries, parsing those with the &lt;code&gt;Variable&lt;/code&gt; tag. These Entries contain attributes such as Location, Type, and Name.&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;The Type attribute records its type information, which can be recursively traversed in DWARF format to determine the type of each sub-object further.&lt;/li&gt;
-&lt;li&gt;The Location attribute is a relatively complex property that records either an executable expression or a simple variable address, serving to determine a variable&amp;rsquo;s memory address or return a register&amp;rsquo;s value. During global variable parsing, Delve uses this to obtain the variable&amp;rsquo;s memory address.&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;The principle for parsing local variables in goroutines is similar to that of global variables, but it is somewhat more complex. For example, it requires determining the DWARF offset based on the PC, and the location expressions are more complicated, involving register access. We will not elaborate on this here.&lt;/p&gt;
-&lt;h3 id=&#34;building-gc-analysis-metadata&#34;&gt;&lt;strong&gt;Building GC Analysis Metadata&lt;/strong&gt;
-&lt;/h3&gt;&lt;p&gt;We can also obtain memory access permissions by utilizing Delve&amp;rsquo;s process attachment and core file analysis capabilities. We mimic the GC marking process for objects, constructing the necessary metadata for the process to be analyzed in the tool&amp;rsquo;s runtime memory. This includes:&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;The address space range of each Goroutine stack in the process to be analyzed, including the &lt;code&gt;stackmap&lt;/code&gt; that stores the gcmask for each Goroutine stack, used to mark whether it may point to a live heap object.&lt;/li&gt;
-&lt;li&gt;The address space range of each &lt;code&gt;data/bss&lt;/code&gt; segment in the process to be analyzed, including the &lt;code&gt;gcmask&lt;/code&gt; for each segment, is also used to mark whether it may point to a live heap object.&lt;/li&gt;
-&lt;li&gt;The above two steps are necessary to obtain GC Roots.&lt;/li&gt;
-&lt;li&gt;The final step is to read the &lt;code&gt;mspan&lt;/code&gt; index of the process to be analyzed, along with the base, &lt;code&gt;elem&lt;/code&gt; size, &lt;code&gt;gcmask&lt;/code&gt;, and other information for each &lt;code&gt;mspan&lt;/code&gt;, restoring this index in the tool&amp;rsquo;s memory.&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;These steps outline the general process, which also involves handling some detail issues, such as dealing with GC finalizer objects and special handling of allocation header features in Go version 1.22, which we will not delve into here.&lt;/p&gt;
-&lt;h3 id=&#34;dwarf-type-scanning&#34;&gt;&lt;strong&gt;DWARF Type Scanning&lt;/strong&gt;
-&lt;/h3&gt;&lt;p&gt;With everything in place, we are ready for the most critical step: &lt;strong&gt;object reference relationship&lt;/strong&gt; analysis.&lt;/p&gt;
-&lt;p&gt;We call each GC Root variable the &lt;code&gt;findRef&lt;/code&gt; function, accessing the object&amp;rsquo;s memory according to different DWARF types. If it is a pointer that may point to downstream objects, we read the pointer&amp;rsquo;s value and find this downstream object in the GC metadata. We have obtained the object&amp;rsquo;s base address, &lt;code&gt;elem size&lt;/code&gt;, &lt;code&gt;gcmask&lt;/code&gt;, and other information.&lt;/p&gt;
-&lt;p&gt;If the object is accessed, we record a mark bit to avoid re-accessing the object. By constructing a new variable with the DWARF sub-object type, we recursively call &lt;code&gt;findRef&lt;/code&gt; until all known types of objects are confirmed.&lt;/p&gt;
-&lt;p&gt;However, this reference scanning method is entirely contrary to the GC approach. The main reason is that Go has many unsafe type conversions. For instance, an object created with pointer fields may look like this:&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-css&#34; data-lang=&#34;css&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nt&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nt&#34;&gt;echo&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;()&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;byte&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;n&#34;&gt;bytes&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;make&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;[]&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;byte&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1024&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;n&#34;&gt;obj&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;Object&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;A&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;:&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;bytes&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;),&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;C&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;:&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;bytes&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nt&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;(*&lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;byte&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)(&lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;unsafe&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nc&#34;&gt;Pointer&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;obj&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;))&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;From the GC&amp;rsquo;s perspective, although the type has been converted to &lt;code&gt;*byte&lt;/code&gt; using unsafe, it does not affect its gcmask marking. Therefore, when scanning downstream objects, we can still scan the complete &lt;code&gt;Object&lt;/code&gt; object and identify the &lt;code&gt;bytes&lt;/code&gt; downstream object, marking it as alive.&lt;/p&gt;
-&lt;p&gt;However, DWARF type scanning cannot achieve this. When it encounters the &lt;code&gt;byte&lt;/code&gt; type, it will consider it a non-pointer object and skip further scanning. Thus, the only solution is to prioritize DWARF type scanning, and for objects that cannot be scanned, we will use the GC method to mark them.&lt;/p&gt;
-&lt;p&gt;To implement this, whenever we access a pointer to an object using DWARF types, we will mark its corresponding gcmask from 1 to 0. After scanning an object, if there are still non-zero marked pointers within the object&amp;rsquo;s address space, we will record them for final marking tasks. Once all objects have been scanned using DWARF types, we will extract these final marking tasks and perform a secondary scan using the GC method.&lt;/p&gt;
-&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/5cf29b2538c1bc30ed68212738da45ca.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-		alt=&#34;Reference Scanning Example&#34;
-	
-	
-&gt;&lt;/p&gt;
-&lt;p&gt;For example, when accessing the aforementioned &lt;code&gt;Object&lt;/code&gt;, its gcmask is &lt;code&gt;1010&lt;/code&gt;. After reading field A, the gcmask changes to &lt;code&gt;1000&lt;/code&gt;. If field C is not accessed due to type conversion, it will be included in the final scan during GC marking.&lt;/p&gt;
-&lt;p&gt;In addition to type conversion, memory out-of-bounds references are also common issues. For instance, in the example code &lt;code&gt;var b *int64 = &amp;amp;echo().B&lt;/code&gt;, fields A and C belong to memory that cannot be scanned using DWARF types and will also be counted during the final scan.&lt;/p&gt;
-&lt;h3 id=&#34;final-scan&#34;&gt;&lt;strong&gt;Final Scan&lt;/strong&gt;
-&lt;/h3&gt;&lt;p&gt;The fields that were type-converted or could not be accessed due to exceeding the DWARF-defined address range, as well as variables like &lt;code&gt;unsafe.Pointer&lt;/code&gt; whose types cannot be determined, will all be marked during the final scan. Since these objects cannot be assigned specific types, we only need to record their size and count in the known reference chain.&lt;/p&gt;
-&lt;p&gt;In Go&amp;rsquo;s native implementation, many commonly used libraries utilize &lt;code&gt;unsafe.Pointer&lt;/code&gt;, leading to issues with sub-object identification. These types require special handling.&lt;/p&gt;
-&lt;h3 id=&#34;output-file-format&#34;&gt;&lt;strong&gt;Output File Format&lt;/strong&gt;
-&lt;/h3&gt;&lt;p&gt;After scanning all objects, the reference chains, object counts, and object memory spaces are output to a file, aligned with the pprof binary file format and encoded using protobuf.&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;
-&lt;p&gt;&lt;strong&gt;Root Object Format:&lt;/strong&gt;&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;Stack Variable Format: Package name + Function name + Stack variable name &lt;code&gt;github.com/cloudwego/kitex/client.invokeHandleEndpoint.func1.sendMsg&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;Global Variable Format: Package name + Global variable name &lt;code&gt;github.com/cloudwego/kitex/pkg/loadbalance/lbcache.balancerFactories&lt;/code&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;&lt;strong&gt;Sub-object Format:&lt;/strong&gt;&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;Outputs the type name of the sub-object, such as: &lt;code&gt;net.Conn&lt;/code&gt;;&lt;/li&gt;
-&lt;li&gt;If it is a map key or value field, it is output in the form of &lt;code&gt;$mapkey. (type_name)&lt;/code&gt; or &lt;code&gt;$mapval. (type_name)&lt;/code&gt;;&lt;/li&gt;
-&lt;li&gt;If it is an element of an array, it is output in the format &lt;code&gt;[0]. (type_name)&lt;/code&gt;; for elements greater than or equal to 10, it is output as &lt;code&gt;[10+]. (type_name)&lt;/code&gt;;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ol&gt;
-&lt;h2 id=&#34;effect-demonstration&#34;&gt;&lt;strong&gt;Effect Demonstration&lt;/strong&gt;
-&lt;/h2&gt;&lt;p&gt;Below is a flame graph of object references sampled from a real business using the tool:&lt;/p&gt;
-&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/bc938a980366ba9cf0877327496ba553.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-		alt=&#34;Object Reference Flame Graph&#34;
-	
-	
-&gt;&lt;/p&gt;
-&lt;p&gt;The graph displays the names of each root variable, along with the names and types of the fields they reference. Note: Due to the lack of support for closure type field offsets in DWARF Info before Go 1.23, the closure variable &lt;code&gt;wpool.(*Pool).GoCtx.func1.task&lt;/code&gt; cannot currently display downstream objects.&lt;/p&gt;
-&lt;p&gt;By selecting the &lt;code&gt;inuse_objects&lt;/code&gt; tag, you can also view the flame graph of object count distribution:&lt;/p&gt;
-&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/1fce789445b070cdac3aa9a0b7665479.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-		alt=&#34;Object Count Distribution Flame Graph&#34;
-	
-	
-&gt;&lt;/p&gt;
-&lt;hr&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/p/unmasking-go-memory-leaks-cloudwego-open-sources-goref-for-deep-heap-analysis/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;Long Time Link&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;If you find my blog helpful, please subscribe to me via &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;RSS&lt;/a&gt;&lt;/li&gt;

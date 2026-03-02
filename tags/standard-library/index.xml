@@ -1,0 +1,298 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+    <channel>
+        <title>Standard-Library on huizhou92&#39;s Blog</title>
+        <link>https://huizhou92.com/tags/standard-library/</link>
+        <description>Recent content in Standard-Library on huizhou92&#39;s Blog</description>
+        <generator>Hugo -- gohugo.io</generator>
+        <language>en</language>
+        <copyright>Copyright © 2023 huizhou92</copyright>
+        <lastBuildDate>Fri, 27 Feb 2026 21:50:53 +0800</lastBuildDate><atom:link href="https://huizhou92.com/tags/standard-library/index.xml" rel="self" type="application/rss+xml" /><item>
+        <title>五年了， JSON/V2 还是没有转正</title>
+        <link>https://huizhou92.com/p/%E4%BA%94%E5%B9%B4%E4%BA%86-json/v2-%E8%BF%98%E6%98%AF%E6%B2%A1%E6%9C%89%E8%BD%AC%E6%AD%A3/</link>
+        <pubDate>Fri, 27 Feb 2026 21:50:53 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/p/%E4%BA%94%E5%B9%B4%E4%BA%86-json/v2-%E8%BF%98%E6%98%AF%E6%B2%A1%E6%9C%89%E8%BD%AC%E6%AD%A3/</guid>
+        <description>&lt;!-- more--&gt;
+&lt;h1 id=&#34;五年了-jsonv2-还是没有转正&#34;&gt;五年了， JSON/V2 还是没有转正
+&lt;/h1&gt;&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2026/02/605cdeab11eca0ae50d948387214af5b.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;cover&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;2026 年 2 月 10 日，Go 1.26 重磅发布。&lt;strong&gt;Green Tea&lt;/strong&gt; 垃圾回收器正式成为默认选项。&lt;code&gt;go fix&lt;/code&gt; 工具经历了全面的现代化改造。cgo 调用开销降低了 &lt;strong&gt;30%&lt;/strong&gt;。64 位平台迎来了堆地址随机化（Heap Address Randomization）安全增强。无论从哪个角度看，这都是一个里程碑式的版本。&lt;/p&gt;
+&lt;p&gt;然而，许多开发者翘首以盼的功能——&lt;code&gt;encoding/json/v2&lt;/code&gt;——却明显缺席于稳定 API 之中。它依然躲在 &lt;code&gt;GOEXPERIMENT=jsonv2&lt;/code&gt; 的实验性标志背后，尚未就绪。&lt;/p&gt;
+&lt;p&gt;我从Golang 1.25 就开始期待&lt;code&gt;JSON/v2&lt;/code&gt; 了。&lt;strong&gt;五年&lt;/strong&gt;的开发，居然还没完成？但如果你深入研究核心追踪议题 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/76406&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;#76406&lt;/a&gt; 和相关提案 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/71497&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;#71497&lt;/a&gt;，画面就变得清晰了：这种延迟不是工程效率的问题。它源于对 &lt;strong&gt;API 完美主义&lt;/strong&gt;的执着追求、一场艰苦卓绝的&lt;strong&gt;向后兼容性&lt;/strong&gt;攻坚战，以及一个几乎让整个项目脱轨的&lt;strong&gt;内存回退&lt;/strong&gt;问题。&lt;/p&gt;
+&lt;p&gt;我们逐一拆解。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2026/02/e17a40bcd89d60d0337cfb1ab11085bd.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20260212150624&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;h3 id=&#34;宏观视角为什么-json-v2-如此重要&#34;&gt;宏观视角：为什么 JSON V2 如此重要
+&lt;/h3&gt;&lt;p&gt;当前的 &lt;code&gt;encoding/json&lt;/code&gt;（我们姑且称之为 v1）已经忠实服务 Go 开发者超过十年。但它的设计缺陷一直在累积，就像一个从不重构的创业公司的技术债务。以下是主要问题清单：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;它会&lt;strong&gt;默默接受无效的 UTF-8&lt;/strong&gt; JSON 字符串&lt;/li&gt;
+&lt;li&gt;它&lt;strong&gt;允许重复键名&lt;/strong&gt;而毫无怨言&lt;/li&gt;
+&lt;li&gt;自定义 &lt;code&gt;Marshaler&lt;/code&gt; 实现&lt;strong&gt;无法访问配置选项&lt;/strong&gt;&lt;/li&gt;
+&lt;li&gt;没有办法&lt;strong&gt;拒绝有效 JSON 文档之后的多余数据&lt;/strong&gt;&lt;/li&gt;
+&lt;li&gt;所谓的&amp;quot;流式&amp;quot;API 基本上是个幌子——底层实际上会缓冲所有内容&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这些绝非小问题。在生产环境中，它们是&lt;strong&gt;安全攻击向量&lt;/strong&gt;和&lt;strong&gt;静默数据损坏&lt;/strong&gt;的风险源。符合 RFC 8259 标准？差得远呢。&lt;/p&gt;
+&lt;p&gt;由 &lt;strong&gt;Joe Tsai&lt;/strong&gt; 和 &lt;strong&gt;Daniel Martí&lt;/strong&gt; 领导的 JSON v2，是自泛型（Generics）落地以来最具雄心的标准库重写。它旨在修复上述所有问题——同时带来巨大的性能提升。&lt;/p&gt;
+&lt;h3 id=&#34;全新架构语法层与语义层的分离&#34;&gt;全新架构：语法层与语义层的分离
+&lt;/h3&gt;&lt;p&gt;v2 最精妙的设计决策之一，是将 JSON 处理&lt;strong&gt;严格拆分&lt;/strong&gt;为两层：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;encoding/json/jsontext&lt;/code&gt;&lt;/strong&gt; —— 语法层（Syntactic Layer）。负责纯粹的 JSON 标记化（Tokenizing）、解析和编码。无反射，不涉及 Go 类型。你可以把它理解为一个高性能 JSON 扫描器。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;encoding/json/v2&lt;/code&gt;&lt;/strong&gt; —— 语义层（Semantic Layer）。基于 &lt;code&gt;jsontext&lt;/code&gt; 构建，实现 Go 类型与 JSON 数据之间的映射。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这种分离的威力在于：如果你只需要验证或转换原始 JSON 而不涉及 Go 结构体，可以直接使用 &lt;code&gt;jsontext&lt;/code&gt;——零反射开销、真正的流式处理、最小化内存分配。&lt;/p&gt;
+&lt;p&gt;以下是两个版本的对比：&lt;/p&gt;
+&lt;table&gt;
+  &lt;thead&gt;
+      &lt;tr&gt;
+          &lt;th&gt;&lt;strong&gt;维度&lt;/strong&gt;&lt;/th&gt;
+          &lt;th&gt;&lt;strong&gt;encoding/json (v1)&lt;/strong&gt;&lt;/th&gt;
+          &lt;th&gt;&lt;strong&gt;encoding/json/v2 (实验性)&lt;/strong&gt;&lt;/th&gt;
+      &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+      &lt;tr&gt;
+          &lt;td&gt;&lt;strong&gt;架构&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;语法与语义耦合，重度依赖反射&lt;/td&gt;
+          &lt;td&gt;清晰分离：&lt;code&gt;jsontext&lt;/code&gt;（语法） + &lt;code&gt;v2&lt;/code&gt;（语义）&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;td&gt;&lt;strong&gt;流式处理&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;伪流式；底层往往需要全量缓冲&lt;/td&gt;
+          &lt;td&gt;真正的流式编码与解码&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;td&gt;&lt;strong&gt;默认安全性&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;接受无效 UTF-8，允许重复键名&lt;/td&gt;
+          &lt;td&gt;拒绝无效 UTF-8，拒绝重复键名（符合 RFC 8259）&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;td&gt;&lt;strong&gt;性能&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;基准&lt;/td&gt;
+          &lt;td&gt;Unmarshal 最高提升 &lt;strong&gt;10 倍&lt;/strong&gt;；Marshal 提升 &lt;strong&gt;1.6–3.6 倍&lt;/strong&gt;&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;td&gt;&lt;strong&gt;unsafe 使用&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;无&lt;/td&gt;
+          &lt;td&gt;无——在不使用 &lt;code&gt;unsafe&lt;/code&gt; 的前提下达到第三方库级别的性能&lt;/td&gt;
+      &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;最后一行值得着重强调。像 &lt;strong&gt;Sonic&lt;/strong&gt;（字节跳动）这样的库通过大量使用 &lt;code&gt;unsafe&lt;/code&gt; 来实现极致速度。而 JSON v2 在&lt;strong&gt;不牺牲内存安全&lt;/strong&gt;的前提下达到了同等性能水平。这就是标准库的承诺：你不需要用正确性换取速度。
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2026/02/1823afa2454141bdb6436bfa9bd64c14.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20260212150646&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;h3 id=&#34;为什么没有随-126-发布四大阻碍&#34;&gt;为什么没有随 1.26 发布：四大阻碍
+&lt;/h3&gt;&lt;p&gt;既然 v2 这么好，为什么不在 Go 1.26 中发布？追踪议题 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/76406&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;#76406&lt;/a&gt; 揭示了四个截然不同的战场。&lt;/p&gt;
+&lt;h4 id=&#34;1-永久-api-约束&#34;&gt;1. &amp;ldquo;永久 API&amp;rdquo; 约束
+&lt;/h4&gt;&lt;p&gt;在 Go 的标准库哲学中，一旦 API 脱离实验阶段进入 &lt;code&gt;encoding/json&lt;/code&gt; 路径，它就必须受到 &lt;strong&gt;Go 1 兼容性承诺&lt;/strong&gt;的保护。永远如此，不可撤回。&lt;/p&gt;
+&lt;p&gt;Joe Tsai 对此态度明确：性能问题可以后续通过优化来解决，但 &lt;strong&gt;API 设计缺陷一旦固化，就会成为未来几十年的技术债务&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;目前的审计重点集中在 &lt;code&gt;jsontext&lt;/code&gt; 的公共接口。作为基础层，它的设计需要在高性能与易用性之间取得平衡——尤其是在 Token 处理以及与 &lt;code&gt;io.Reader&lt;/code&gt;/&lt;code&gt;io.Writer&lt;/code&gt; 的最佳交互模式上。&lt;/p&gt;
+&lt;p&gt;此外还有关于 &lt;code&gt;time.Duration&lt;/code&gt; 的激烈争论。v1 将持续时间序列化为&lt;strong&gt;纳秒整数&lt;/strong&gt;——虽然广泛使用，但跨语言互操作性极差。v2 倾向于采用 Go 风格的字符串如 &lt;code&gt;&amp;quot;1h2m3s&amp;quot;&lt;/code&gt;，但这引发了关于标准化程度的热烈讨论。双方各执己见，API 签名悬而未决。&lt;/p&gt;
+&lt;h4 id=&#34;2-完美兼容-jsonv1&#34;&gt;2. &amp;ldquo;完美兼容 json/v1
+&lt;/h4&gt;&lt;p&gt;以下是 Go 团队的雄心壮志：一旦 v2 落地，他们希望&lt;strong&gt;只维护一套代码库&lt;/strong&gt;。现有的 &lt;code&gt;encoding/json&lt;/code&gt; 将变成 v2 引擎的一个薄包装层（Shim）。&lt;/p&gt;
+&lt;p&gt;问题在于：v2 引擎必须完美复刻 v1 的&lt;strong&gt;所有行为&lt;/strong&gt;——包括 bug、未文档化的怪癖，以及成千上万生产应用无意中依赖的边缘情况。&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;例如，v1 在处理非寻址值（Non-addressable Values）的指针接收者 Marshaler 时存在特定的不一致性。许多现有应用在不知情的情况下已经依赖了这种行为。&lt;/p&gt;&lt;/blockquote&gt;
+&lt;p&gt;在一个架构完全不同的引擎中复刻这些细微的、难以文档化的行为偏差，是一项极其艰巨的工程挑战。团队目前正在通过大规模测试逐步&amp;quot;烧除&amp;rdquo;（Burning Down）发现的每一个微小行为差异。进展稳步推进，但长尾效应依然明显。&lt;/p&gt;
+&lt;h4 id=&#34;3-内存回退问题issue-75026&#34;&gt;3. 内存回退问题：Issue #75026
+&lt;/h4&gt;&lt;p&gt;这是最令人警醒的阻碍。在 Go 1.25 和 1.26 的实验周期中，Issue &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/75026&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;#75026&lt;/a&gt; 报告了在特定 Map 序列化场景下&lt;strong&gt;灾难性的内存分配回退&lt;/strong&gt;。&lt;/p&gt;
+&lt;table&gt;
+  &lt;thead&gt;
+      &lt;tr&gt;
+          &lt;th&gt;&lt;strong&gt;场景（Map 编码）&lt;/strong&gt;&lt;/th&gt;
+          &lt;th&gt;&lt;strong&gt;内存分配 (B/op) — v1 原生&lt;/strong&gt;&lt;/th&gt;
+          &lt;th&gt;&lt;strong&gt;内存分配 (B/op) — v2 实验&lt;/strong&gt;&lt;/th&gt;
+          &lt;th&gt;&lt;strong&gt;增幅&lt;/strong&gt;&lt;/th&gt;
+      &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+      &lt;tr&gt;
+          &lt;td&gt;KeyCount: 10, ValLength: 1000&lt;/td&gt;
+          &lt;td&gt;832&lt;/td&gt;
+          &lt;td&gt;33,139&lt;/td&gt;
+          &lt;td&gt;&lt;strong&gt;+3,883%&lt;/strong&gt;&lt;/td&gt;
+      &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;没有看错。一个常见的 Map 编码模式，内存分配量增加了 &lt;strong&gt;39 倍&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;性能分析显示，&lt;strong&gt;92.98%&lt;/strong&gt; 的内存分配集中在 &lt;code&gt;bytes.growSlice&lt;/code&gt; 中，这表明新架构在处理复杂对象树或特定 Map 结构时存在严重的缓冲区管理缺陷。虽然总的分配次数（&lt;code&gt;Allocs/op&lt;/code&gt;）实际上有所下降，但单次分配的体积暴增，给 GC 带来了巨大压力。&lt;/p&gt;
+&lt;p&gt;如果这种回退作为 v1 用户的默认行为发布，后果将是灾难性的。修复这些极端场景下的分配逻辑是目前&lt;strong&gt;最高优先级&lt;/strong&gt;的工作。&lt;/p&gt;
+&lt;h4 id=&#34;4-生态成熟度与联合类型之争&#34;&gt;4. 生态成熟度与联合类型之争
+&lt;/h4&gt;&lt;p&gt;JSON v2 项目已经开发了&lt;strong&gt;五年&lt;/strong&gt;。虽然已在许多生产环境中得到验证，但在成为默认标准之前，仍需经历更广泛的生态系统压力测试。Project 50 的追踪显示，44 个子任务中仍有约 &lt;strong&gt;18 个处于开放状态&lt;/strong&gt;或需要进一步审计。&lt;/p&gt;
+&lt;p&gt;此外，关于 v2 是否应该支持 JSON 反序列化中的&lt;strong&gt;联合类型&lt;/strong&gt;（Union Types / Sum Types），也引发了设计上的分歧。部分开发者认为这是现代 JSON 处理的标配功能。Go 团队的立场？等待语言层面的&lt;strong&gt;总和类型提案&lt;/strong&gt;（如 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/57644&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;#57644&lt;/a&gt;）成熟后再做集成，而不是在 JSON 包中塞入一个临时的、不兼容的实现。&lt;/p&gt;
+&lt;p&gt;这就是典型的 Go 式实用主义：不在库层面解决语言层面的问题。&lt;/p&gt;
+&lt;h3 id=&#34;值得等待的核心特性&#34;&gt;值得等待的核心特性
+&lt;/h3&gt;&lt;p&gt;尽管发布延迟，v2 的实验性版本已经展示了多项将从根本上改变 Go JSON 处理模式的特性。&lt;/p&gt;
+&lt;h4 id=&#34;omitzero--终于有了合理的省略逻辑&#34;&gt;&lt;code&gt;omitzero&lt;/code&gt; —— 终于有了合理的省略逻辑
+&lt;/h4&gt;&lt;p&gt;v1 的 &lt;code&gt;omitempty&lt;/code&gt; 让开发者困惑了多年。&lt;code&gt;time.Time{}&lt;/code&gt; 算空吗？&lt;code&gt;false&lt;/code&gt; 算空吗？答案是不一致的，而且常常出人意料。&lt;/p&gt;
+&lt;p&gt;v2 引入了 &lt;code&gt;omitzero&lt;/code&gt;，它严格按照 Go 的&lt;strong&gt;零值&lt;/strong&gt;语义进行判断，并支持自定义 &lt;code&gt;IsZero() bool&lt;/code&gt; 接口：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;type&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;Event&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;Name&lt;/span&gt;      &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;    &lt;span class=&#34;s&#34;&gt;`json:&amp;#34;name&amp;#34;`&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;StartTime&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;time&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Time&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;`json:&amp;#34;start_time,omitzero&amp;#34;`&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;EndTime&lt;/span&gt;   &lt;span class=&#34;nx&#34;&gt;time&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Time&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;`json:&amp;#34;end_time,omitzero&amp;#34;`&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;这对于 &lt;strong&gt;PATCH 风格的 API&lt;/strong&gt; 尤其有用——你只需序列化那些被明确修改过的字段，而不会因为字段恰好持有类型的默认零值而意外忽略它们。&lt;/p&gt;
+&lt;h4 id=&#34;inline-和-unknown--灵活的数据建模&#34;&gt;&lt;code&gt;inline&lt;/code&gt; 和 &lt;code&gt;unknown&lt;/code&gt; —— 灵活的数据建模
+&lt;/h4&gt;&lt;p&gt;两个新的结构体标签解决了长期存在的痛点：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;inline&lt;/code&gt;&lt;/strong&gt;：将嵌套结构体或 Map 的内容&amp;quot;平铺&amp;quot;到父 JSON 对象中——无需匿名嵌入。对于包含动态键值对的 API 来说，这是一个巨大的改进。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;unknown&lt;/code&gt;&lt;/strong&gt;：指定一个字段（通常是 &lt;code&gt;map[string]jsontext.Value&lt;/code&gt;）来捕获结构体中未定义的所有 JSON 成员。彻底告别&amp;quot;二次反序列化&amp;quot;的开销。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;type&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;Config&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;Version&lt;/span&gt;  &lt;span class=&#34;kt&#34;&gt;int&lt;/span&gt;                          &lt;span class=&#34;s&#34;&gt;`json:&amp;#34;version&amp;#34;`&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;Name&lt;/span&gt;     &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;                       &lt;span class=&#34;s&#34;&gt;`json:&amp;#34;name&amp;#34;`&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;Extra&lt;/span&gt;    &lt;span class=&#34;kd&#34;&gt;map&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;jsontext&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Value&lt;/span&gt;    &lt;span class=&#34;s&#34;&gt;`json:&amp;#34;,unknown&amp;#34;`&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;h4 id=&#34;format--内置编码定制&#34;&gt;&lt;code&gt;format&lt;/code&gt; —— 内置编码定制
+&lt;/h4&gt;&lt;p&gt;&lt;code&gt;format&lt;/code&gt; 选项支持按字段定制编码方式：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;为 &lt;code&gt;[]byte&lt;/code&gt; 字段定制 Base64 或 Hex 编码&lt;/li&gt;
+&lt;li&gt;为 &lt;code&gt;time.Time&lt;/code&gt; 使用自定义布局字符串&lt;/li&gt;
+&lt;li&gt;不再需要为常见格式化需求编写自定义 Marshaler/Unmarshaler 实现&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;性能benchmark-数据说话&#34;&gt;性能：Benchmark 数据说话
+&lt;/h3&gt;&lt;p&gt;基于 &lt;code&gt;jsonbench&lt;/code&gt; 评估套件，以下是 v2 与竞品的对比：&lt;/p&gt;
+&lt;table&gt;
+  &lt;thead&gt;
+      &lt;tr&gt;
+          &lt;th&gt;&lt;strong&gt;库&lt;/strong&gt;&lt;/th&gt;
+          &lt;th&gt;&lt;strong&gt;Marshal 速度&lt;/strong&gt;&lt;/th&gt;
+          &lt;th&gt;&lt;strong&gt;Unmarshal 速度&lt;/strong&gt;&lt;/th&gt;
+          &lt;th&gt;&lt;strong&gt;内存安全性&lt;/strong&gt;&lt;/th&gt;
+      &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+      &lt;tr&gt;
+          &lt;td&gt;&lt;strong&gt;JSON v1&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;基准&lt;/td&gt;
+          &lt;td&gt;基准&lt;/td&gt;
+          &lt;td&gt;高（无 unsafe）&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;td&gt;&lt;strong&gt;JSON v2&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;&lt;strong&gt;提升 1.6–3.6 倍&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;&lt;strong&gt;提升 2.7–10.2 倍&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;高（无 unsafe）&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;td&gt;&lt;strong&gt;Sonic（字节跳动）&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;与 v2 相当&lt;/td&gt;
+          &lt;td&gt;极快（部分使用 unsafe）&lt;/td&gt;
+          &lt;td&gt;中（大量使用 unsafe）&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;td&gt;&lt;strong&gt;JSON-Iterator&lt;/strong&gt;&lt;/td&gt;
+          &lt;td&gt;慢于 v2&lt;/td&gt;
+          &lt;td&gt;慢于 v2&lt;/td&gt;
+          &lt;td&gt;中&lt;/td&gt;
+      &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;关键洞察：v2 通过&lt;strong&gt;迭代式线性解析&lt;/strong&gt;实现性能飞跃，而非 v1 的逐字节虚函数扫描模式。而且它没有使用一个 &lt;code&gt;unsafe.Pointer&lt;/code&gt;。这不仅仅是快——这是&lt;strong&gt;负责任地快&lt;/strong&gt;。&lt;/p&gt;
+&lt;h3 id=&#34;前路v2-何时落地&#34;&gt;前路：v2 何时落地？
+&lt;/h3&gt;&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2026/02/44e7b95ea138d8dd9d69c62bc2139da6.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Pasted image 20260212150729&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;p&gt;基于当前的任务处理速度和 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/76406&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;#76406&lt;/a&gt; 上的开发者活跃度，以下是务实的时间线：
+&lt;strong&gt;2026 年上半年：&lt;/strong&gt;&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;修复 Issue #75026&lt;/strong&gt; —— 解决 Map 编码的内存回退问题。这是脱离实验阶段的唯一最关键前提。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;API 定稿&lt;/strong&gt; —— 完成 &lt;code&gt;jsontext&lt;/code&gt; 中所有公共函数的审计，特别是 &lt;code&gt;Encoder&lt;/code&gt;/&lt;code&gt;Decoder&lt;/code&gt; 在流式场景中的状态机健壮性。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;v1 兼容层完善&lt;/strong&gt; —— 确保所有已知的 v1 行为（包括那些&amp;quot;有 bug 的&amp;quot;行为）在 v2 引擎中都有对应的配置选项支持。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;&lt;strong&gt;Go 1.27（预计 2026 年 8 月）：&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;这被广泛认为是 JSON v2 移除实验性标签、进入稳定标准库的&lt;strong&gt;最早也是最可能的窗口&lt;/strong&gt;。1.27 开发周期中代码树（Tree）的重新开放将是需要密切关注的关键信号。&lt;/p&gt;
+&lt;p&gt;Go 团队还计划在 v2 正式发布时同步推出&lt;strong&gt;现代化迁移工具&lt;/strong&gt;。重新设计的 &lt;code&gt;go fix&lt;/code&gt; 将支持从 v1 到 v2 默认配置的一键迁移——不只是简单的字符串替换，而是感知类型信息的智能转换。例如，它能检测到手动实现的 Base64 转换逻辑，并建议替换为 v2 的 &lt;code&gt;format:base64&lt;/code&gt; 结构体标签。&lt;/p&gt;
+&lt;h3 id=&#34;总结&#34;&gt;总结
+&lt;/h3&gt;&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;JSON v2 的延迟不是失败——而是纪律。&lt;/strong&gt; Go 团队拒绝发布一个存在设计缺陷的 API，因为在 Go 1 兼容性保证下，这些缺陷将永久存在。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;架构设计是扎实的。&lt;/strong&gt; 通过 &lt;code&gt;jsontext&lt;/code&gt; 和 &lt;code&gt;v2&lt;/code&gt; 实现的语法/语义分离是一种精妙且面向未来的设计。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;性能已经得到验证。&lt;/strong&gt; Unmarshal 最高提升 10 倍，Marshal 提升 3.6 倍——全程不使用 &lt;code&gt;unsafe&lt;/code&gt;。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;内存回退（#75026）是关键阻碍。&lt;/strong&gt; Map 编码中 39 倍的分配增长必须在 v2 成为默认之前解决。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Go 1.27（2026 年 8 月）是目标。&lt;/strong&gt; 社区应据此做好规划。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;&lt;strong&gt;对开发者的实用建议：&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;内部工具&lt;/strong&gt;：放心在非核心系统中尝试 &lt;code&gt;GOEXPERIMENT=jsonv2&lt;/code&gt;。仅 &lt;code&gt;omitzero&lt;/code&gt; 和 &lt;code&gt;unknown&lt;/code&gt; 特性就能显著简化你的代码。提交 Bug 报告——团队需要它们。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;性能敏感型应用&lt;/strong&gt;：如果 JSON 反序列化是你的 CPU 瓶颈，v2 的实验版本可能已经优于 v1——而且比第三方 &lt;code&gt;unsafe&lt;/code&gt; 库更安全。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;公共组件库&lt;/strong&gt;：目前继续使用 &lt;code&gt;encoding/json&lt;/code&gt;（v1）。v2 的 API 仍有可能发生破坏性变更，你的用户不会欣赏这种不稳定性。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;JSON v2 将是 Go 语言自泛型以来最重要的库级演进。它不仅让速度更快——更补全了 Go 在现代数据交换标准合规性上长达十年的缺口。随着阻碍一个接一个地被清除，一个更安全、更快速、更灵活的 JSON 处理时代即将随 Go 1.27 到来。&lt;/p&gt;
+&lt;p&gt;等待即将结束。而且，值得。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;参考资料：&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Go Issue &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/76406&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;#76406&lt;/a&gt; — JSON v2 追踪议题&lt;/li&gt;
+&lt;li&gt;Go Proposal &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/71497&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;#71497&lt;/a&gt; — encoding/json/v2 提案&lt;/li&gt;
+&lt;li&gt;Go Issue &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/75026&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;#75026&lt;/a&gt; — jsonv2 实验中的内存分配回退&lt;/li&gt;
+&lt;li&gt;Go Issue &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/57644&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;#57644&lt;/a&gt; — 总和类型语言提案&lt;/li&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://go.dev/doc/go1.26&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Go 1.26 Release Notes&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+        </item>
+        
+    </channel>
+</rss>

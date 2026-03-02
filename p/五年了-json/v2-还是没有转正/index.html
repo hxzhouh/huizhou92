@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+    <head>
+
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="深入 Go 最常用包的 5 年重写之旅：API 完美主义、内存回退，以及向后兼容的沉重代价。">
+<title>五年了， JSON/V2 还是没有转正</title>
+
+<link rel='canonical' href='https://huizhou92.com/p/%E4%BA%94%E5%B9%B4%E4%BA%86-json/v2-%E8%BF%98%E6%98%AF%E6%B2%A1%E6%9C%89%E8%BD%AC%E6%AD%A3/'>
+
+<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="五年了， JSON/V2 还是没有转正">
+<meta property='og:description' content="深入 Go 最常用包的 5 年重写之旅：API 完美主义、内存回退，以及向后兼容的沉重代价。">
+<meta property='og:url' content='https://huizhou92.com/p/%E4%BA%94%E5%B9%B4%E4%BA%86-json/v2-%E8%BF%98%E6%98%AF%E6%B2%A1%E6%9C%89%E8%BD%AC%E6%AD%A3/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:tag' content='json' /><meta property='article:tag' content='standard-library' /><meta property='article:published_time' content='2026-02-27T21:50:53&#43;08:00'/><meta property='article:modified_time' content='2026-02-13T07:23:20&#43;08:00'/>
+<meta name="twitter:site" content="@piaopiaopig">
+    <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="五年了， JSON/V2 还是没有转正">
+<meta name="twitter:description" content="深入 Go 最常用包的 5 年重写之旅：API 完美主义、内存回退，以及向后兼容的沉重代价。">
+    <link rel="shortcut icon" href="/favicon.png" />
+
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="Toggle Menu">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu_e52293b5d2b8c5f7.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>Home</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/about/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>About</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>Archives</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>Search</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" selected>English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" >中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>Dark Mode</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">Table of contents</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li>
+      <ol>
+        <li><a href="#宏观视角为什么-json-v2-如此重要">宏观视角：为什么 JSON V2 如此重要</a></li>
+        <li><a href="#全新架构语法层与语义层的分离">全新架构：语法层与语义层的分离</a></li>
+        <li><a href="#为什么没有随-126-发布四大阻碍">为什么没有随 1.26 发布：四大阻碍</a>
+          <ol>
+            <li><a href="#1-永久-api-约束">1. &ldquo;永久 API&rdquo; 约束</a></li>
+            <li><a href="#2-完美兼容-jsonv1">2. &ldquo;完美兼容 json/v1</a></li>
+            <li><a href="#3-内存回退问题issue-75026">3. 内存回退问题：Issue #75026</a></li>
+            <li><a href="#4-生态成熟度与联合类型之争">4. 生态成熟度与联合类型之争</a></li>
+          </ol>
+        </li>
+        <li><a href="#值得等待的核心特性">值得等待的核心特性</a>
+          <ol>
+            <li><a href="#omitzero--终于有了合理的省略逻辑"><code>omitzero</code> —— 终于有了合理的省略逻辑</a></li>
+            <li><a href="#inline-和-unknown--灵活的数据建模"><code>inline</code> 和 <code>unknown</code> —— 灵活的数据建模</a></li>
+            <li><a href="#format--内置编码定制"><code>format</code> —— 内置编码定制</a></li>
+          </ol>
+        </li>
+        <li><a href="#性能benchmark-数据说话">性能：Benchmark 数据说话</a></li>
+        <li><a href="#前路v2-何时落地">前路：v2 何时落地？</a></li>
+        <li><a href="#总结">总结</a></li>
+      </ol>
+    </li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+            
+        
+              
+              <section class="widget">
+                 
+                <div class="widget-content">
+                    <iframe frameborder="0"
+                        src="https://support.nodeget.com/page/promotion?id=30795"
+                        style="border-radius:8px; height: 270px; width: 100%; display: block;"></iframe>
+                        
+                </div>
+            </section>
+    </aside>
+  
+
+
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+
+            <main class="main full-width">
+    <article class="main-article">
+    <header class="article-header">
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/categories/blog/" >
+                Blog
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/p/%E4%BA%94%E5%B9%B4%E4%BA%86-json/v2-%E8%BF%98%E6%98%AF%E6%B2%A1%E6%9C%89%E8%BD%AC%E6%AD%A3/">五年了， JSON/V2 还是没有转正</a>
+        </h2>
+    
+        
+        <h3 class="article-subtitle">
+            深入 Go 最常用包的 5 年重写之旅：API 完美主义、内存回退，以及向后兼容的沉重代价。
+        </h3>
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Feb 27, 2026</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    3 minute read
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <!-- more-->
+<h1 id="五年了-jsonv2-还是没有转正">五年了， JSON/V2 还是没有转正
+</h1><p><img src="https://images.hxzhouh.com/blog-images/2026/02/605cdeab11eca0ae50d948387214af5b.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="cover"
+	
+	
+></p>
+<p>2026 年 2 月 10 日，Go 1.26 重磅发布。<strong>Green Tea</strong> 垃圾回收器正式成为默认选项。<code>go fix</code> 工具经历了全面的现代化改造。cgo 调用开销降低了 <strong>30%</strong>。64 位平台迎来了堆地址随机化（Heap Address Randomization）安全增强。无论从哪个角度看，这都是一个里程碑式的版本。</p>
+<p>然而，许多开发者翘首以盼的功能——<code>encoding/json/v2</code>——却明显缺席于稳定 API 之中。它依然躲在 <code>GOEXPERIMENT=jsonv2</code> 的实验性标志背后，尚未就绪。</p>
+<p>我从Golang 1.25 就开始期待<code>JSON/v2</code> 了。<strong>五年</strong>的开发，居然还没完成？但如果你深入研究核心追踪议题 <a class="link" href="https://github.com/golang/go/issues/76406"  target="_blank" rel="noopener"
+    >#76406</a> 和相关提案 <a class="link" href="https://github.com/golang/go/issues/71497"  target="_blank" rel="noopener"
+    >#71497</a>，画面就变得清晰了：这种延迟不是工程效率的问题。它源于对 <strong>API 完美主义</strong>的执着追求、一场艰苦卓绝的<strong>向后兼容性</strong>攻坚战，以及一个几乎让整个项目脱轨的<strong>内存回退</strong>问题。</p>
+<p>我们逐一拆解。</p>
+<p><img src="https://images.hxzhouh.com/blog-images/2026/02/e17a40bcd89d60d0337cfb1ab11085bd.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Pasted image 20260212150624"
+	
+	
+></p>
+<h3 id="宏观视角为什么-json-v2-如此重要">宏观视角：为什么 JSON V2 如此重要
+</h3><p>当前的 <code>encoding/json</code>（我们姑且称之为 v1）已经忠实服务 Go 开发者超过十年。但它的设计缺陷一直在累积，就像一个从不重构的创业公司的技术债务。以下是主要问题清单：</p>
+<ul>
+<li>它会<strong>默默接受无效的 UTF-8</strong> JSON 字符串</li>
+<li>它<strong>允许重复键名</strong>而毫无怨言</li>
+<li>自定义 <code>Marshaler</code> 实现<strong>无法访问配置选项</strong></li>
+<li>没有办法<strong>拒绝有效 JSON 文档之后的多余数据</strong></li>
+<li>所谓的&quot;流式&quot;API 基本上是个幌子——底层实际上会缓冲所有内容</li>
+</ul>
+<p>这些绝非小问题。在生产环境中，它们是<strong>安全攻击向量</strong>和<strong>静默数据损坏</strong>的风险源。符合 RFC 8259 标准？差得远呢。</p>
+<p>由 <strong>Joe Tsai</strong> 和 <strong>Daniel Martí</strong> 领导的 JSON v2，是自泛型（Generics）落地以来最具雄心的标准库重写。它旨在修复上述所有问题——同时带来巨大的性能提升。</p>
+<h3 id="全新架构语法层与语义层的分离">全新架构：语法层与语义层的分离
+</h3><p>v2 最精妙的设计决策之一，是将 JSON 处理<strong>严格拆分</strong>为两层：</p>
+<ul>
+<li><strong><code>encoding/json/jsontext</code></strong> —— 语法层（Syntactic Layer）。负责纯粹的 JSON 标记化（Tokenizing）、解析和编码。无反射，不涉及 Go 类型。你可以把它理解为一个高性能 JSON 扫描器。</li>
+<li><strong><code>encoding/json/v2</code></strong> —— 语义层（Semantic Layer）。基于 <code>jsontext</code> 构建，实现 Go 类型与 JSON 数据之间的映射。</li>
+</ul>
+<p>这种分离的威力在于：如果你只需要验证或转换原始 JSON 而不涉及 Go 结构体，可以直接使用 <code>jsontext</code>——零反射开销、真正的流式处理、最小化内存分配。</p>
+<p>以下是两个版本的对比：</p>
+<div class="table-wrapper"><table>
+  <thead>
+      <tr>
+          <th><strong>维度</strong></th>
+          <th><strong>encoding/json (v1)</strong></th>
+          <th><strong>encoding/json/v2 (实验性)</strong></th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+          <td><strong>架构</strong></td>
+          <td>语法与语义耦合，重度依赖反射</td>
+          <td>清晰分离：<code>jsontext</code>（语法） + <code>v2</code>（语义）</td>
+      </tr>
+      <tr>
+          <td><strong>流式处理</strong></td>
+          <td>伪流式；底层往往需要全量缓冲</td>
+          <td>真正的流式编码与解码</td>
+      </tr>
+      <tr>
+          <td><strong>默认安全性</strong></td>
+          <td>接受无效 UTF-8，允许重复键名</td>
+          <td>拒绝无效 UTF-8，拒绝重复键名（符合 RFC 8259）</td>
+      </tr>
+      <tr>
+          <td><strong>性能</strong></td>
+          <td>基准</td>
+          <td>Unmarshal 最高提升 <strong>10 倍</strong>；Marshal 提升 <strong>1.6–3.6 倍</strong></td>
+      </tr>
+      <tr>
+          <td><strong>unsafe 使用</strong></td>
+          <td>无</td>
+          <td>无——在不使用 <code>unsafe</code> 的前提下达到第三方库级别的性能</td>
+      </tr>
+  </tbody>
+</table></div>
+<p>最后一行值得着重强调。像 <strong>Sonic</strong>（字节跳动）这样的库通过大量使用 <code>unsafe</code> 来实现极致速度。而 JSON v2 在<strong>不牺牲内存安全</strong>的前提下达到了同等性能水平。这就是标准库的承诺：你不需要用正确性换取速度。
+<img src="https://images.hxzhouh.com/blog-images/2026/02/1823afa2454141bdb6436bfa9bd64c14.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Pasted image 20260212150646"
+	
+	
+></p>
+<h3 id="为什么没有随-126-发布四大阻碍">为什么没有随 1.26 发布：四大阻碍
+</h3><p>既然 v2 这么好，为什么不在 Go 1.26 中发布？追踪议题 <a class="link" href="https://github.com/golang/go/issues/76406"  target="_blank" rel="noopener"
+    >#76406</a> 揭示了四个截然不同的战场。</p>
+<h4 id="1-永久-api-约束">1. &ldquo;永久 API&rdquo; 约束
+</h4><p>在 Go 的标准库哲学中，一旦 API 脱离实验阶段进入 <code>encoding/json</code> 路径，它就必须受到 <strong>Go 1 兼容性承诺</strong>的保护。永远如此，不可撤回。</p>
+<p>Joe Tsai 对此态度明确：性能问题可以后续通过优化来解决，但 <strong>API 设计缺陷一旦固化，就会成为未来几十年的技术债务</strong>。</p>
+<p>目前的审计重点集中在 <code>jsontext</code> 的公共接口。作为基础层，它的设计需要在高性能与易用性之间取得平衡——尤其是在 Token 处理以及与 <code>io.Reader</code>/<code>io.Writer</code> 的最佳交互模式上。</p>
+<p>此外还有关于 <code>time.Duration</code> 的激烈争论。v1 将持续时间序列化为<strong>纳秒整数</strong>——虽然广泛使用，但跨语言互操作性极差。v2 倾向于采用 Go 风格的字符串如 <code>&quot;1h2m3s&quot;</code>，但这引发了关于标准化程度的热烈讨论。双方各执己见，API 签名悬而未决。</p>
+<h4 id="2-完美兼容-jsonv1">2. &ldquo;完美兼容 json/v1
+</h4><p>以下是 Go 团队的雄心壮志：一旦 v2 落地，他们希望<strong>只维护一套代码库</strong>。现有的 <code>encoding/json</code> 将变成 v2 引擎的一个薄包装层（Shim）。</p>
+<p>问题在于：v2 引擎必须完美复刻 v1 的<strong>所有行为</strong>——包括 bug、未文档化的怪癖，以及成千上万生产应用无意中依赖的边缘情况。</p>
+<blockquote>
+<p>例如，v1 在处理非寻址值（Non-addressable Values）的指针接收者 Marshaler 时存在特定的不一致性。许多现有应用在不知情的情况下已经依赖了这种行为。</p></blockquote>
+<p>在一个架构完全不同的引擎中复刻这些细微的、难以文档化的行为偏差，是一项极其艰巨的工程挑战。团队目前正在通过大规模测试逐步&quot;烧除&rdquo;（Burning Down）发现的每一个微小行为差异。进展稳步推进，但长尾效应依然明显。</p>
+<h4 id="3-内存回退问题issue-75026">3. 内存回退问题：Issue #75026
+</h4><p>这是最令人警醒的阻碍。在 Go 1.25 和 1.26 的实验周期中，Issue <a class="link" href="https://github.com/golang/go/issues/75026"  target="_blank" rel="noopener"
+    >#75026</a> 报告了在特定 Map 序列化场景下<strong>灾难性的内存分配回退</strong>。</p>
+<div class="table-wrapper"><table>
+  <thead>
+      <tr>
+          <th><strong>场景（Map 编码）</strong></th>
+          <th><strong>内存分配 (B/op) — v1 原生</strong></th>
+          <th><strong>内存分配 (B/op) — v2 实验</strong></th>
+          <th><strong>增幅</strong></th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+          <td>KeyCount: 10, ValLength: 1000</td>
+          <td>832</td>
+          <td>33,139</td>
+          <td><strong>+3,883%</strong></td>
+      </tr>
+  </tbody>
+</table></div>
+<p>没有看错。一个常见的 Map 编码模式，内存分配量增加了 <strong>39 倍</strong>。</p>
+<p>性能分析显示，<strong>92.98%</strong> 的内存分配集中在 <code>bytes.growSlice</code> 中，这表明新架构在处理复杂对象树或特定 Map 结构时存在严重的缓冲区管理缺陷。虽然总的分配次数（<code>Allocs/op</code>）实际上有所下降，但单次分配的体积暴增，给 GC 带来了巨大压力。</p>
+<p>如果这种回退作为 v1 用户的默认行为发布，后果将是灾难性的。修复这些极端场景下的分配逻辑是目前<strong>最高优先级</strong>的工作。</p>
+<h4 id="4-生态成熟度与联合类型之争">4. 生态成熟度与联合类型之争
+</h4><p>JSON v2 项目已经开发了<strong>五年</strong>。虽然已在许多生产环境中得到验证，但在成为默认标准之前，仍需经历更广泛的生态系统压力测试。Project 50 的追踪显示，44 个子任务中仍有约 <strong>18 个处于开放状态</strong>或需要进一步审计。</p>
+<p>此外，关于 v2 是否应该支持 JSON 反序列化中的<strong>联合类型</strong>（Union Types / Sum Types），也引发了设计上的分歧。部分开发者认为这是现代 JSON 处理的标配功能。Go 团队的立场？等待语言层面的<strong>总和类型提案</strong>（如 <a class="link" href="https://github.com/golang/go/issues/57644"  target="_blank" rel="noopener"
+    >#57644</a>）成熟后再做集成，而不是在 JSON 包中塞入一个临时的、不兼容的实现。</p>
+<p>这就是典型的 Go 式实用主义：不在库层面解决语言层面的问题。</p>
+<h3 id="值得等待的核心特性">值得等待的核心特性
+</h3><p>尽管发布延迟，v2 的实验性版本已经展示了多项将从根本上改变 Go JSON 处理模式的特性。</p>
+<h4 id="omitzero--终于有了合理的省略逻辑"><code>omitzero</code> —— 终于有了合理的省略逻辑
+</h4><p>v1 的 <code>omitempty</code> 让开发者困惑了多年。<code>time.Time{}</code> 算空吗？<code>false</code> 算空吗？答案是不一致的，而且常常出人意料。</p>
+<p>v2 引入了 <code>omitzero</code>，它严格按照 Go 的<strong>零值</strong>语义进行判断，并支持自定义 <code>IsZero() bool</code> 接口：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Event</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">Name</span>      <span class="kt">string</span>    <span class="s">`json:&#34;name&#34;`</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">StartTime</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Time</span> <span class="s">`json:&#34;start_time,omitzero&#34;`</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">EndTime</span>   <span class="nx">time</span><span class="p">.</span><span class="nx">Time</span> <span class="s">`json:&#34;end_time,omitzero&#34;`</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>这对于 <strong>PATCH 风格的 API</strong> 尤其有用——你只需序列化那些被明确修改过的字段，而不会因为字段恰好持有类型的默认零值而意外忽略它们。</p>
+<h4 id="inline-和-unknown--灵活的数据建模"><code>inline</code> 和 <code>unknown</code> —— 灵活的数据建模
+</h4><p>两个新的结构体标签解决了长期存在的痛点：</p>
+<ul>
+<li><strong><code>inline</code></strong>：将嵌套结构体或 Map 的内容&quot;平铺&quot;到父 JSON 对象中——无需匿名嵌入。对于包含动态键值对的 API 来说，这是一个巨大的改进。</li>
+<li><strong><code>unknown</code></strong>：指定一个字段（通常是 <code>map[string]jsontext.Value</code>）来捕获结构体中未定义的所有 JSON 成员。彻底告别&quot;二次反序列化&quot;的开销。</li>
+</ul>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Config</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">Version</span>  <span class="kt">int</span>                          <span class="s">`json:&#34;version&#34;`</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">Name</span>     <span class="kt">string</span>                       <span class="s">`json:&#34;name&#34;`</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">Extra</span>    <span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="nx">jsontext</span><span class="p">.</span><span class="nx">Value</span>    <span class="s">`json:&#34;,unknown&#34;`</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><h4 id="format--内置编码定制"><code>format</code> —— 内置编码定制
+</h4><p><code>format</code> 选项支持按字段定制编码方式：</p>
+<ul>
+<li>为 <code>[]byte</code> 字段定制 Base64 或 Hex 编码</li>
+<li>为 <code>time.Time</code> 使用自定义布局字符串</li>
+<li>不再需要为常见格式化需求编写自定义 Marshaler/Unmarshaler 实现</li>
+</ul>
+<h3 id="性能benchmark-数据说话">性能：Benchmark 数据说话
+</h3><p>基于 <code>jsonbench</code> 评估套件，以下是 v2 与竞品的对比：</p>
+<div class="table-wrapper"><table>
+  <thead>
+      <tr>
+          <th><strong>库</strong></th>
+          <th><strong>Marshal 速度</strong></th>
+          <th><strong>Unmarshal 速度</strong></th>
+          <th><strong>内存安全性</strong></th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+          <td><strong>JSON v1</strong></td>
+          <td>基准</td>
+          <td>基准</td>
+          <td>高（无 unsafe）</td>
+      </tr>
+      <tr>
+          <td><strong>JSON v2</strong></td>
+          <td><strong>提升 1.6–3.6 倍</strong></td>
+          <td><strong>提升 2.7–10.2 倍</strong></td>
+          <td>高（无 unsafe）</td>
+      </tr>
+      <tr>
+          <td><strong>Sonic（字节跳动）</strong></td>
+          <td>与 v2 相当</td>
+          <td>极快（部分使用 unsafe）</td>
+          <td>中（大量使用 unsafe）</td>
+      </tr>
+      <tr>
+          <td><strong>JSON-Iterator</strong></td>
+          <td>慢于 v2</td>
+          <td>慢于 v2</td>
+          <td>中</td>
+      </tr>
+  </tbody>
+</table></div>
+<p>关键洞察：v2 通过<strong>迭代式线性解析</strong>实现性能飞跃，而非 v1 的逐字节虚函数扫描模式。而且它没有使用一个 <code>unsafe.Pointer</code>。这不仅仅是快——这是<strong>负责任地快</strong>。</p>
+<h3 id="前路v2-何时落地">前路：v2 何时落地？
+</h3><p><img src="https://images.hxzhouh.com/blog-images/2026/02/44e7b95ea138d8dd9d69c62bc2139da6.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="Pasted image 20260212150729"
+	
+	
+></p>
+<p>基于当前的任务处理速度和 <a class="link" href="https://github.com/golang/go/issues/76406"  target="_blank" rel="noopener"
+    >#76406</a> 上的开发者活跃度，以下是务实的时间线：
+<strong>2026 年上半年：</strong></p>
+<ol>
+<li><strong>修复 Issue #75026</strong> —— 解决 Map 编码的内存回退问题。这是脱离实验阶段的唯一最关键前提。</li>
+<li><strong>API 定稿</strong> —— 完成 <code>jsontext</code> 中所有公共函数的审计，特别是 <code>Encoder</code>/<code>Decoder</code> 在流式场景中的状态机健壮性。</li>
+<li><strong>v1 兼容层完善</strong> —— 确保所有已知的 v1 行为（包括那些&quot;有 bug 的&quot;行为）在 v2 引擎中都有对应的配置选项支持。</li>
+</ol>
+<p><strong>Go 1.27（预计 2026 年 8 月）：</strong></p>
+<p>这被广泛认为是 JSON v2 移除实验性标签、进入稳定标准库的<strong>最早也是最可能的窗口</strong>。1.27 开发周期中代码树（Tree）的重新开放将是需要密切关注的关键信号。</p>
+<p>Go 团队还计划在 v2 正式发布时同步推出<strong>现代化迁移工具</strong>。重新设计的 <code>go fix</code> 将支持从 v1 到 v2 默认配置的一键迁移——不只是简单的字符串替换，而是感知类型信息的智能转换。例如，它能检测到手动实现的 Base64 转换逻辑，并建议替换为 v2 的 <code>format:base64</code> 结构体标签。</p>
+<h3 id="总结">总结
+</h3><ol>
+<li><strong>JSON v2 的延迟不是失败——而是纪律。</strong> Go 团队拒绝发布一个存在设计缺陷的 API，因为在 Go 1 兼容性保证下，这些缺陷将永久存在。</li>
+<li><strong>架构设计是扎实的。</strong> 通过 <code>jsontext</code> 和 <code>v2</code> 实现的语法/语义分离是一种精妙且面向未来的设计。</li>
+<li><strong>性能已经得到验证。</strong> Unmarshal 最高提升 10 倍，Marshal 提升 3.6 倍——全程不使用 <code>unsafe</code>。</li>
+<li><strong>内存回退（#75026）是关键阻碍。</strong> Map 编码中 39 倍的分配增长必须在 v2 成为默认之前解决。</li>
+<li><strong>Go 1.27（2026 年 8 月）是目标。</strong> 社区应据此做好规划。</li>
+</ol>
+<p><strong>对开发者的实用建议：</strong></p>
+<ul>
+<li><strong>内部工具</strong>：放心在非核心系统中尝试 <code>GOEXPERIMENT=jsonv2</code>。仅 <code>omitzero</code> 和 <code>unknown</code> 特性就能显著简化你的代码。提交 Bug 报告——团队需要它们。</li>
+<li><strong>性能敏感型应用</strong>：如果 JSON 反序列化是你的 CPU 瓶颈，v2 的实验版本可能已经优于 v1——而且比第三方 <code>unsafe</code> 库更安全。</li>
+<li><strong>公共组件库</strong>：目前继续使用 <code>encoding/json</code>（v1）。v2 的 API 仍有可能发生破坏性变更，你的用户不会欣赏这种不稳定性。</li>
+</ul>
+<p>JSON v2 将是 Go 语言自泛型以来最重要的库级演进。它不仅让速度更快——更补全了 Go 在现代数据交换标准合规性上长达十年的缺口。随着阻碍一个接一个地被清除，一个更安全、更快速、更灵活的 JSON 处理时代即将随 Go 1.27 到来。</p>
+<p>等待即将结束。而且，值得。</p>
+<p><strong>参考资料：</strong></p>
+<ul>
+<li>Go Issue <a class="link" href="https://github.com/golang/go/issues/76406"  target="_blank" rel="noopener"
+    >#76406</a> — JSON v2 追踪议题</li>
+<li>Go Proposal <a class="link" href="https://github.com/golang/go/issues/71497"  target="_blank" rel="noopener"
+    >#71497</a> — encoding/json/v2 提案</li>
+<li>Go Issue <a class="link" href="https://github.com/golang/go/issues/75026"  target="_blank" rel="noopener"
+    >#75026</a> — jsonv2 实验中的内存分配回退</li>
+<li>Go Issue <a class="link" href="https://github.com/golang/go/issues/57644"  target="_blank" rel="noopener"
+    >#57644</a> — 总和类型语言提案</li>
+<li><a class="link" href="https://go.dev/doc/go1.26"  target="_blank" rel="noopener"
+    >Go 1.26 Release Notes</a></li>
+</ul>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/tags/golang/">Golang</a>
+        
+            <a href="/tags/json/">JSON</a>
+        
+            <a href="/tags/standard-library/">Standard-Library</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            Last updated on Feb 13, 2026 07:23 CST
+        </span>
+    </section></footer>
+
+
+    
+        <link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI&#43;WdtXRGWt2kTvGFasHpSy3SV"crossorigin="anonymous"
+            ><script 
+                src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG&#43;vnGctmUb0ZY0l8"crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"integrity="sha384-&#43;VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4&#43;/RRE05"crossorigin="anonymous"
+                defer
+                >
+            </script><script>
+    window.addEventListener("DOMContentLoaded", () => {
+        renderMathInElement(document.body, {
+            delimiters: [
+                { left: "$$", right: "$$", display: true },
+                { left: "$", right: "$", display: false },
+                { left: "\\(", right: "\\)", display: false },
+                { left: "\\[", right: "\\]", display: true }
+            ],
+            ignoredClasses: ["gist"]
+        });})
+</script>
+    
+</article>
+
+    
+
+    
+
+
+    
+        
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2026 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        Built with <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> <br />
+        Theme <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> designed by <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a>
+    </section>
+    <script src="/js/adblock-detection.js" defer></script>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>
