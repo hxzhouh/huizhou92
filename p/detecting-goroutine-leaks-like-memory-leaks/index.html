@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+    <head>
+
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Detecting Goroutine Leaks Like Memory Leaks? goroutineleak Helps Us Pinpoint Goroutine Leaks Faster Introduction In Go development, goroutine leaks are a common but subtle problem: when a goroutine is blocked on some synchronization primitive (such as a channel or mutex), and that primitive becomes permanently unreachable, the goroutine is effectively “leaked.”\nEach leaked goroutine occupies at least 2 KB of stack memory. Over time this can cause:\nSteadily increasing memory usage More pressure on the scheduler Eventually, OOM crashes or noticeable service performance degradation Previously, developers typically relied on manual code review or third-party tools (such as goleak) to detect goroutine leaks—both low in efficiency and easy to miss issues. But Go’s experimental feature goroutineleak changes that.\n">
+<title>Detecting Goroutine Leaks Like Memory Leaks</title>
+
+<link rel='canonical' href='https://huizhou92.com/p/detecting-goroutine-leaks-like-memory-leaks/'>
+
+<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css">
+<meta property='og:title' content="Detecting Goroutine Leaks Like Memory Leaks">
+<meta property='og:description' content="Detecting Goroutine Leaks Like Memory Leaks? goroutineleak Helps Us Pinpoint Goroutine Leaks Faster Introduction In Go development, goroutine leaks are a common but subtle problem: when a goroutine is blocked on some synchronization primitive (such as a channel or mutex), and that primitive becomes permanently unreachable, the goroutine is effectively “leaked.”\nEach leaked goroutine occupies at least 2 KB of stack memory. Over time this can cause:\nSteadily increasing memory usage More pressure on the scheduler Eventually, OOM crashes or noticeable service performance degradation Previously, developers typically relied on manual code review or third-party tools (such as goleak) to detect goroutine leaks—both low in efficiency and easy to miss issues. But Go’s experimental feature goroutineleak changes that.\n">
+<meta property='og:url' content='https://huizhou92.com/p/detecting-goroutine-leaks-like-memory-leaks/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='og:image' content='https://huizhou92.com/head.png' />
+<meta name="twitter:site" content="@piaopiaopig">
+    <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="Detecting Goroutine Leaks Like Memory Leaks">
+<meta name="twitter:description" content="Detecting Goroutine Leaks Like Memory Leaks? goroutineleak Helps Us Pinpoint Goroutine Leaks Faster Introduction In Go development, goroutine leaks are a common but subtle problem: when a goroutine is blocked on some synchronization primitive (such as a channel or mutex), and that primitive becomes permanently unreachable, the goroutine is effectively “leaked.”\nEach leaked goroutine occupies at least 2 KB of stack memory. Over time this can cause:\nSteadily increasing memory usage More pressure on the scheduler Eventually, OOM crashes or noticeable service performance degradation Previously, developers typically relied on manual code review or third-party tools (such as goleak) to detect goroutine leaks—both low in efficiency and easy to miss issues. But Go’s experimental feature goroutineleak changes that.\n"><meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content='https://huizhou92.com/head.png' />
+    <link rel="shortcut icon" href="/favicon.png" />
+
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+        <link rel="alternate" hreflang="en" href="https://huizhou92.com/p/detecting-goroutine-leaks-like-memory-leaks/">
+            <link rel="alternate" hreflang="x-default" href="https://huizhou92.com/p/detecting-goroutine-leaks-like-memory-leaks/">
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="Toggle Menu">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu_e52293b5d2b8c5f7.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>Home</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/about/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>About</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>Archives</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>Search</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" selected>English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" >中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>Dark Mode</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">Table of contents</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#introduction">Introduction</a></li>
+    <li><a href="#how-gc-detects-goroutine-leaks">How GC Detects Goroutine Leaks</a>
+      <ol>
+        <li><a href="#1-lifecycle-characteristics-of-leaked-goroutines">1) Lifecycle Characteristics of Leaked Goroutines</a></li>
+        <li><a href="#2-sudog-the-bridge-between-goroutines-and-synchronization-primitives">2) <code>sudog</code>: The Bridge between Goroutines and Synchronization Primitives</a></li>
+        <li><a href="#3-gc-based-leak-detection-workflow">3) GC-based Leak Detection Workflow</a></li>
+      </ol>
+    </li>
+    <li><a href="#3-usage-as-simple-as-pprof">3. Usage: As Simple as <code>pprof</code></a>
+      <ol>
+        <li><a href="#1-environment-setup-install-gotip">1) Environment Setup: Install <code>gotip</code></a></li>
+        <li><a href="#2-running-a-leak-detection-demo">2) Running a Leak Detection Demo</a></li>
+        <li><a href="#3-using-pprof-to-locate-leaks">3) Using <code>pprof</code> to Locate Leaks</a></li>
+        <li><a href="#4-analyzing-pprof-results">4) Analyzing <code>pprof</code> Results</a></li>
+      </ol>
+    </li>
+    <li><a href="#4-what-this-means-for-developers">4. What This Means for Developers</a>
+      <ol>
+        <li><a href="#1-a-unified-debugging-experience">1) A Unified Debugging Experience</a></li>
+        <li><a href="#2-higher-debugging-efficiency">2) Higher Debugging Efficiency</a></li>
+        <li><a href="#3-from-reactive-firefighting-to-proactive-prevention">3) From “reactive firefighting” to “proactive prevention”</a></li>
+        <li><a href="#4-deeper-understanding-of-the-go-runtime">4) Deeper Understanding of the Go Runtime</a></li>
+      </ol>
+    </li>
+    <li><a href="#conclusion">Conclusion</a></li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+            
+        
+              
+              <section class="widget">
+                 
+                <div class="widget-content">
+                    <iframe frameborder="0"
+                        src="https://support.nodeget.com/page/promotion?id=30795"
+                        style="border-radius:8px; height: 270px; width: 100%; display: block;"></iframe>
+                        
+                </div>
+            </section>
+    </aside>
+  
+
+
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+
+            <main class="main full-width">
+    <article class="main-article">
+    <header class="article-header">
+
+    <div class="article-details">
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/p/detecting-goroutine-leaks-like-memory-leaks/">Detecting Goroutine Leaks Like Memory Leaks</a>
+        </h2>
+    
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    6 minute read
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <h1 id="detecting-goroutine-leaks-like-memory-leaks-goroutineleak-helps-us-pinpoint-goroutine-leaks-faster">Detecting Goroutine Leaks Like Memory Leaks? <code>goroutineleak</code> Helps Us Pinpoint Goroutine Leaks Faster
+</h1><h2 id="introduction">Introduction
+</h2><p>In Go development, goroutine leaks are a common but subtle problem: when a goroutine is blocked on some synchronization primitive (such as a channel or mutex), and that primitive becomes permanently unreachable, the goroutine is effectively “leaked.”</p>
+<p>Each leaked goroutine occupies at least 2 KB of stack memory. Over time this can cause:</p>
+<ul>
+<li>Steadily increasing memory usage</li>
+<li>More pressure on the scheduler</li>
+<li>Eventually, OOM crashes or noticeable service performance degradation</li>
+</ul>
+<p>Previously, developers typically relied on <strong>manual code review</strong> or <strong>third-party tools</strong> (such as <code>goleak</code>) to detect goroutine leaks—both low in efficiency and easy to miss issues. But Go’s experimental feature <a class="link" href="https://go.googlesource.com/proposal/&#43;/master/design/74609-goroutine-leak-detection-gc.md"  target="_blank" rel="noopener"
+    ><code>goroutineleak</code></a> changes that.</p>
+<p>It integrates goroutine leak detection directly into the garbage collector (GC), so we can locate leaking goroutines via <code>pprof</code>, almost as easily as we detect memory leaks.</p>
+<h2 id="how-gc-detects-goroutine-leaks">How GC Detects Goroutine Leaks
+</h2><h3 id="1-lifecycle-characteristics-of-leaked-goroutines">1) Lifecycle Characteristics of Leaked Goroutines
+</h3><p>A normal goroutine goes through a complete lifecycle: <strong>create → run → exit</strong>.<br>
+A leaked goroutine, on the other hand, gets stuck in a <strong>blocked</strong> state, and the synchronization primitive it’s blocked on has been deemed unreachable by GC.</p>
+<p><img src="https://images.hxzhouh.com/blog-images/2025/11/aa3c5d577adb897eb66a6711d9ba865c.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="goroutine_leak-Goroutine Lifecycle.drawio"
+	
+	
+></p>
+<h3 id="2-sudog-the-bridge-between-goroutines-and-synchronization-primitives">2) <code>sudog</code>: The Bridge between Goroutines and Synchronization Primitives
+</h3><p>The Go runtime tracks goroutines blocked on synchronization primitives via the <a class="link" href="https://github.com/golang/go/blob/c58d075e9a457fce92bdf60e2d1870c8c4df7dc5/src/runtime/runtime2.go#L406"  target="_blank" rel="noopener"
+    ><code>sudog</code></a> struct. Each <code>sudog</code> contains:</p>
+<ul>
+<li>A pointer to the blocked goroutine</li>
+<li>A pointer to the synchronization primitive (channel, mutex, etc.)</li>
+<li>Linked-list information for the wait queue</li>
+</ul>
+<p><img src="https://images.hxzhouh.com/blog-images/2025/11/f6fead785ad9068739c6c31b8107fde4.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="goroutine_leak-Sudog Structure.drawio"
+	
+	
+></p>
+<h3 id="3-gc-based-leak-detection-workflow">3) GC-based Leak Detection Workflow
+</h3><p><code>goroutineleak</code> extends the GC to perform leak detection. The core workflow looks like this:</p>
+<p><img src="https://images.hxzhouh.com/blog-images/2025/11/29f283b1434bf1757d17c03c305e2b7c.png"
+	
+	
+	
+	loading="lazy"
+	
+		alt="goroutine_leak-GC Leak Detection.drawio"
+	
+	
+></p>
+<p>Key technical points:</p>
+<ul>
+<li><strong>Special GC cycle</strong>: a GC cycle is triggered with additional leak detection logic</li>
+<li><strong>Unreachability check</strong>: identify all goroutines blocked on unreachable synchronization primitives</li>
+<li><strong>State marking</strong>: mark leaked goroutines with the <code>_Gleaked</code> state</li>
+<li><strong>Result exposure</strong>: expose results via the <code>/debug/pprof/goroutineleak</code> endpoint in <code>pprof</code></li>
+</ul>
+<h2 id="3-usage-as-simple-as-pprof">3. Usage: As Simple as <code>pprof</code>
+</h2><h3 id="1-environment-setup-install-gotip">1) Environment Setup: Install <code>gotip</code>
+</h3><p>Since <code>goroutineleak</code> is currently under development and not available in a stable Go release, we can try it out in advance using <code>gotip</code>:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-bash" data-lang="bash"><span class="line"><span class="cl">go install golang.org/dl/gotip@latest
+</span></span><span class="line"><span class="cl">gotip download
+</span></span></code></pre></td></tr></table>
+</div>
+</div><h3 id="2-running-a-leak-detection-demo">2) Running a Leak Detection Demo
+</h3><p>Let’s write a small demo that intentionally creates a goroutine leak:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span><span class="lnt">25
+</span><span class="lnt">26
+</span><span class="lnt">27
+</span><span class="lnt">28
+</span><span class="lnt">29
+</span><span class="lnt">30
+</span><span class="lnt">31
+</span><span class="lnt">32
+</span><span class="lnt">33
+</span><span class="lnt">34
+</span><span class="lnt">35
+</span><span class="lnt">36
+</span><span class="lnt">37
+</span><span class="lnt">38
+</span><span class="lnt">39
+</span><span class="lnt">40
+</span><span class="lnt">41
+</span><span class="lnt">42
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-golang" data-lang="golang"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="c1">// Start pprof server to expose goroutineleak profile</span>
+</span></span><span class="line"><span class="cl">	<span class="k">go</span> <span class="kd">func</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;pprof server started at http://localhost:6060&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">		<span class="k">if</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">ListenAndServe</span><span class="p">(</span><span class="s">&#34;:6060&#34;</span><span class="p">,</span> <span class="kc">nil</span><span class="p">);</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">			<span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;failed to start pprof server: %v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">		<span class="p">}</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="c1">// Create a goroutine leak</span>
+</span></span><span class="line"><span class="cl">	<span class="nf">createLeakedGoroutine</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="c1">// Keep the program running to allow pprof inspection</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Demo program running...&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Use this command to check for leaks:&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;   GOEXPERIMENT=goroutineleakprofile gotip tool pprof http://localhost:6060/debug/pprof/goroutineleak&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Press Ctrl+C to exit&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="c1">// Wait for interrupt signal to gracefully exit</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">sigCh</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">(</span><span class="kd">chan</span> <span class="nx">os</span><span class="p">.</span><span class="nx">Signal</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">signal</span><span class="p">.</span><span class="nf">Notify</span><span class="p">(</span><span class="nx">sigCh</span><span class="p">,</span> <span class="nx">syscall</span><span class="p">.</span><span class="nx">SIGINT</span><span class="p">,</span> <span class="nx">syscall</span><span class="p">.</span><span class="nx">SIGTERM</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="o">&lt;-</span><span class="nx">sigCh</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Shutting down demo program...&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1">// createLeakedGoroutine intentionally creates a leaked goroutine</span>
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">createLeakedGoroutine</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="c1">// Create a channel but never write to it or close it</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">ch</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">(</span><span class="kd">chan</span> <span class="kt">int</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="c1">// Start a goroutine that blocks forever on channel receive</span>
+</span></span><span class="line"><span class="cl">	<span class="k">go</span> <span class="kd">func</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Leaked goroutine started - waiting for channel data&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">		<span class="o">&lt;-</span><span class="nx">ch</span> <span class="c1">// This goroutine will never return</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Leaked goroutine should never reach this line&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="c1">// The channel &#39;ch&#39; is not accessible after this function returns,</span>
+</span></span><span class="line"><span class="cl">	<span class="c1">// so both the channel and the goroutine are leaked</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Created a leaked goroutine - channel is now unreachable&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>Then run:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-bash" data-lang="bash"><span class="line"><span class="cl"><span class="c1"># Start the program with leak detection enabled</span>
+</span></span><span class="line"><span class="cl"><span class="nv">GOEXPERIMENT</span><span class="o">=</span>goroutineleakprofile gotip run main.go
+</span></span></code></pre></td></tr></table>
+</div>
+</div><h3 id="3-using-pprof-to-locate-leaks">3) Using <code>pprof</code> to Locate Leaks
+</h3><p>In another terminal, run:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-bash" data-lang="bash"><span class="line"><span class="cl"><span class="c1"># Use the dedicated leak detection profile</span>
+</span></span><span class="line"><span class="cl"><span class="nv">GOEXPERIMENT</span><span class="o">=</span>goroutineleakprofile gotip tool pprof http://localhost:6060/debug/pprof/goroutineleak
+</span></span></code></pre></td></tr></table>
+</div>
+</div><h3 id="4-analyzing-pprof-results">4) Analyzing <code>pprof</code> Results
+</h3><div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span><span class="lnt">25
+</span><span class="lnt">26
+</span><span class="lnt">27
+</span><span class="lnt">28
+</span><span class="lnt">29
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-bash" data-lang="bash"><span class="line"><span class="cl"><span class="c1"># View leaked goroutines</span>
+</span></span><span class="line"><span class="cl"><span class="o">(</span>pprof<span class="o">)</span> top
+</span></span><span class="line"><span class="cl">Showing nodes accounting <span class="k">for</span> 1, 100% of <span class="m">1</span> total
+</span></span><span class="line"><span class="cl">      flat  flat%   sum%        cum   cum%
+</span></span><span class="line"><span class="cl">         <span class="m">1</span>   100%   100%          <span class="m">1</span>   100%  runtime.gopark
+</span></span><span class="line"><span class="cl">         <span class="m">0</span>     0%   100%          <span class="m">1</span>   100%  main.createLeakedGoroutine.func1
+</span></span><span class="line"><span class="cl">         <span class="m">0</span>     0%   100%          <span class="m">1</span>   100%  runtime.chanrecv
+</span></span><span class="line"><span class="cl">         <span class="m">0</span>     0%   100%          <span class="m">1</span>   100%  runtime.chanrecv1
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># View the exact leaking code location</span>
+</span></span><span class="line"><span class="cl"><span class="o">(</span>pprof<span class="o">)</span> list main.createLeakedGoroutine.func1
+</span></span><span class="line"><span class="cl">Total: <span class="m">1</span>
+</span></span><span class="line"><span class="cl"><span class="nv">ROUTINE</span> <span class="o">========================</span> main.createLeakedGoroutine.func1 in /path/to/goroutineleak_example/main.go
+</span></span><span class="line"><span class="cl">         <span class="m">1</span>          <span class="m">1</span> <span class="o">(</span>flat, cum<span class="o">)</span>   100% of Total
+</span></span><span class="line"><span class="cl">            .          .     27:func createLeakedGoroutine<span class="o">()</span> <span class="o">{</span>
+</span></span><span class="line"><span class="cl">            .          .     28:	// Create a channel but never write to it or close it
+</span></span><span class="line"><span class="cl">            .          .     29:	ch :<span class="o">=</span> make<span class="o">(</span>chan int<span class="o">)</span>
+</span></span><span class="line"><span class="cl">            .          .     30:
+</span></span><span class="line"><span class="cl">            .          .     31:	// Start a goroutine that blocks forever on channel receive
+</span></span><span class="line"><span class="cl">            .          .     32:	go func<span class="o">()</span> <span class="o">{</span>
+</span></span><span class="line"><span class="cl">            .          .     33:		fmt.Println<span class="o">(</span><span class="s2">&#34;Leaked goroutine started - waiting for channel data&#34;</span><span class="o">)</span>
+</span></span><span class="line"><span class="cl">         <span class="m">1</span>          <span class="m">1</span>     34:		&lt;-ch // This goroutine will never <span class="k">return</span>
+</span></span><span class="line"><span class="cl">            .          .     35:		fmt.Println<span class="o">(</span><span class="s2">&#34;Leaked goroutine should never reach this line&#34;</span><span class="o">)</span>
+</span></span><span class="line"><span class="cl">            .          .     36:	<span class="o">}()</span>
+</span></span><span class="line"><span class="cl">            .          .     37:
+</span></span><span class="line"><span class="cl">            .          .     38:	// The channel <span class="s1">&#39;ch&#39;</span> is not accessible after this <span class="k">function</span> returns,
+</span></span><span class="line"><span class="cl">            .          .     39:	// so both the channel and the goroutine are leaked
+</span></span><span class="line"><span class="cl">            .          .     40:	fmt.Println<span class="o">(</span><span class="s2">&#34;Created a leaked goroutine - channel is now unreachable&#34;</span><span class="o">)</span>
+</span></span><span class="line"><span class="cl">            .          .     41:<span class="o">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>Pretty convenient, right?</p>
+<h2 id="4-what-this-means-for-developers">4. What This Means for Developers
+</h2><h3 id="1-a-unified-debugging-experience">1) A Unified Debugging Experience
+</h3><p>Developers can reuse the <code>pprof</code> tooling they already know to detect goroutine leaks—no need to learn new tools or modify application code.</p>
+<h3 id="2-higher-debugging-efficiency">2) Higher Debugging Efficiency
+</h3><ul>
+<li>Automatically pinpoint the exact code location of leaks</li>
+<li>No need to manually track each goroutine’s lifecycle</li>
+<li>Combine with stack traces to quickly understand the root cause</li>
+</ul>
+<h3 id="3-from-reactive-firefighting-to-proactive-prevention">3) From “reactive firefighting” to “proactive prevention”
+</h3><ul>
+<li>Integrate into CI/CD during development</li>
+<li>Periodically check in production to catch issues early</li>
+<li>Reduce performance degradation and outages caused by leaks</li>
+</ul>
+<h3 id="4-deeper-understanding-of-the-go-runtime">4) Deeper Understanding of the Go Runtime
+</h3><p>By using <code>goroutineleak</code>, developers can better understand:</p>
+<ul>
+<li>How the Go runtime manages goroutines</li>
+<li>How synchronization primitives interact with goroutines</li>
+<li>The role of GC in resource management</li>
+</ul>
+<h2 id="conclusion">Conclusion
+</h2><p>The experimental <code>goroutineleak</code> feature gives Go developers an efficient, built-in way to detect goroutine leaks, turning a previously hidden problem into something as straightforward to inspect as memory leaks. Although it’s still experimental, it showcases the Go team’s ongoing effort to improve developer experience and service reliability.</p>
+<p>For high-performance, highly reliable Go applications, <code>goroutineleak</code> is well worth trying—it helps you find problems faster and write more robust code.</p>
+<blockquote>
+<p><strong>Note</strong>: Right now, <code>goroutineleak</code> can only <strong>detect</strong> leaked goroutines; it cannot <strong>automatically free</strong> them. You still need to fix the underlying issues in your code (e.g., closing channels, ensuring synchronization primitives remain reachable, etc.) based on the detection results.</p></blockquote>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    </footer>
+
+
+    
+        <link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI&#43;WdtXRGWt2kTvGFasHpSy3SV"crossorigin="anonymous"
+            ><script 
+                src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG&#43;vnGctmUb0ZY0l8"crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"integrity="sha384-&#43;VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4&#43;/RRE05"crossorigin="anonymous"
+                defer
+                >
+            </script><script>
+    window.addEventListener("DOMContentLoaded", () => {
+        renderMathInElement(document.body, {
+            delimiters: [
+                { left: "$$", right: "$$", display: true },
+                { left: "$", right: "$", display: false },
+                { left: "\\(", right: "\\)", display: false },
+                { left: "\\[", right: "\\]", display: true }
+            ],
+            ignoredClasses: ["gist"]
+        });})
+</script>
+    
+</article>
+
+    
+
+    
+
+
+    
+        
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2026 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        Built with <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> <br />
+        Theme <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> designed by <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a>
+    </section>
+    <script src="/js/adblock-detection.js" defer></script>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>

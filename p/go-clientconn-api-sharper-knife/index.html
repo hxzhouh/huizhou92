@@ -1,0 +1,1167 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+    <head>
+
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Go is Giving Developers a &ldquo;Sharper Knife&rdquo;: ClientConn Decoding the New net/http &ldquo;ClientConn API&rdquo; Proposal: Implications, Controversies, and Future Coding Patterns In a recent proposal within the official Go repository (#75772), the Go team released an update that seems minor at first glance but could significantly influence how cloud-native backend services are written in the future: adding &ldquo;connection level (ClientConn)&rdquo; operational capabilities to net/http.\nThis proposal has recently been marked as Proposal-Accepted and is expected to be released in Go 1.27.\n">
+<title>Go is Giving Developers a Sharper Knife: ClientConn</title>
+
+<link rel='canonical' href='https://huizhou92.com/p/go-clientconn-api-sharper-knife/'>
+
+<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css">
+<meta property='og:title' content="Go is Giving Developers a Sharper Knife: ClientConn">
+<meta property='og:description' content="Go is Giving Developers a &ldquo;Sharper Knife&rdquo;: ClientConn Decoding the New net/http &ldquo;ClientConn API&rdquo; Proposal: Implications, Controversies, and Future Coding Patterns In a recent proposal within the official Go repository (#75772), the Go team released an update that seems minor at first glance but could significantly influence how cloud-native backend services are written in the future: adding &ldquo;connection level (ClientConn)&rdquo; operational capabilities to net/http.\nThis proposal has recently been marked as Proposal-Accepted and is expected to be released in Go 1.27.\n">
+<meta property='og:url' content='https://huizhou92.com/p/go-clientconn-api-sharper-knife/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='og:image' content='https://huizhou92.com/head.png' />
+<meta name="twitter:site" content="@piaopiaopig">
+    <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="Go is Giving Developers a Sharper Knife: ClientConn">
+<meta name="twitter:description" content="Go is Giving Developers a &ldquo;Sharper Knife&rdquo;: ClientConn Decoding the New net/http &ldquo;ClientConn API&rdquo; Proposal: Implications, Controversies, and Future Coding Patterns In a recent proposal within the official Go repository (#75772), the Go team released an update that seems minor at first glance but could significantly influence how cloud-native backend services are written in the future: adding &ldquo;connection level (ClientConn)&rdquo; operational capabilities to net/http.\nThis proposal has recently been marked as Proposal-Accepted and is expected to be released in Go 1.27.\n"><meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content='https://huizhou92.com/head.png' />
+    <link rel="shortcut icon" href="/favicon.png" />
+
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+        <link rel="alternate" hreflang="en" href="https://huizhou92.com/p/go-clientconn-api-sharper-knife/">
+        <link rel="alternate" hreflang="zh-cn" href="https://huizhou92.com/zh-cn/p/go-clientconn-api-sharper-knife-zh-cn/">
+            <link rel="alternate" hreflang="x-default" href="https://huizhou92.com/p/go-clientconn-api-sharper-knife/">
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="Toggle Menu">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu_e52293b5d2b8c5f7.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>Home</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/about/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>About</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>Archives</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>Search</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" selected>English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" >中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>Dark Mode</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">Table of contents</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#decoding-the-new-nethttp-clientconn-api-proposal-implications-controversies-and-future-coding-patterns">Decoding the New net/http &ldquo;ClientConn API&rdquo; Proposal: Implications, Controversies, and Future Coding Patterns</a>
+      <ol>
+        <li><a href="#the-starting-point-the-transport-pool-is-a-black-box-that-has-stymied-advanced-users-for-years">The Starting Point: The Transport Pool is a &ldquo;Black Box&rdquo; That Has Stymied Advanced Users for Years</a></li>
+        <li><a href="#the-new-go-proposal-here-is-a-clientconn-you-decide-how-to-use-it">The New Go Proposal: Here is a <code>ClientConn</code>, You Decide How to Use It</a></li>
+        <li><a href="#3-this-is-not-a-small-update-its-a-major-change-to-gos-connection-model">3. This Is Not a Small Update; It&rsquo;s a Major Change to Go&rsquo;s Connection Model</a>
+          <ol>
+            <li><a href="#how-to-unify-the-connection-semantics-of-http1--http2--http3">How to Unify the &ldquo;connection semantics&rdquo; of HTTP/1 / HTTP/2 / HTTP/3?</a></li>
+            <li><a href="#how-to-draw-the-boundary-between-the-transport-pool-and-clientconn">How to Draw the Boundary between the Transport Pool and ClientConn?</a></li>
+            <li><a href="#the-migration-issue-with-xnethttp2">The Migration Issue with x/net/http2</a></li>
+          </ol>
+        </li>
+        <li><a href="#4-the-crucial-part--code-comparison-status-quo-vs-future">4. The Crucial Part — Code Comparison: &ldquo;Status Quo&rdquo; vs. &ldquo;Future&rdquo;</a>
+          <ol>
+            <li><a href="#now-you-have-no-way-to-lock-a-connection">Now: You Have no way to &ldquo;lock a connection&rdquo;</a></li>
+            <li><a href="#future-you-can-truly-acquire-a-connection-and-send-multiple-requests-over-it">Future: You Can Truly Acquire a Connection and Send Multiple Requests over it</a></li>
+            <li><a href="#you-can-even-implement-your-own-user-space-connection-pool">You Can even Implement Your Own &ldquo;user-space Connection pool&rdquo;</a></li>
+          </ol>
+        </li>
+        <li><a href="#5-mermaid-a-complete-view-of-the-future-connection-model">5. Mermaid: A Complete View of the Future Connection Model</a>
+          <ol>
+            <li><a href="#dual-paths-default-pool--manual-connections">Dual Paths: Default Pool &amp; Manual Connections</a></li>
+            <li><a href="#requestlimit-behavior-under-http1">RequestLimit Behavior under HTTP/1</a></li>
+          </ol>
+        </li>
+        <li><a href="#6-summary">6. Summary</a>
+          <ol>
+            <li><a href="#go-is-unifying-the-client-connection-layer-abstraction-for-http123">Go is Unifying the Client Connection Layer Abstraction for HTTP/1/2/3.</a></li>
+            <li><a href="#advanced-users-will-receive-officially-supported-connection-level-control-for-the-first-time-in-history">Advanced Users Will Receive Officially Supported &ldquo;connection-level control&rdquo; for the First time in history.**</a></li>
+            <li><a href="#average-users-wont-be-affected-but-the-ecosystem-will-become-more-professional">Average Users Won&rsquo;t Be Affected, but the Ecosystem Will Become More Professional.**</a></li>
+            <li><a href="#this-is-a-sharp-knife-meant-only-for-those-who-know-how-to-use-it">This is a Sharp Knife, Meant only for Those Who Know how to Use It.</a></li>
+          </ol>
+        </li>
+      </ol>
+    </li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+            
+        
+              
+              <section class="widget">
+                 
+                <div class="widget-content">
+                    <iframe frameborder="0"
+                        src="https://support.nodeget.com/page/promotion?id=30795"
+                        style="border-radius:8px; height: 270px; width: 100%; display: block;"></iframe>
+                        
+                </div>
+            </section>
+    </aside>
+  
+
+
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+
+            <main class="main full-width">
+    <article class="main-article">
+    <header class="article-header">
+
+    <div class="article-details">
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/p/go-clientconn-api-sharper-knife/">Go is Giving Developers a Sharper Knife: ClientConn</a>
+        </h2>
+    
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    8 minute read
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+        <footer class="article-translations">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+            <div>
+                
+                    <a href="https://huizhou92.com/zh-cn/p/go-clientconn-api-sharper-knife-zh-cn/" class="link">中文</a>
+                
+            </div>
+        </footer>
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <h1 id="go-is-giving-developers-a-sharper-knife-clientconn">Go is Giving Developers a &ldquo;Sharper Knife&rdquo;: ClientConn
+</h1><h2 id="decoding-the-new-nethttp-clientconn-api-proposal-implications-controversies-and-future-coding-patterns">Decoding the New net/http &ldquo;ClientConn API&rdquo; Proposal: Implications, Controversies, and Future Coding Patterns
+</h2><p>In a recent proposal within the official Go repository (<a class="link" href="https://github.com/golang/go/issues/75772"  target="_blank" rel="noopener"
+    >#75772</a>), the Go team released an update that seems minor at first glance but could significantly influence how cloud-native backend services are written in the future: <strong>adding &ldquo;connection level (ClientConn)&rdquo; operational capabilities to <code>net/http</code></strong>.</p>
+<p>This proposal has recently been marked as <em>Proposal-Accepted</em> and is expected to be released in Go 1.27.</p>
+<p>This signifies a significant shift:</p>
+<blockquote>
+<p>Go is preparing to officially expose the capability to &ldquo;acquire an HTTP client connection and control it directly&rdquo; within the standard library.</p></blockquote>
+<p>For regular users who only write REST APIs, you don&rsquo;t care about connections at all.</p>
+<p>But for engineers working on:</p>
+<ul>
+<li>High-performance HTTP clients</li>
+<li>Custom connection pools</li>
+<li>IoT long connections</li>
+<li>Proxies and tunnels</li>
+<li>HTTP/2 / HTTP/3 stream multiplexing</li>
+</ul>
+<p>This capability is like suddenly gaining superpowers.<br>
+This article will explore this change at a high level.</p>
+<h3 id="the-starting-point-the-transport-pool-is-a-black-box-that-has-stymied-advanced-users-for-years">The Starting Point: The Transport Pool is a &ldquo;Black Box&rdquo; That Has Stymied Advanced Users for Years
+</h3><p>First, let&rsquo;s look at a diagram explaining the current model of <code>net/http</code>:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-fallback" data-lang="fallback"><span class="line"><span class="cl">flowchart LR
+</span></span><span class="line"><span class="cl">    subgraph app[&#34;Your Code&#34;]
+</span></span><span class="line"><span class="cl">        C[&#34;http.Client&#34;]
+</span></span><span class="line"><span class="cl">    end
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    C --&gt;|Do / RoundTrip| T[&#34;http.Transport&#34;]
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    subgraph pool[&#34;Transport (internal)&#34;]
+</span></span><span class="line"><span class="cl">        direction LR
+</span></span><span class="line"><span class="cl">        Conn1[&#34;conn #1 (HTTP/1 / h2)&#34;]
+</span></span><span class="line"><span class="cl">        Conn2[&#34;conn #2&#34;]
+</span></span><span class="line"><span class="cl">        ConnN[&#34;conn #N&#34;]
+</span></span><span class="line"><span class="cl">    end
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    T --&gt; Conn1
+</span></span><span class="line"><span class="cl">    T --&gt; Conn2
+</span></span><span class="line"><span class="cl">    T --&gt; ConnN
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    Conn1 --&gt; S1[&#34;server A&#34;]
+</span></span><span class="line"><span class="cl">    Conn2 --&gt; S1
+</span></span><span class="line"><span class="cl">    ConnN --&gt; S2[&#34;server B&#34;]
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p><strong>What You Can See:</strong></p>
+<ul>
+<li><code>Client → Transport → Do()</code><br>
+<strong>What You Cannot See:</strong></li>
+<li>Which connection is being used?</li>
+<li>Can I pin multiple requests to the same fixed connection?</li>
+<li>What is the concurrency limit of an HTTP/2 connection?</li>
+<li>Has this connection just received a GOAWAY from the server?</li>
+<li>Can this connection still accept more streams?</li>
+</ul>
+<p>For ordinary users, not seeing this is fine. But for advanced users, it has been excruciating.</p>
+<p>Over the past few years, you might have seen these hacky approaches:</p>
+<ul>
+<li><code>DisableKeepAlives: true</code> —— <a class="link" href="https://stackoverflow.com/questions/57683132/turning-off-connection-pool-for-go-http-client"  target="_blank" rel="noopener"
+    >Forcing a new connection every time</a>.</li>
+<li>Setting <code>MaxConnsPerHost</code> to &ldquo;barely&rdquo; manage the connection count.</li>
+<li>Copying the DefaultTransport and stuffing it with custom logic.</li>
+<li>Manually hacking into <code>x/net/http2</code> to retrieve a <code>ClientConn</code>.</li>
+</ul>
+<p>But none of these are solutions for &ldquo;getting a connection I can control.&rdquo;</p>
+<p>Go has historically avoided exposing &ldquo;connection layer&rdquo; capabilities because that is &ldquo;expert mode.&rdquo;<br>
+However, as HTTP/2 moves into the standard library and HTTP/3 matures, this wall can no longer hold.</p>
+<h3 id="the-new-go-proposal-here-is-a-clientconn-you-decide-how-to-use-it">The New Go Proposal: Here is a <code>ClientConn</code>, You Decide How to Use It
+</h3><p>In the proposal, the new API (draft) looks something like this:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">Transport</span><span class="p">)</span> <span class="nf">NewClientConn</span><span class="p">(</span><span class="nx">ctx</span> <span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span> <span class="nx">scheme</span><span class="p">,</span> <span class="nx">address</span> <span class="kt">string</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">ClientConn</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">ClientConn</span> <span class="kd">struct</span><span class="p">{}</span>
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">cc</span> <span class="o">*</span><span class="nx">ClientConn</span><span class="p">)</span> <span class="nf">RoundTrip</span><span class="p">(</span><span class="nx">req</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Response</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">cc</span> <span class="o">*</span><span class="nx">ClientConn</span><span class="p">)</span> <span class="nf">Close</span><span class="p">()</span> <span class="kt">error</span>
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">cc</span> <span class="o">*</span><span class="nx">ClientConn</span><span class="p">)</span> <span class="nf">Err</span><span class="p">()</span> <span class="kt">error</span>
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">cc</span> <span class="o">*</span><span class="nx">ClientConn</span><span class="p">)</span> <span class="nf">RequestLimit</span><span class="p">()</span> <span class="kt">int64</span>
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">cc</span> <span class="o">*</span><span class="nx">ClientConn</span><span class="p">)</span> <span class="nf">RequestsCompleted</span><span class="p">()</span> <span class="kt">int64</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>Several key points:</p>
+<p><strong>1. This is a &ldquo;Single Connection&rdquo; and it Absolutely Does not Enter the Transport pool.</strong></p>
+<p>Even if the Transport already has 5 connections to example.com, <code>NewClientConn()</code> will still establish a brand new one.<br>
+This is exactly what advanced users want:</p>
+<blockquote>
+<p>&ldquo;I don&rsquo;t want your pool; I want <em>my own</em> pool.&rdquo;</p></blockquote>
+<p><strong>2. Sending Requests on This Connection: <code>cc.RoundTrip(req)</code></strong></p>
+<ul>
+<li>HTTP/1: Serial reuse; req2 will wait until req1&rsquo;s Body is closed.</li>
+<li>HTTP/2: Concurrent streams.</li>
+<li>HTTP/3: Will also be able to enter this same abstraction seamlessly in the future.</li>
+</ul>
+<p><strong>3. RequestLimit / RequestsCompleted Are Key Control variables.</strong></p>
+<p>You can understand these as &ldquo;how many more requests the connection can handle&rdquo; and &ldquo;how many have already been handled.&rdquo;<br>
+For HTTP/2, this might correspond to:</p>
+<ul>
+<li><code>MAX_CONCURRENT_STREAMS</code></li>
+<li>GOAWAY sent by the server</li>
+<li>Internal error states</li>
+<li>Flow control windows, etc.<br>
+In the future, you can write your own &ldquo;scheduler&rdquo; based on this data.</li>
+</ul>
+<h3 id="3-this-is-not-a-small-update-its-a-major-change-to-gos-connection-model">3. This Is Not a Small Update; It&rsquo;s a Major Change to Go&rsquo;s Connection Model
+</h3><p>Pushing this API forward means Go has to solve several fundamental challenges:</p>
+<h4 id="how-to-unify-the-connection-semantics-of-http1--http2--http3">How to Unify the &ldquo;connection semantics&rdquo; of HTTP/1 / HTTP/2 / HTTP/3?
+</h4><ul>
+<li>HTTP/1: One at a time.</li>
+<li>HTTP/2: Multiple streams, multiple resource limits.</li>
+<li>HTTP/3: QUIC streams, dynamic limits.</li>
+</ul>
+<p>Providing a unified interface means:</p>
+<blockquote>
+<p>Go needs to stuff protocol differences into a single &ldquo;capability view (RequestLimit)&rdquo; model.</p></blockquote>
+<p>This is very complex, but also very elegant.</p>
+<h4 id="how-to-draw-the-boundary-between-the-transport-pool-and-clientconn">How to Draw the Boundary between the Transport Pool and ClientConn?
+</h4><ul>
+<li>The two must not be confused.</li>
+<li>Users cannot be allowed to create an infinite number of connections and overload the system.</li>
+<li>Dial/TLS/Proxy logic needs to be shared without polluting each other.</li>
+</ul>
+<blockquote>
+<p>Go needs to perform abstract-layered refactoring.</p></blockquote>
+<h4 id="the-migration-issue-with-xnethttp2">The Migration Issue with x/net/http2
+</h4><p>Currently, HTTP/2 client and server implementations still reside in x/net/http2.</p>
+<p>This proposal is practical:</p>
+<blockquote>
+<p>The necessary path to truly moving HTTP/2 into the standard library.</p></blockquote>
+<p>In future versions:</p>
+<ul>
+<li><code>x/net/http2</code> will become a transition layer.</li>
+<li><code>net/http</code> will become a truly unified HTTP stack.</li>
+</ul>
+<h3 id="4-the-crucial-part--code-comparison-status-quo-vs-future">4. The Crucial Part — Code Comparison: &ldquo;Status Quo&rdquo; vs. &ldquo;Future&rdquo;
+</h3><h4 id="now-you-have-no-way-to-lock-a-connection">Now: You Have no way to &ldquo;lock a connection&rdquo;
+</h4><p>You can only write code like this:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">client</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">http</span><span class="p">.</span><span class="nx">Client</span><span class="p">{}</span>
+</span></span><span class="line"><span class="cl"><span class="nx">resp</span><span class="p">,</span> <span class="nx">_</span> <span class="o">:=</span> <span class="nx">client</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="s">&#34;https://example.com&#34;</span><span class="p">)</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>You have absolutely no idea which connection was used.<br>
+If you want to create a new connection every time, you have to rely on destructive hacks:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">tr</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">http</span><span class="p">.</span><span class="nx">Transport</span><span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">DisableKeepAlives</span><span class="p">:</span> <span class="kc">true</span><span class="p">,</span> <span class="c1">// Crude and has significant side effects</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><h4 id="future-you-can-truly-acquire-a-connection-and-send-multiple-requests-over-it">Future: You Can Truly Acquire a Connection and Send Multiple Requests over it
+</h4><div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">ctx</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1">// Assuming DefaultTransport, need to type assert to *http.Transport</span>
+</span></span><span class="line"><span class="cl"><span class="nx">tr</span> <span class="o">:=</span> <span class="nx">http</span><span class="p">.</span><span class="nx">DefaultTransport</span><span class="p">.(</span><span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Transport</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1">// Key: Create a &#34;single connection&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="nx">cc</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">tr</span><span class="p">.</span><span class="nf">NewClientConn</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="s">&#34;https&#34;</span><span class="p">,</span> <span class="s">&#34;example.com:443&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span> <span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span> <span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="k">defer</span> <span class="nx">cc</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1">// All requests are pinned to run over this specific connection</span>
+</span></span><span class="line"><span class="cl"><span class="nx">do</span> <span class="o">:=</span> <span class="kd">func</span><span class="p">(</span><span class="nx">path</span> <span class="kt">string</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">req</span><span class="p">,</span> <span class="nx">_</span> <span class="o">:=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">NewRequest</span><span class="p">(</span><span class="s">&#34;GET&#34;</span><span class="p">,</span> <span class="s">&#34;https://example.com&#34;</span><span class="o">+</span><span class="nx">path</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">resp</span><span class="p">,</span> <span class="nx">_</span> <span class="o">:=</span> <span class="nx">cc</span><span class="p">.</span><span class="nf">RoundTrip</span><span class="p">(</span><span class="nx">req</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="c1">// Important: For H1, the connection isn&#39;t reusable until Body is closed</span>
+</span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nx">resp</span><span class="p">.</span><span class="nx">Body</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span> 
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="nf">do</span><span class="p">(</span><span class="s">&#34;/api/a&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="nf">do</span><span class="p">(</span><span class="s">&#34;/api/b&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="nf">do</span><span class="p">(</span><span class="s">&#34;/api/c&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="nx">log</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;limit:&#34;</span><span class="p">,</span> <span class="nx">cc</span><span class="p">.</span><span class="nf">RequestLimit</span><span class="p">())</span>
+</span></span><span class="line"><span class="cl"><span class="nx">log</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;done:&#34;</span><span class="p">,</span> <span class="nx">cc</span><span class="p">.</span><span class="nf">RequestsCompleted</span><span class="p">())</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>This is a radically different capability.</p>
+<h4 id="you-can-even-implement-your-own-user-space-connection-pool">You Can even Implement Your Own &ldquo;user-space Connection pool&rdquo;
+</h4><p>Below is a highly condensed yet complete example:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span><span class="lnt">25
+</span><span class="lnt">26
+</span><span class="lnt">27
+</span><span class="lnt">28
+</span><span class="lnt">29
+</span><span class="lnt">30
+</span><span class="lnt">31
+</span><span class="lnt">32
+</span><span class="lnt">33
+</span><span class="lnt">34
+</span><span class="lnt">35
+</span><span class="lnt">36
+</span><span class="lnt">37
+</span><span class="lnt">38
+</span><span class="lnt">39
+</span><span class="lnt">40
+</span><span class="lnt">41
+</span><span class="lnt">42
+</span><span class="lnt">43
+</span><span class="lnt">44
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">pooledConn</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">cc</span>    <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">ClientConn</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">inUse</span> <span class="kt">int64</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">ConnPool</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">mu</span>    <span class="nx">sync</span><span class="p">.</span><span class="nx">Mutex</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">conns</span> <span class="p">[]</span><span class="o">*</span><span class="nx">pooledConn</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">tr</span>    <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Transport</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">addr</span>  <span class="kt">string</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">p</span> <span class="o">*</span><span class="nx">ConnPool</span><span class="p">)</span> <span class="nf">get</span><span class="p">(</span><span class="nx">ctx</span> <span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">pooledConn</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">p</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nf">Lock</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nx">p</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="c1">// Try to find an available connection in the existing pool</span>
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">pc</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">p</span><span class="p">.</span><span class="nx">conns</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="nx">pc</span><span class="p">.</span><span class="nx">cc</span><span class="p">.</span><span class="nf">Err</span><span class="p">()</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">            <span class="k">continue</span>
+</span></span><span class="line"><span class="cl">        <span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="c1">// Check if the connection can handle more requests (crucial for H2/H3)</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="nx">pc</span><span class="p">.</span><span class="nx">inUse</span> <span class="p">&lt;</span> <span class="nx">pc</span><span class="p">.</span><span class="nx">cc</span><span class="p">.</span><span class="nf">RequestLimit</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">            <span class="nx">pc</span><span class="p">.</span><span class="nx">inUse</span><span class="o">++</span>
+</span></span><span class="line"><span class="cl">            <span class="k">return</span> <span class="nx">pc</span><span class="p">,</span> <span class="kc">nil</span>
+</span></span><span class="line"><span class="cl">        <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="c1">// If no connection is available, create a new connection explicitly</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">cc</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">p</span><span class="p">.</span><span class="nx">tr</span><span class="p">.</span><span class="nf">NewClientConn</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="s">&#34;https&#34;</span><span class="p">,</span> <span class="nx">p</span><span class="p">.</span><span class="nx">addr</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="nx">pc</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">pooledConn</span><span class="p">{</span><span class="nx">cc</span><span class="p">:</span> <span class="nx">cc</span><span class="p">,</span> <span class="nx">inUse</span><span class="p">:</span> <span class="mi">1</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">p</span><span class="p">.</span><span class="nx">conns</span> <span class="p">=</span> <span class="nb">append</span><span class="p">(</span><span class="nx">p</span><span class="p">.</span><span class="nx">conns</span><span class="p">,</span> <span class="nx">pc</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">pc</span><span class="p">,</span> <span class="kc">nil</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">p</span> <span class="o">*</span><span class="nx">ConnPool</span><span class="p">)</span> <span class="nf">put</span><span class="p">(</span><span class="nx">pc</span> <span class="o">*</span><span class="nx">pooledConn</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">p</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nf">Lock</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nx">p</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">pc</span><span class="p">.</span><span class="nx">inUse</span><span class="o">--</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>You will notice:</p>
+<blockquote>
+<p>This is already approaching the level of &ldquo;user-space connection scheduling&rdquo; found in Java Netty or Rust&rsquo;s hyper.</p></blockquote>
+<p>Go simply couldn&rsquo;t do this before.</p>
+<h3 id="5-mermaid-a-complete-view-of-the-future-connection-model">5. Mermaid: A Complete View of the Future Connection Model
+</h3><h4 id="dual-paths-default-pool--manual-connections">Dual Paths: Default Pool &amp; Manual Connections
+</h4><div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span><span class="lnt">20
+</span><span class="lnt">21
+</span><span class="lnt">22
+</span><span class="lnt">23
+</span><span class="lnt">24
+</span><span class="lnt">25
+</span><span class="lnt">26
+</span><span class="lnt">27
+</span><span class="lnt">28
+</span><span class="lnt">29
+</span><span class="lnt">30
+</span><span class="lnt">31
+</span><span class="lnt">32
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-fallback" data-lang="fallback"><span class="line"><span class="cl">flowchart LR
+</span></span><span class="line"><span class="cl">    subgraph app[&#34;Your App / HTTP Client Library&#34;]
+</span></span><span class="line"><span class="cl">        CL[&#34;http.Client (Default Usage)&#34;]
+</span></span><span class="line"><span class="cl">        ADV[&#34;Advanced Usage: Custom Conn Pool&#34;]
+</span></span><span class="line"><span class="cl">    end
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    subgraph std[&#34;net/http Standard Lib&#34;]
+</span></span><span class="line"><span class="cl">        TR[&#34;http.Transport&#34;]
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        subgraph pool[&#34;Transport Default Pool&#34;]
+</span></span><span class="line"><span class="cl">            direction LR
+</span></span><span class="line"><span class="cl">            PConn1[&#34;pool conn #1&#34;]
+</span></span><span class="line"><span class="cl">            PConn2[&#34;pool conn #2&#34;]
+</span></span><span class="line"><span class="cl">        end
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        subgraph userpool[&#34;Your Managed ClientConn Set&#34;]
+</span></span><span class="line"><span class="cl">            direction LR
+</span></span><span class="line"><span class="cl">            UConn1[&#34;ClientConn #1&#34;]
+</span></span><span class="line"><span class="cl">            UConn2[&#34;ClientConn #2&#34;]
+</span></span><span class="line"><span class="cl">        end
+</span></span><span class="line"><span class="cl">    end
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    CL --&gt;|&#34;Do (Normal Request)&#34;| TR
+</span></span><span class="line"><span class="cl">    TR --&gt; PConn1
+</span></span><span class="line"><span class="cl">    TR --&gt; PConn2
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    ADV --&gt;|&#34;Call Transport.NewClientConn&#34;| TR
+</span></span><span class="line"><span class="cl">    TR --&gt; UConn1
+</span></span><span class="line"><span class="cl">    TR --&gt; UConn2
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    ADV --&gt;|&#34;cc.RoundTrip&#34;| UConn1
+</span></span><span class="line"><span class="cl">    ADV --&gt;|&#34;cc.RoundTrip&#34;| UConn2
+</span></span></code></pre></td></tr></table>
+</div>
+</div><h4 id="requestlimit-behavior-under-http1">RequestLimit Behavior under HTTP/1
+</h4><div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-fallback" data-lang="fallback"><span class="line"><span class="cl">sequenceDiagram
+</span></span><span class="line"><span class="cl">    participant App as Your Code
+</span></span><span class="line"><span class="cl">    participant CC as ClientConn
+</span></span><span class="line"><span class="cl">    participant S as Server
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    Note over CC: RequestLimit = 1&lt;br/&gt;RequestsCompleted = 0
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    App-&gt;&gt;CC: RoundTrip(req1)
+</span></span><span class="line"><span class="cl">    CC-&gt;&gt;S: Send req1
+</span></span><span class="line"><span class="cl">    S--&gt;&gt;CC: Return resp1
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    App-&gt;&gt;CC: RoundTrip(req2)
+</span></span><span class="line"><span class="cl">    Note over CC: req2 is blocked (HTTP/1 restriction)
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    App-&gt;&gt;App: Close(resp1.Body)
+</span></span><span class="line"><span class="cl">    Note over CC: RequestsCompleted = 1&lt;br/&gt;RequestLimit = 2 (Now ready for next)
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    CC-&gt;&gt;S: Send req2
+</span></span></code></pre></td></tr></table>
+</div>
+</div><hr>
+<h3 id="6-summary">6. Summary
+</h3><h4 id="go-is-unifying-the-client-connection-layer-abstraction-for-http123">Go is Unifying the Client Connection Layer Abstraction for HTTP/1/2/3.
+</h4><p>This is a long-term engineering project, and ClientConn is a critical piece of the puzzle.</p>
+<h4 id="advanced-users-will-receive-officially-supported-connection-level-control-for-the-first-time-in-history">Advanced Users Will Receive Officially Supported &ldquo;connection-level control&rdquo; for the First time in history.**
+</h4><p>You will be able to:</p>
+<ul>
+<li>Write your own connection pools.</li>
+<li>Decide your own scheduling strategies.</li>
+<li>Manually manage keep-alive, error migration, GOAWAY, and stream concurrency.</li>
+</ul>
+<p>Previously, you either couldn&rsquo;t do this or had to rely on hacks with side effects.</p>
+<h4 id="average-users-wont-be-affected-but-the-ecosystem-will-become-more-professional">Average Users Won&rsquo;t Be Affected, but the Ecosystem Will Become More Professional.**
+</h4><p>In the future, you will see more:</p>
+<ul>
+<li>High-performance HTTP client libraries.</li>
+<li>Specialized load balancers.</li>
+<li>Custom proxies and API gateways.</li>
+<li>Stronger observability tools.</li>
+</ul>
+<h4 id="this-is-a-sharp-knife-meant-only-for-those-who-know-how-to-use-it">This is a Sharp Knife, Meant only for Those Who Know how to Use It.
+</h4><p>The Go team&rsquo;s attitude is clear:</p>
+<blockquote>
+<p>We won&rsquo;t make the Transport more complex, but we will give &ldquo;real control&rdquo; to the people who need it.</p></blockquote>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    </footer>
+
+
+    
+        <link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI&#43;WdtXRGWt2kTvGFasHpSy3SV"crossorigin="anonymous"
+            ><script 
+                src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG&#43;vnGctmUb0ZY0l8"crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"integrity="sha384-&#43;VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4&#43;/RRE05"crossorigin="anonymous"
+                defer
+                >
+            </script><script>
+    window.addEventListener("DOMContentLoaded", () => {
+        renderMathInElement(document.body, {
+            delimiters: [
+                { left: "$$", right: "$$", display: true },
+                { left: "$", right: "$", display: false },
+                { left: "\\(", right: "\\)", display: false },
+                { left: "\\[", right: "\\]", display: true }
+            ],
+            ignoredClasses: ["gist"]
+        });})
+</script>
+    
+</article>
+
+    
+
+    
+
+
+    
+        
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2026 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        Built with <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> <br />
+        Theme <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> designed by <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a>
+    </section>
+    <script src="/js/adblock-detection.js" defer></script>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>

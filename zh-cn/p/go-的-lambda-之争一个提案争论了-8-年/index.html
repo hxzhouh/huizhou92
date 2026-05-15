@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="zh-cn" dir="ltr">
+    <head>
+
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="Go 的 Lambda 之争：一个提案争论了 8 年 一个提案，900 条评论，Go 核心团队亲自下场——这场争论终于要尘埃落定了吗？\n我们在用 Go 写项目的时候，一定写过这样的代码：给 sort.Slice 传一个比较函数。每次都要把参数类型写完整，即使编译器早就知道它们是什么类型。这种重复且无法省略的语法噪音，相信让不少开发者感到困扰。\n2017 年 8 月，有人在 Go 仓库提了一个 issue：#21498 — proposal: spec: short function literals。没人预料到，这个看似&quot;小修小补&quot;的提案会变成 Go 历史上讨论最激烈的语法辩论——持续 8 年，累计 900+ 条评论，至今仍未关闭。\n今天，我们来聊聊这场争论的来龙去脉，以及它为什么如此难以尘埃落定。\n问题在哪里？ 让我们先看一段再熟悉不过的代码——用 sort.Slice 对切片排序：\n1 2 3 sort.Slice(people, func(i, j int) bool { return people[i].Age &lt; people[j].Age }) 这里有个问题：i 和 j 的类型，sort.Slice 的函数签名里已经写得很清楚了：func(i, j int) bool。编译器完全有能力推断出来，但 Go 强制我们把类型再写一遍。\n这在其他支持 Lambda 的语言里，可以简洁得多：\n1 2 // 理想中的 Go sort.Slice(people, (i, j) =&gt; people[i].Age &lt; people[j].Age) 有人可能会说：&ldquo;多写几个字符而已，有什么大不了？&rdquo;\n但问题在于，Go 1.18 引入泛型之后，高阶函数的使用场景激增。slices.SortFunc、maps.Keys、迭代器适配器……冗长的函数字面量成了每天都要面对的摩擦，而且无法规避。\n">
+<title>Go 的 Lambda 之争：一个提案争论了 8 年</title>
+
+<link rel='canonical' href='https://huizhou92.com/zh-cn/p/go-%E7%9A%84-lambda-%E4%B9%8B%E4%BA%89%E4%B8%80%E4%B8%AA%E6%8F%90%E6%A1%88%E4%BA%89%E8%AE%BA%E4%BA%86-8-%E5%B9%B4/'>
+
+<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css">
+<meta property='og:title' content="Go 的 Lambda 之争：一个提案争论了 8 年">
+<meta property='og:description' content="Go 的 Lambda 之争：一个提案争论了 8 年 一个提案，900 条评论，Go 核心团队亲自下场——这场争论终于要尘埃落定了吗？\n我们在用 Go 写项目的时候，一定写过这样的代码：给 sort.Slice 传一个比较函数。每次都要把参数类型写完整，即使编译器早就知道它们是什么类型。这种重复且无法省略的语法噪音，相信让不少开发者感到困扰。\n2017 年 8 月，有人在 Go 仓库提了一个 issue：#21498 — proposal: spec: short function literals。没人预料到，这个看似&quot;小修小补&quot;的提案会变成 Go 历史上讨论最激烈的语法辩论——持续 8 年，累计 900+ 条评论，至今仍未关闭。\n今天，我们来聊聊这场争论的来龙去脉，以及它为什么如此难以尘埃落定。\n问题在哪里？ 让我们先看一段再熟悉不过的代码——用 sort.Slice 对切片排序：\n1 2 3 sort.Slice(people, func(i, j int) bool { return people[i].Age &lt; people[j].Age }) 这里有个问题：i 和 j 的类型，sort.Slice 的函数签名里已经写得很清楚了：func(i, j int) bool。编译器完全有能力推断出来，但 Go 强制我们把类型再写一遍。\n这在其他支持 Lambda 的语言里，可以简洁得多：\n1 2 // 理想中的 Go sort.Slice(people, (i, j) =&gt; people[i].Age &lt; people[j].Age) 有人可能会说：&ldquo;多写几个字符而已，有什么大不了？&rdquo;\n但问题在于，Go 1.18 引入泛型之后，高阶函数的使用场景激增。slices.SortFunc、maps.Keys、迭代器适配器……冗长的函数字面量成了每天都要面对的摩擦，而且无法规避。\n">
+<meta property='og:url' content='https://huizhou92.com/zh-cn/p/go-%E7%9A%84-lambda-%E4%B9%8B%E4%BA%89%E4%B8%80%E4%B8%AA%E6%8F%90%E6%A1%88%E4%BA%89%E8%AE%BA%E4%BA%86-8-%E5%B9%B4/'>
+<meta property='og:site_name' content='huizhou92&#39;s Blog'>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='go' /><meta property='article:published_time' content='2026-03-07T10:08:07&#43;08:00'/><meta property='article:modified_time' content='2026-03-04T21:46:14&#43;08:00'/><meta property='og:image' content='https://images.hxzhouh.com/blog-images/2026/02/744effb910cd24373548d9267025048b.png' />
+<meta name="twitter:site" content="@piaopiaopig">
+    <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="Go 的 Lambda 之争：一个提案争论了 8 年">
+<meta name="twitter:description" content="Go 的 Lambda 之争：一个提案争论了 8 年 一个提案，900 条评论，Go 核心团队亲自下场——这场争论终于要尘埃落定了吗？\n我们在用 Go 写项目的时候，一定写过这样的代码：给 sort.Slice 传一个比较函数。每次都要把参数类型写完整，即使编译器早就知道它们是什么类型。这种重复且无法省略的语法噪音，相信让不少开发者感到困扰。\n2017 年 8 月，有人在 Go 仓库提了一个 issue：#21498 — proposal: spec: short function literals。没人预料到，这个看似&quot;小修小补&quot;的提案会变成 Go 历史上讨论最激烈的语法辩论——持续 8 年，累计 900+ 条评论，至今仍未关闭。\n今天，我们来聊聊这场争论的来龙去脉，以及它为什么如此难以尘埃落定。\n问题在哪里？ 让我们先看一段再熟悉不过的代码——用 sort.Slice 对切片排序：\n1 2 3 sort.Slice(people, func(i, j int) bool { return people[i].Age &lt; people[j].Age }) 这里有个问题：i 和 j 的类型，sort.Slice 的函数签名里已经写得很清楚了：func(i, j int) bool。编译器完全有能力推断出来，但 Go 强制我们把类型再写一遍。\n这在其他支持 Lambda 的语言里，可以简洁得多：\n1 2 // 理想中的 Go sort.Slice(people, (i, j) =&gt; people[i].Age &lt; people[j].Age) 有人可能会说：&ldquo;多写几个字符而已，有什么大不了？&rdquo;\n但问题在于，Go 1.18 引入泛型之后，高阶函数的使用场景激增。slices.SortFunc、maps.Keys、迭代器适配器……冗长的函数字面量成了每天都要面对的摩擦，而且无法规避。\n"><meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content='https://images.hxzhouh.com/blog-images/2026/02/744effb910cd24373548d9267025048b.png' />
+    <link rel="shortcut icon" href="/favicon.png" />
+
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-JMPMQ2QREG');
+        }
+      </script>
+        <link rel="alternate" hreflang="zh-cn" href="https://huizhou92.com/zh-cn/p/go-%E7%9A%84-lambda-%E4%B9%8B%E4%BA%89%E4%B8%80%E4%B8%AA%E6%8F%90%E6%A1%88%E4%BA%89%E8%AE%BA%E4%BA%86-8-%E5%B9%B4/">
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
+     crossorigin="anonymous"></script>
+
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e4ee8ffe-fb88-4635-9953-715598461baa"></script>
+    </head>
+    <body class="
+    article-page
+    ">
+    <script>
+        (function() {
+            const colorSchemeKey = 'StackColorScheme';
+            if(!localStorage.getItem(colorSchemeKey)){
+                localStorage.setItem(colorSchemeKey, "auto");
+            }
+        })();
+    </script><script>
+    (function() {
+        const colorSchemeKey = 'StackColorScheme';
+        const colorSchemeItem = localStorage.getItem(colorSchemeKey);
+        const supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+
+        if (colorSchemeItem == 'dark' || colorSchemeItem === 'auto' && supportDarkMode) {
+            
+
+            document.documentElement.dataset.scheme = 'dark';
+        } else {
+            document.documentElement.dataset.scheme = 'light';
+        }
+    })();
+</script>
+<div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky ">
+    <button class="hamburger hamburger--spin" type="button" id="toggle-menu" aria-label="切换菜单">
+        <span class="hamburger-box">
+            <span class="hamburger-inner"></span>
+        </span>
+    </button>
+
+    <header>
+        
+            
+            <figure class="site-avatar">
+                <a href="/zh-cn/">
+                
+                    
+                    
+                    
+                        
+                        <img src="/img/avatar_hu_e52293b5d2b8c5f7.jpeg" width="300"
+                            height="300" class="site-logo" loading="lazy" alt="Avatar">
+                    
+                
+                </a>
+                
+            </figure>
+            
+        
+        
+        <div class="site-meta">
+            <h1 class="site-name"><a href="/zh-cn">huizhou92&#39;s Blog</a></h1>
+            <h2 class="site-description">Backend Engineer With A Focus On Golang, Cloud Computing, Data Storage And Efficiency Tools. Lifelong Learner.</h2>
+        </div>
+    </header><ol class="menu-social">
+            
+                <li>
+                    <a 
+                        href='https://github.com/hxzhouh'
+                        target="_blank"
+                        title="GitHub"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+                <li>
+                    <a 
+                        href='https://x.com/piaopiaopig'
+                        target="_blank"
+                        title="Twitter"
+                        rel="me"
+                    >
+                        
+                        
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-brand-twitter" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M22 4.01c-1 .49 -1.98 .689 -3 .99c-1.121 -1.265 -2.783 -1.335 -4.38 -.737s-2.643 2.06 -2.62 3.737v1c-3.245 .083 -6.135 -1.395 -8 -4c0 0 -4.182 7.433 4 11c-1.872 1.247 -3.739 2.088 -6 2c3.308 1.803 6.913 2.423 10.034 1.517c3.58 -1.04 6.522 -3.723 7.651 -7.742a13.84 13.84 0 0 0 .497 -3.753c-.002 -.249 1.51 -2.772 1.818 -4.013z" />
+</svg>
+
+
+
+                        
+                    </a>
+                </li>
+            
+        </ol><ol class="menu" id="main-menu">
+        
+        
+        
+        <li >
+            <a href='/zh-cn/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <polyline points="5 12 3 12 12 3 21 12 19 12" />
+  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+  <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+</svg>
+
+
+
+                
+                <span>主页</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/%E5%85%B3%E4%BA%8E/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-user" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="7" r="4" />
+  <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+</svg>
+
+
+
+                
+                <span>关于</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/archives/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <rect x="3" y="4" width="18" height="4" rx="2" />
+  <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10" />
+  <line x1="10" y1="12" x2="14" y2="12" />
+</svg>
+
+
+
+                
+                <span>归档</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/search/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="10" cy="10" r="7" />
+  <line x1="21" y1="21" x2="15" y2="15" />
+</svg>
+
+
+
+                
+                <span>搜索</span>
+            </a>
+        </li>
+        
+        
+        <li >
+            <a href='/zh-cn/links/' >
+                
+                
+                
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" />
+  <path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" />
+</svg>
+
+
+
+                
+                <span>Links</span>
+            </a>
+        </li>
+        
+        <li class="menu-bottom-section">
+            <ol class="menu">
+                    
+                        <li id="i18n-switch">  
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-language" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M4 5h7" />
+  <path d="M9 3v2c0 4.418 -2.239 8 -5 8" />
+  <path d="M5 9c-.003 2.144 2.952 3.908 6.7 4" />
+  <path d="M12 20l4 -9l4 9" />
+  <path d="M19.1 18h-6.2" />
+</svg>
+
+
+
+                            <select name="language" title="language" onchange="window.location.href = this.selectedOptions[0].value">
+                                
+                                    <option value="https://huizhou92.com/" >English</option>
+                                
+                                    <option value="https://huizhou92.com/zh-cn/" selected>中文</option>
+                                
+                            </select>
+                        </li>
+                    
+                
+
+                
+                    <li id="dark-mode-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="8" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="16" cy="12" r="2" />
+  <rect x="2" y="6" width="20" height="12" rx="6" />
+</svg>
+
+
+
+                        <span>暗色模式</span>
+                    </li>
+                
+            </ol>
+        </li>
+    </ol>
+</aside>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+    <aside class="sidebar right-sidebar sticky">
+        
+            
+                
+    <section class="widget archives">
+        <div class="widget-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <line x1="5" y1="9" x2="19" y2="9" />
+  <line x1="5" y1="15" x2="19" y2="15" />
+  <line x1="11" y1="4" x2="7" y2="20" />
+  <line x1="17" y1="4" x2="13" y2="20" />
+</svg>
+
+
+
+        </div>
+        <h2 class="widget-title section-title">目录</h2>
+        
+        <div class="widget--toc">
+            <nav id="TableOfContents">
+  <ol>
+    <li><a href="#问题在哪里">问题在哪里？</a></li>
+    <li><a href="#八年争论的三个阶段">八年争论的三个阶段</a>
+      <ol>
+        <li><a href="#第一阶段20172020我们真的需要这个吗">第一阶段（2017–2020）：我们真的需要这个吗？</a></li>
+        <li><a href="#第二阶段20202023语法方案大爆炸">第二阶段（2020–2023）：语法方案大爆炸</a></li>
+        <li><a href="#第三阶段2024-至今终于开始收敛">第三阶段（2024 至今）：终于开始收敛</a></li>
+      </ol>
+    </li>
+    <li><a href="#为什么这么难决定">为什么这么难决定？</a></li>
+    <li><a href="#接下来会怎样">接下来会怎样</a></li>
+    <li><a href="#总结">总结</a></li>
+  </ol>
+</nav>
+        </div>
+    </section>
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+            
+        
+              
+              <section class="widget">
+                 
+                <div class="widget-content">
+                    <iframe frameborder="0"
+                        src="https://support.nodeget.com/page/promotion?id=30795"
+                        style="border-radius:8px; height: 270px; width: 100%; display: block;"></iframe>
+                        
+                </div>
+            </section>
+    </aside>
+  
+
+
+
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+
+            <main class="main full-width">
+    <article class="has-image main-article">
+    <header class="article-header">
+        <div class="article-image">
+            <a href="/zh-cn/p/go-%E7%9A%84-lambda-%E4%B9%8B%E4%BA%89%E4%B8%80%E4%B8%AA%E6%8F%90%E6%A1%88%E4%BA%89%E8%AE%BA%E4%BA%86-8-%E5%B9%B4/">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2026/02/744effb910cd24373548d9267025048b.png" loading="lazy" alt="Featured image of post Go 的 Lambda 之争：一个提案争论了 8 年" />
+                
+            </a>
+        </div>
+    
+
+    <div class="article-details">
+    
+    <header class="article-category">
+        
+            <a href="/zh-cn/categories/tech/" style="background-color: #2a9d8f; color: #fff;">
+                技术
+            </a>
+        
+    </header>
+    
+
+    <div class="article-title-wrapper">
+        <h2 class="article-title">
+            <a href="/zh-cn/p/go-%E7%9A%84-lambda-%E4%B9%8B%E4%BA%89%E4%B8%80%E4%B8%AA%E6%8F%90%E6%A1%88%E4%BA%89%E8%AE%BA%E4%BA%86-8-%E5%B9%B4/">Go 的 Lambda 之争：一个提案争论了 8 年</a>
+        </h2>
+    
+        
+    </div>
+
+    
+    
+    
+    
+    <footer class="article-time">
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <path d="M11.795 21h-6.795a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4" />
+  <circle cx="18" cy="18" r="4" />
+  <path d="M15 3v4" />
+  <path d="M7 3v4" />
+  <path d="M3 11h16" />
+  <path d="M18 16.496v1.504l1 1" />
+</svg>
+                <time class="article-time--published">Mar 07, 2026</time>
+            </div>
+        
+
+        
+            <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+                <time class="article-time--reading">
+                    阅读时长: 2 分钟
+                </time>
+            </div>
+        
+         
+        <div class="article-analysic">&nbsp
+    
+            <?xml version="1.0" encoding="utf-8"?>
+
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  
+  <g id="read">
+    <g>
+      <path  d="M12,18.883a10.8,10.8,0,0,1-9.675-5.728,2.6,2.6,0,0,1,0-2.31A10.8,10.8,0,0,1,12,5.117a10.8,10.8,0,0,1,9.675,5.728h0a2.6,2.6,0,0,1,0,2.31A10.8,10.8,0,0,1,12,18.883ZM12,6.117a9.787,9.787,0,0,0-8.78,5.176,1.586,1.586,0,0,0,0,1.415A9.788,9.788,0,0,0,12,17.883a9.787,9.787,0,0,0,8.78-5.176,1.584,1.584,0,0,0,0-1.414h0A9.787,9.787,0,0,0,12,6.117Z"/>
+      <path  d="M12,16.049A4.049,4.049,0,1,1,16.049,12,4.054,4.054,0,0,1,12,16.049Zm0-7.1A3.049,3.049,0,1,0,15.049,12,3.052,3.052,0,0,0,12,8.951Z"/>
+      <circle  cx="12" cy="12" r="2.028"/>
+    </g>
+  </g>
+</svg>
+            <time class="article-words">
+                <span id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv"></span> &nbspReads</span>
+            </time>
+        </div>
+    </footer>
+    
+
+    
+</div>
+
+</header>
+
+    <section class="article-content">
+    
+    
+    <h1 id="go-的-lambda-之争一个提案争论了-8-年">Go 的 Lambda 之争：一个提案争论了 8 年
+</h1><p><strong>一个提案，900 条评论，Go 核心团队亲自下场——这场争论终于要尘埃落定了吗？</strong></p>
+<p>我们在用 Go 写项目的时候，一定写过这样的代码：给 <code>sort.Slice</code> 传一个比较函数。每次都要把参数类型写完整，即使编译器早就知道它们是什么类型。这种<strong>重复且无法省略的语法噪音</strong>，相信让不少开发者感到困扰。</p>
+<!-- more-->
+<p>2017 年 8 月，有人在 Go 仓库提了一个 issue：<strong>#21498 — proposal: spec: short function literals</strong>。没人预料到，这个看似&quot;小修小补&quot;的提案会变成 Go 历史上讨论最激烈的语法辩论——持续 8 年，累计 900+ 条评论，至今仍未关闭。</p>
+<p>今天，我们来聊聊这场争论的来龙去脉，以及它为什么如此难以尘埃落定。</p>
+<h2 id="问题在哪里">问题在哪里？
+</h2><p>让我们先看一段再熟悉不过的代码——用 <code>sort.Slice</code> 对切片排序：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">sort</span><span class="p">.</span><span class="nf">Slice</span><span class="p">(</span><span class="nx">people</span><span class="p">,</span> <span class="kd">func</span><span class="p">(</span><span class="nx">i</span><span class="p">,</span> <span class="nx">j</span> <span class="kt">int</span><span class="p">)</span> <span class="kt">bool</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">people</span><span class="p">[</span><span class="nx">i</span><span class="p">].</span><span class="nx">Age</span> <span class="p">&lt;</span> <span class="nx">people</span><span class="p">[</span><span class="nx">j</span><span class="p">].</span><span class="nx">Age</span>
+</span></span><span class="line"><span class="cl"><span class="p">})</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>这里有个问题：<code>i</code> 和 <code>j</code> 的类型，<code>sort.Slice</code> 的函数签名里已经写得很清楚了：<code>func(i, j int) bool</code>。编译器完全有能力推断出来，但 Go <strong>强制我们把类型再写一遍</strong>。</p>
+<p>这在其他支持 Lambda 的语言里，可以简洁得多：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// 理想中的 Go</span>
+</span></span><span class="line"><span class="cl"><span class="nx">sort</span><span class="p">.</span><span class="nf">Slice</span><span class="p">(</span><span class="nx">people</span><span class="p">,</span> <span class="p">(</span><span class="nx">i</span><span class="p">,</span> <span class="nx">j</span><span class="p">)</span> <span class="p">=&gt;</span> <span class="nx">people</span><span class="p">[</span><span class="nx">i</span><span class="p">].</span><span class="nx">Age</span> <span class="p">&lt;</span> <span class="nx">people</span><span class="p">[</span><span class="nx">j</span><span class="p">].</span><span class="nx">Age</span><span class="p">)</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>有人可能会说：&ldquo;多写几个字符而已，有什么大不了？&rdquo;</p>
+<p>但问题在于，Go 1.18 引入泛型之后，高阶函数的使用场景激增。<code>slices.SortFunc</code>、<code>maps.Keys</code>、迭代器适配器……<strong>冗长的函数字面量成了每天都要面对的摩擦</strong>，而且无法规避。</p>
+<h2 id="八年争论的三个阶段">八年争论的三个阶段
+</h2><h3 id="第一阶段20172020我们真的需要这个吗">第一阶段（2017–2020）：我们真的需要这个吗？
+</h3><p>提案刚提出时，社区反应相当冷淡。</p>
+<p>Go 核心成员 Dave Cheney 直接表态：<strong>&ldquo;Please no, clear is better than clever.&rdquo;</strong></p>
+<p>这体现了 Go 的一贯哲学——<strong>显式优于隐式</strong>。编译器能推断类型，不代表就应该让它推断。代码是写给人看的，清晰比简洁更重要。</p>
+<p>这个阶段的争论核心其实是：Go 的简洁哲学，边界在哪里？</p>
+<h3 id="第二阶段20202023语法方案大爆炸">第二阶段（2020–2023）：语法方案大爆炸
+</h3><p>2022 年 Go 1.18 泛型落地后，情况发生了变化。</p>
+<p>高阶函数的使用场景爆发式增长，函数字面量的&quot;啰嗦&quot;成了真实的痛点。社区开始积极提案，<strong>短短两年内出现了几十种语法变体</strong>：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span><span class="lnt">8
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// 箭头语法（JavaScript 风格）</span>
+</span></span><span class="line"><span class="cl"><span class="p">(</span><span class="nx">x</span><span class="p">,</span> <span class="nx">y</span><span class="p">)</span> <span class="p">=&gt;</span> <span class="nx">x</span> <span class="p">&lt;</span> <span class="nx">y</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1">// Haskell 风格</span>
+</span></span><span class="line"><span class="cl"><span class="err">\</span><span class="p">(</span><span class="nx">x</span><span class="p">,</span> <span class="nx">y</span><span class="p">)</span> <span class="nx">x</span> <span class="p">&lt;</span> <span class="nx">y</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1">// fn 关键字（Rust 风格）</span>
+</span></span><span class="line"><span class="cl"><span class="nf">fn</span><span class="p">(</span><span class="nx">x</span><span class="p">,</span> <span class="nx">y</span><span class="p">)</span> <span class="p">{</span> <span class="k">return</span> <span class="nx">x</span> <span class="p">&lt;</span> <span class="nx">y</span> <span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>每种方案都有拥护者，也都有反对者。有人总结得很精准：<strong>&ldquo;每 50 条评论就会有人重新提一遍同样的语法。&rdquo;</strong></p>
+<h3 id="第三阶段2024-至今终于开始收敛">第三阶段（2024 至今）：终于开始收敛
+</h3><p>2024 年 6 月，Robert Griesemer 牵头成立了一个小型工作组，试图终结这场争论。他明确了三个约束条件：</p>
+<blockquote>
+<ol>
+<li><strong>核心收益</strong>是省略参数的类型注解</li>
+<li>参数必须<strong>用某种括号包裹</strong></li>
+<li><strong>不能把参数移到函数体内部</strong>（避免破坏现有代码结构）</li>
+</ol></blockquote>
+<p>在这些约束下，目前呼声最高的方案是 <code>fn</code> 关键字语法：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// fn 关键字 + 类型推断</span>
+</span></span><span class="line"><span class="cl"><span class="nx">sort</span><span class="p">.</span><span class="nf">Slice</span><span class="p">(</span><span class="nx">people</span><span class="p">,</span> <span class="nf">fn</span><span class="p">(</span><span class="nx">i</span><span class="p">,</span> <span class="nx">j</span><span class="p">)</span> <span class="kt">bool</span> <span class="p">{</span> <span class="k">return</span> <span class="nx">people</span><span class="p">[</span><span class="nx">i</span><span class="p">].</span><span class="nx">Age</span> <span class="p">&lt;</span> <span class="nx">people</span><span class="p">[</span><span class="nx">j</span><span class="p">].</span><span class="nx">Age</span> <span class="p">})</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1">// 表达式体（最简写法）</span>
+</span></span><span class="line"><span class="cl"><span class="nx">sort</span><span class="p">.</span><span class="nf">Slice</span><span class="p">(</span><span class="nx">people</span><span class="p">,</span> <span class="nf">fn</span><span class="p">(</span><span class="nx">i</span><span class="p">,</span> <span class="nx">j</span><span class="p">)</span> <span class="p">=&gt;</span> <span class="nx">people</span><span class="p">[</span><span class="nx">i</span><span class="p">].</span><span class="nx">Age</span> <span class="p">&lt;</span> <span class="nx">people</span><span class="p">[</span><span class="nx">j</span><span class="p">].</span><span class="nx">Age</span><span class="p">)</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><h2 id="为什么这么难决定">为什么这么难决定？
+</h2><p>很多人可能会问：不就是一个语法糖吗？为什么能争论 8 年？</p>
+<p>这里涉及一个根本性的张力：<strong>简洁到什么程度会变成晦涩？</strong></p>
+<p>Go 的简洁不是偶然的。<strong>每一个语法特性的加入都有真实的代价</strong>：</p>
+<ul>
+<li><strong>学习成本</strong>：新开发者需要理解的语法规则 +1</li>
+<li><strong>维护成本</strong>：语言规范需要覆盖的边界情况 +N</li>
+<li><strong>工具成本</strong>：编译器、IDE、静态分析工具都要适配</li>
+</ul>
+<p>让我用一个具体的例子来说明这个张力。Go 1.23 引入了迭代器（iterator），这是泛型之后最重要的特性之一。看看下面这段代码：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span><span class="lnt">8
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// 现在的 Go（真实可运行代码）</span>
+</span></span><span class="line"><span class="cl"><span class="k">for</span> <span class="nx">k</span><span class="p">,</span> <span class="nx">v</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">slices</span><span class="p">.</span><span class="nf">Sorted</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="nx">yield</span> <span class="kd">func</span><span class="p">(</span><span class="kt">string</span><span class="p">,</span> <span class="kt">int</span><span class="p">)</span> <span class="kt">bool</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">k</span><span class="p">,</span> <span class="nx">v</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">m</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nf">yield</span><span class="p">(</span><span class="nx">k</span><span class="p">,</span> <span class="nx">v</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="p">})</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nx">k</span><span class="p">,</span> <span class="nx">v</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>如果引入短函数字面量，可以写成：</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="k">for</span> <span class="nx">k</span><span class="p">,</span> <span class="nx">v</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">slices</span><span class="p">.</span><span class="nf">Sorted</span><span class="p">(</span><span class="nf">fn</span><span class="p">(</span><span class="nx">yield</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">k</span><span class="p">,</span> <span class="nx">v</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">m</span> <span class="p">{</span> <span class="nf">yield</span><span class="p">(</span><span class="nx">k</span><span class="p">,</span> <span class="nx">v</span><span class="p">)</span> <span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="p">})</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nx">k</span><span class="p">,</span> <span class="nx">v</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>第二种更短。<strong>但对刚入门的开发者来说，它更清晰吗？</strong></p>
+<p>Go 社区的核心分歧就在这里：一派认为<strong>简洁本身就是清晰</strong>，另一派认为<strong>显式才是 Go 的灵魂</strong>。</p>
+<h2 id="接下来会怎样">接下来会怎样
+</h2><p>截至 2026 年初，该提案尚未正式接受，但<strong>反对派已经输掉了核心争论</strong>。</p>
+<p>泛型 + 迭代器 + 函数式模式的组合，让&quot;啰嗦的函数字面量&quot;成为真实的人体工学问题。现在的问题不是<strong>要不要</strong>解决，而是<strong>怎么</strong>解决。</p>
+<p>如果 Go 1.27 带着短函数字面量发布，这将是继泛型以来最重要的语法变化。<strong>八年的争论，也许就浓缩在几个字符里。</strong></p>
+<h2 id="总结">总结
+</h2><ol>
+<li>Issue #21498 自 2017 年开放，900+ 条评论，Go 史上最长语法辩论</li>
+<li>核心问题：编译器能推断类型时，Go 仍然强制显式标注</li>
+<li>社区正在向 <code>fn(params)</code> 或 <code>\(params)</code> 收敛</li>
+<li>Go 团队的约束：简洁不能以牺牲可读性为代价</li>
+<li>正式提案可能在 2026 年落地，持续关注 issue #21498</li>
+</ol>
+<hr>
+<ul>
+<li><a class="link" href="https://huizhou92.com/zh-cn/p/go-%E7%9A%84-lambda-%E4%B9%8B%E4%BA%89%E4%B8%80%E4%B8%AA%E6%8F%90%E6%A1%88%E4%BA%89%E8%AE%BA%E4%BA%86-8-%E5%B9%B4/"  target="_blank" rel="noopener"
+    >本文长期链接</a></li>
+<li>如果您觉得我的博客对你有帮助，请通过 <a class="link" href="https://huizhou92.com/index.xml"  target="_blank" rel="noopener"
+    >RSS</a>订阅我。</li>
+<li>或者在<a class="link" href="https://x.com/@piaopiaopig"  target="_blank" rel="noopener"
+    >X</a>上关注我。</li>
+<li>如果您有<a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
+    >Medium</a>账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。</li>
+</ul>
+
+</section>
+
+
+    <footer class="article-footer">
+    
+    <section class="article-tags">
+        
+            <a href="/zh-cn/tags/go/">Go</a>
+        
+    </section>
+
+
+    
+    <section class="article-copyright">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <path d="M14.5 9a3.5 4 0 1 0 0 6" />
+</svg>
+
+
+
+        <span>Licensed under CC BY-NC-SA 4.0</span>
+    </section>
+    <section class="article-lastmod">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z"/>
+  <circle cx="12" cy="12" r="9" />
+  <polyline points="12 7 12 12 15 15" />
+</svg>
+
+
+
+        <span>
+            最后更新于 Mar 04, 2026 21:46 CST
+        </span>
+    </section></footer>
+
+
+    
+        <link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI&#43;WdtXRGWt2kTvGFasHpSy3SV"crossorigin="anonymous"
+            ><script 
+                src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG&#43;vnGctmUb0ZY0l8"crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"integrity="sha384-&#43;VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4&#43;/RRE05"crossorigin="anonymous"
+                defer
+                >
+            </script><script>
+    window.addEventListener("DOMContentLoaded", () => {
+        renderMathInElement(document.body, {
+            delimiters: [
+                { left: "$$", right: "$$", display: true },
+                { left: "$", right: "$", display: false },
+                { left: "\\(", right: "\\)", display: false },
+                { left: "\\[", right: "\\]", display: true }
+            ],
+            ignoredClasses: ["gist"]
+        });})
+</script>
+    
+</article>
+
+    
+
+    
+
+<ins class="adsbygoogle"
+   style="display:block"
+   data-ad-client="ca-pub-9000447749076746"
+   data-ad-slot="5063552270"
+   data-ad-format="auto"
+   data-full-width-responsive="true"></ins>
+<script>
+   (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+<aside class="related-content--wrapper">
+    <h2 class="section-title">相关文章</h2>
+    <div class="related-content">
+        <div class="flex article-list--tile">
+            
+                
+<article class="">
+    <a href="/zh-cn/p/go-1.26-%E9%BB%91%E7%A7%91%E6%8A%80%E8%B7%B3%E8%BF%87-gc-%E7%9B%B4%E6%8E%A5%E9%87%8A%E6%94%BE%E5%86%85%E5%AD%98%E6%80%A7%E8%83%BD%E9%A3%99%E5%8D%87-200/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 1.26 黑科技：跳过 GC 直接释放内存，性能飙升 200%</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="has-image">
+    <a href="/zh-cn/p/green-tea-gc-golang-%E7%9A%84-zgc/">
+        
+        
+            <div class="article-image">
+                
+                    <img src="https://images.hxzhouh.com/blog-images/2025/05/fb6313678681ee8e97a05ee521bd0e20.png" loading="lazy" data-key="green-tea-gc-golang-%E7%9A%84-zgc" data-hash="https://images.hxzhouh.com/blog-images/2025/05/fb6313678681ee8e97a05ee521bd0e20.png"/>
+                
+            </div>
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Green Tea GC: Golang 的 ZGC？</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/%E8%AF%91grpc%E4%B8%91%E9%99%8B%E7%9A%84%E9%83%A8%E5%88%86/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">【译】：gRPC丑陋的部分</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/golang-http-%E6%94%AF%E6%8C%81-negotiateformat/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Golang http 支持 NegotiateFormat</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/go124-%E9%99%A4%E4%BA%86%E6%A0%87%E5%87%86%E5%BA%93%E4%B9%8B%E5%A4%96%E6%82%A8%E4%B9%9F%E8%AE%B8%E5%BA%94%E8%AF%A5%E6%9B%B4%E5%8A%A0%E5%85%B3%E6%B3%A8-go-%E5%B7%A5%E5%85%B7%E7%9A%84%E5%8F%98%E5%8C%96/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go1.24: 除了标准库之外，您也许应该更加关注 Go 工具的变化</h2>
+        </div>
+    </a>
+</article>
+
+            
+        </div>
+    </div>
+</aside>
+
+
+    
+        
+    
+
+    <footer class="site-footer">
+    <section class="copyright">
+        &copy; 
+        
+            2023 - 
+        
+        2026 Copyright © 2023 huizhou92
+    </section>
+    
+    <section class="powerby">
+        使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+    </section>
+    <script src="/js/adblock-detection.js" defer></script>
+     
+	
+	<div class="busuanzi-footer">
+	<span id="busuanzi_container_site_pv">
+		Total site visits: <span id="busuanzi_value_site_pv"></span>
+	</span>
+	<span id="busuanzi_container_site_uv">
+		Total Visitors: <span id="busuanzi_value_site_uv"></span>
+	</span>
+	</div></footer>
+
+
+    
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    
+    <div class="pswp__bg"></div>
+
+    
+    <div class="pswp__scroll-wrap">
+
+        
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                
+                
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo="crossorigin="anonymous"
+                defer
+                >
+            </script><script 
+                src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU="crossorigin="anonymous"
+                defer
+                >
+            </script><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css"crossorigin="anonymous"
+            ><link 
+                rel="stylesheet" 
+                href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css"crossorigin="anonymous"
+            >
+
+            </main>
+        </div>
+        <script 
+                src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
+                
+                >
+            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+<script>
+    (function () {
+        const customFont = document.createElement('link');
+        customFont.href = "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap";
+
+        customFont.type = "text/css";
+        customFont.rel = "stylesheet";
+
+        document.head.appendChild(customFont);
+    }());
+</script>
+
+    </body>
+</html>

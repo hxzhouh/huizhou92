@@ -9,14 +9,16 @@
 
 <link rel='canonical' href='https://huizhou92.com/zh-cn/p/%23-golang-1.23-changes-to-/golinkname-and-what-it-means-for-developers/'>
 
-<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css"><meta property='og:title' content="Golang 1.23：`//go:linkname` 的变更及其对开发人员的意义">
+<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css">
+<meta property='og:title' content="Golang 1.23：`//go:linkname` 的变更及其对开发人员的意义">
 <meta property='og:description' content="上周 go1.23 已经进入冻结期了，应该不会再添加新功能，相应的已经添加了的功能 也不太可能会被移除。\n这正好可以让我们提前尝鲜这些即将到来的新特性。\nhttps://groups.google.com/g/golang-dev/c/vXE304_MnKM\nThis article is first published in the medium MPP plan. If you are a medium user, please follow me in medium. Thank you very much.\n今天要说的就是1.23中对//go:linkname指令的变更。\n相关讨论的issue 在这里：\nhttps://github.com/golang/go/issues/67401\nTL;DR //go:linkname指令官方并不推荐使用，且不保证任何向前或者向后兼容性，因此明智的做法是尽量别用\n牢记这一点之后，我们可以接着往下看了。至于为啥和“我”也就是本文的作者有关，我们先看完新版本带来的新变化再说。\nlinkname指令是做什么的 简单的说，linkname指令用于向编译器和链接器传递信息。具体的含义根据用法可以分为三类。\n第一类叫做“pull”，意思是拉取，使用方式如下：\n1 2 3 4 5 6 import _ &#34;unsafe&#34; // 必须有这行才能用linkname import _ &#34;fmt&#34; // 被拉取的包需要显式导入（除了runtime包） //go:linkname my_func fmt.Println func my_func(...any) (n int, err error) 这种用法的指令格式是//go:linkname &lt;指令下方的只有声明的函数或包级别变量名&gt; &lt;本包或者其他包中的有完整定义的函数或变量&gt;。\n这个指令的作用就是告诉编译器和连接器，my_func的函数体直接使用fmt.Println的，my_func类似fmt.Println的别名，和它共享同一份代码，就像把指令第二个参数指定的函数和变量拉取下来给第一个参数使用一样。\n正因如此，指令下方给出的声明必须和被拉取的函数/变量完全一致，否则很容易因为类型不匹配导致panic（是的没错，除非拉取的对象不存在，否则都不会出现编译错误）。\n这个指令最恐怖的地方在于它能无视函数或者变量是否是export的，包私有的东西也能被拉取出来使用。因为这一点这种用法在早期的社区中很常见，比如很多人喜欢这么干：//go:linkname myRand runtime.fastrand，因为runtime提供了一个性能还不错的随机数实现，但没有公开出来，所以有人会用linkname指令把它导出为己所用，当然随着1.21的发布这种用法不再有任何意义了，请永远都不要去模仿。\n">
 <meta property='og:url' content='https://huizhou92.com/zh-cn/p/%23-golang-1.23-changes-to-/golinkname-and-what-it-means-for-developers/'>
 <meta property='og:site_name' content='huizhou92&#39;s Blog'>
-<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:tag' content='go1_23' /><meta property='article:published_time' content='2024-05-27T09:37:25&#43;08:00'/><meta property='article:modified_time' content='2024-05-27T09:37:22&#43;08:00'/>
+<meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='article:tag' content='golang' /><meta property='article:tag' content='go1_23' /><meta property='article:published_time' content='2024-05-27T09:37:25&#43;08:00'/><meta property='article:modified_time' content='2024-05-27T09:37:22&#43;08:00'/><meta property='og:image' content='https://huizhou92.com/head.png' />
 <meta name="twitter:site" content="@piaopiaopig">
     <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="Golang 1.23：`//go:linkname` 的变更及其对开发人员的意义">
-<meta name="twitter:description" content="上周 go1.23 已经进入冻结期了，应该不会再添加新功能，相应的已经添加了的功能 也不太可能会被移除。\n这正好可以让我们提前尝鲜这些即将到来的新特性。\nhttps://groups.google.com/g/golang-dev/c/vXE304_MnKM\nThis article is first published in the medium MPP plan. If you are a medium user, please follow me in medium. Thank you very much.\n今天要说的就是1.23中对//go:linkname指令的变更。\n相关讨论的issue 在这里：\nhttps://github.com/golang/go/issues/67401\nTL;DR //go:linkname指令官方并不推荐使用，且不保证任何向前或者向后兼容性，因此明智的做法是尽量别用\n牢记这一点之后，我们可以接着往下看了。至于为啥和“我”也就是本文的作者有关，我们先看完新版本带来的新变化再说。\nlinkname指令是做什么的 简单的说，linkname指令用于向编译器和链接器传递信息。具体的含义根据用法可以分为三类。\n第一类叫做“pull”，意思是拉取，使用方式如下：\n1 2 3 4 5 6 import _ &#34;unsafe&#34; // 必须有这行才能用linkname import _ &#34;fmt&#34; // 被拉取的包需要显式导入（除了runtime包） //go:linkname my_func fmt.Println func my_func(...any) (n int, err error) 这种用法的指令格式是//go:linkname &lt;指令下方的只有声明的函数或包级别变量名&gt; &lt;本包或者其他包中的有完整定义的函数或变量&gt;。\n这个指令的作用就是告诉编译器和连接器，my_func的函数体直接使用fmt.Println的，my_func类似fmt.Println的别名，和它共享同一份代码，就像把指令第二个参数指定的函数和变量拉取下来给第一个参数使用一样。\n正因如此，指令下方给出的声明必须和被拉取的函数/变量完全一致，否则很容易因为类型不匹配导致panic（是的没错，除非拉取的对象不存在，否则都不会出现编译错误）。\n这个指令最恐怖的地方在于它能无视函数或者变量是否是export的，包私有的东西也能被拉取出来使用。因为这一点这种用法在早期的社区中很常见，比如很多人喜欢这么干：//go:linkname myRand runtime.fastrand，因为runtime提供了一个性能还不错的随机数实现，但没有公开出来，所以有人会用linkname指令把它导出为己所用，当然随着1.21的发布这种用法不再有任何意义了，请永远都不要去模仿。\n">
+<meta name="twitter:description" content="上周 go1.23 已经进入冻结期了，应该不会再添加新功能，相应的已经添加了的功能 也不太可能会被移除。\n这正好可以让我们提前尝鲜这些即将到来的新特性。\nhttps://groups.google.com/g/golang-dev/c/vXE304_MnKM\nThis article is first published in the medium MPP plan. If you are a medium user, please follow me in medium. Thank you very much.\n今天要说的就是1.23中对//go:linkname指令的变更。\n相关讨论的issue 在这里：\nhttps://github.com/golang/go/issues/67401\nTL;DR //go:linkname指令官方并不推荐使用，且不保证任何向前或者向后兼容性，因此明智的做法是尽量别用\n牢记这一点之后，我们可以接着往下看了。至于为啥和“我”也就是本文的作者有关，我们先看完新版本带来的新变化再说。\nlinkname指令是做什么的 简单的说，linkname指令用于向编译器和链接器传递信息。具体的含义根据用法可以分为三类。\n第一类叫做“pull”，意思是拉取，使用方式如下：\n1 2 3 4 5 6 import _ &#34;unsafe&#34; // 必须有这行才能用linkname import _ &#34;fmt&#34; // 被拉取的包需要显式导入（除了runtime包） //go:linkname my_func fmt.Println func my_func(...any) (n int, err error) 这种用法的指令格式是//go:linkname &lt;指令下方的只有声明的函数或包级别变量名&gt; &lt;本包或者其他包中的有完整定义的函数或变量&gt;。\n这个指令的作用就是告诉编译器和连接器，my_func的函数体直接使用fmt.Println的，my_func类似fmt.Println的别名，和它共享同一份代码，就像把指令第二个参数指定的函数和变量拉取下来给第一个参数使用一样。\n正因如此，指令下方给出的声明必须和被拉取的函数/变量完全一致，否则很容易因为类型不匹配导致panic（是的没错，除非拉取的对象不存在，否则都不会出现编译错误）。\n这个指令最恐怖的地方在于它能无视函数或者变量是否是export的，包私有的东西也能被拉取出来使用。因为这一点这种用法在早期的社区中很常见，比如很多人喜欢这么干：//go:linkname myRand runtime.fastrand，因为runtime提供了一个性能还不错的随机数实现，但没有公开出来，所以有人会用linkname指令把它导出为己所用，当然随着1.21的发布这种用法不再有任何意义了，请永远都不要去模仿。\n"><meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content='https://huizhou92.com/head.png' />
     <link rel="shortcut icon" href="/favicon.png" />
 
       <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
@@ -32,8 +34,11 @@
           gtag('js', new Date());
           gtag('config', 'G-JMPMQ2QREG');
         }
-      </script><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
-crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+      </script>
+        <link rel="alternate" hreflang="en" href="https://huizhou92.com/p/%23-golang-1.23-changes-to-/golinkname-and-what-it-means-for-developers/">
+        <link rel="alternate" hreflang="zh-cn" href="https://huizhou92.com/zh-cn/p/%23-golang-1.23-changes-to-/golinkname-and-what-it-means-for-developers/">
+            <link rel="alternate" hreflang="x-default" href="https://huizhou92.com/p/%23-golang-1.23-changes-to-/golinkname-and-what-it-means-for-developers/">
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
   <meta name="referrer" content="no-referrer-when-downgrade">
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9000447749076746"
      crossorigin="anonymous"></script>
@@ -877,38 +882,6 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
         <div class="flex article-list--tile">
             
                 
-<article class="">
-    <a href="/zh-cn/p/go-%E5%AE%98%E6%96%B9%E5%86%8D%E8%B0%88%E9%94%99%E8%AF%AF%E5%A4%84%E7%90%86%E6%96%B0%E8%AF%AD%E6%B3%95%E4%B8%BA%E4%BD%95%E8%BF%9F%E8%BF%9F%E6%97%A0%E6%B3%95%E8%90%BD%E5%9C%B0/">
-        
-        
-
-        <div class="article-details">
-            <h2 class="article-title">Go 官方再谈错误处理：新语法为何迟迟无法落地？</h2>
-        </div>
-    </a>
-</article>
-
-            
-                
-<article class="has-image">
-    <a href="/zh-cn/p/go-%E7%9A%84-map-%E4%B8%BA%E4%BB%80%E4%B9%88%E5%8F%98%E6%85%A2%E4%BA%86.zh-cn/">
-        
-        
-            <div class="article-image">
-                
-                    <img src="https://images.hxzhouh.com/blog-images/2025/05/a7748f1ab7e01c49c0f35f9591f6cfd3.png" loading="lazy" data-key="" data-hash="https://images.hxzhouh.com/blog-images/2025/05/a7748f1ab7e01c49c0f35f9591f6cfd3.png"/>
-                
-            </div>
-        
-
-        <div class="article-details">
-            <h2 class="article-title">Go 的 map 为什么变慢了?.zh-cn</h2>
-        </div>
-    </a>
-</article>
-
-            
-                
 <article class="has-image">
     <a href="/zh-cn/p/go124-mutex%E8%87%AA%E6%97%8B%E4%BC%98%E5%8C%96%E6%9C%80%E5%A4%A7%E6%8F%90%E5%8D%8770%E7%9A%84%E6%80%A7%E8%83%BD/">
         
@@ -954,6 +927,32 @@ crossorigin="anonymous"></script><script async src="//busuanzi.ibruce.info/busua
 
         <div class="article-details">
             <h2 class="article-title">Go1.24: 除了标准库之外，您也许应该更加关注 Go 工具的变化</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/go-124-%E7%9A%84-swiss-map%E5%85%BC%E5%AE%B9%E6%80%A7%E6%89%A9%E5%B1%95%E5%93%88%E5%B8%8C%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">Go 1.24 的 Swiss Map：兼容性、扩展哈希与遗留问题</h2>
+        </div>
+    </a>
+</article>
+
+            
+                
+<article class="">
+    <a href="/zh-cn/p/%E4%BD%BF%E7%94%A8%E5%AF%B9%E5%86%B2%E6%A8%A1%E5%BC%8F%E9%99%8D%E4%BD%8E%E9%95%BF%E5%B0%BE%E8%AF%B7%E6%B1%82/">
+        
+        
+
+        <div class="article-details">
+            <h2 class="article-title">使用对冲模式降低长尾请求</h2>
         </div>
     </a>
 </article>

@@ -7,7 +7,180 @@
         <generator>Hugo -- gohugo.io</generator>
         <language>zh-cn</language>
         <copyright>Copyright © 2023 huizhou92</copyright>
-        <lastBuildDate>Mon, 02 Mar 2026 23:01:20 +0800</lastBuildDate><atom:link href="https://huizhou92.com/zh-cn/categories/tech/index.xml" rel="self" type="application/rss+xml" /><item>
+        <lastBuildDate>Sat, 07 Mar 2026 10:08:07 +0800</lastBuildDate><atom:link href="https://huizhou92.com/zh-cn/categories/tech/index.xml" rel="self" type="application/rss+xml" /><item>
+        <title>Go 的 Lambda 之争：一个提案争论了 8 年</title>
+        <link>https://huizhou92.com/zh-cn/p/go-%E7%9A%84-lambda-%E4%B9%8B%E4%BA%89%E4%B8%80%E4%B8%AA%E6%8F%90%E6%A1%88%E4%BA%89%E8%AE%BA%E4%BA%86-8-%E5%B9%B4/</link>
+        <pubDate>Sat, 07 Mar 2026 10:08:07 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/zh-cn/p/go-%E7%9A%84-lambda-%E4%B9%8B%E4%BA%89%E4%B8%80%E4%B8%AA%E6%8F%90%E6%A1%88%E4%BA%89%E8%AE%BA%E4%BA%86-8-%E5%B9%B4/</guid>
+        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2026/02/744effb910cd24373548d9267025048b.png" alt="Featured image of post Go 的 Lambda 之争：一个提案争论了 8 年" /&gt;&lt;h1 id=&#34;go-的-lambda-之争一个提案争论了-8-年&#34;&gt;Go 的 Lambda 之争：一个提案争论了 8 年
+&lt;/h1&gt;&lt;p&gt;&lt;strong&gt;一个提案，900 条评论，Go 核心团队亲自下场——这场争论终于要尘埃落定了吗？&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;我们在用 Go 写项目的时候，一定写过这样的代码：给 &lt;code&gt;sort.Slice&lt;/code&gt; 传一个比较函数。每次都要把参数类型写完整，即使编译器早就知道它们是什么类型。这种&lt;strong&gt;重复且无法省略的语法噪音&lt;/strong&gt;，相信让不少开发者感到困扰。&lt;/p&gt;
+&lt;!-- more--&gt;
+&lt;p&gt;2017 年 8 月，有人在 Go 仓库提了一个 issue：&lt;strong&gt;#21498 — proposal: spec: short function literals&lt;/strong&gt;。没人预料到，这个看似&amp;quot;小修小补&amp;quot;的提案会变成 Go 历史上讨论最激烈的语法辩论——持续 8 年，累计 900+ 条评论，至今仍未关闭。&lt;/p&gt;
+&lt;p&gt;今天，我们来聊聊这场争论的来龙去脉，以及它为什么如此难以尘埃落定。&lt;/p&gt;
+&lt;h2 id=&#34;问题在哪里&#34;&gt;问题在哪里？
+&lt;/h2&gt;&lt;p&gt;让我们先看一段再熟悉不过的代码——用 &lt;code&gt;sort.Slice&lt;/code&gt; 对切片排序：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nx&#34;&gt;sort&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Slice&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;people&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;j&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;bool&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;people&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;].&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Age&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;people&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;j&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;].&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Age&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;})&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;这里有个问题：&lt;code&gt;i&lt;/code&gt; 和 &lt;code&gt;j&lt;/code&gt; 的类型，&lt;code&gt;sort.Slice&lt;/code&gt; 的函数签名里已经写得很清楚了：&lt;code&gt;func(i, j int) bool&lt;/code&gt;。编译器完全有能力推断出来，但 Go &lt;strong&gt;强制我们把类型再写一遍&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;这在其他支持 Lambda 的语言里，可以简洁得多：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// 理想中的 Go&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nx&#34;&gt;sort&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Slice&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;people&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;j&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&amp;gt;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;people&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;].&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Age&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;people&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;j&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;].&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Age&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;有人可能会说：&amp;ldquo;多写几个字符而已，有什么大不了？&amp;rdquo;&lt;/p&gt;
+&lt;p&gt;但问题在于，Go 1.18 引入泛型之后，高阶函数的使用场景激增。&lt;code&gt;slices.SortFunc&lt;/code&gt;、&lt;code&gt;maps.Keys&lt;/code&gt;、迭代器适配器……&lt;strong&gt;冗长的函数字面量成了每天都要面对的摩擦&lt;/strong&gt;，而且无法规避。&lt;/p&gt;
+&lt;h2 id=&#34;八年争论的三个阶段&#34;&gt;八年争论的三个阶段
+&lt;/h2&gt;&lt;h3 id=&#34;第一阶段20172020我们真的需要这个吗&#34;&gt;第一阶段（2017–2020）：我们真的需要这个吗？
+&lt;/h3&gt;&lt;p&gt;提案刚提出时，社区反应相当冷淡。&lt;/p&gt;
+&lt;p&gt;Go 核心成员 Dave Cheney 直接表态：&lt;strong&gt;&amp;ldquo;Please no, clear is better than clever.&amp;rdquo;&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;这体现了 Go 的一贯哲学——&lt;strong&gt;显式优于隐式&lt;/strong&gt;。编译器能推断类型，不代表就应该让它推断。代码是写给人看的，清晰比简洁更重要。&lt;/p&gt;
+&lt;p&gt;这个阶段的争论核心其实是：Go 的简洁哲学，边界在哪里？&lt;/p&gt;
+&lt;h3 id=&#34;第二阶段20202023语法方案大爆炸&#34;&gt;第二阶段（2020–2023）：语法方案大爆炸
+&lt;/h3&gt;&lt;p&gt;2022 年 Go 1.18 泛型落地后，情况发生了变化。&lt;/p&gt;
+&lt;p&gt;高阶函数的使用场景爆发式增长，函数字面量的&amp;quot;啰嗦&amp;quot;成了真实的痛点。社区开始积极提案，&lt;strong&gt;短短两年内出现了几十种语法变体&lt;/strong&gt;：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;8
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// 箭头语法（JavaScript 风格）&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;x&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;y&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&amp;gt;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;x&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;y&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// Haskell 风格&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;err&#34;&gt;\&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;x&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;y&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;x&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;y&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// fn 关键字（Rust 风格）&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nf&#34;&gt;fn&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;x&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;y&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt; &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;x&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;y&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;每种方案都有拥护者，也都有反对者。有人总结得很精准：&lt;strong&gt;&amp;ldquo;每 50 条评论就会有人重新提一遍同样的语法。&amp;rdquo;&lt;/strong&gt;&lt;/p&gt;
+&lt;h3 id=&#34;第三阶段2024-至今终于开始收敛&#34;&gt;第三阶段（2024 至今）：终于开始收敛
+&lt;/h3&gt;&lt;p&gt;2024 年 6 月，Robert Griesemer 牵头成立了一个小型工作组，试图终结这场争论。他明确了三个约束条件：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;核心收益&lt;/strong&gt;是省略参数的类型注解&lt;/li&gt;
+&lt;li&gt;参数必须&lt;strong&gt;用某种括号包裹&lt;/strong&gt;&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;不能把参数移到函数体内部&lt;/strong&gt;（避免破坏现有代码结构）&lt;/li&gt;
+&lt;/ol&gt;&lt;/blockquote&gt;
+&lt;p&gt;在这些约束下，目前呼声最高的方案是 &lt;code&gt;fn&lt;/code&gt; 关键字语法：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// fn 关键字 + 类型推断&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nx&#34;&gt;sort&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Slice&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;people&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;fn&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;j&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;bool&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt; &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;people&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;].&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Age&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;people&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;j&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;].&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Age&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;})&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// 表达式体（最简写法）&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nx&#34;&gt;sort&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Slice&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;people&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;fn&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;j&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&amp;gt;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;people&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;i&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;].&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Age&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;people&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;j&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;].&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Age&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;h2 id=&#34;为什么这么难决定&#34;&gt;为什么这么难决定？
+&lt;/h2&gt;&lt;p&gt;很多人可能会问：不就是一个语法糖吗？为什么能争论 8 年？&lt;/p&gt;
+&lt;p&gt;这里涉及一个根本性的张力：&lt;strong&gt;简洁到什么程度会变成晦涩？&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Go 的简洁不是偶然的。&lt;strong&gt;每一个语法特性的加入都有真实的代价&lt;/strong&gt;：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;学习成本&lt;/strong&gt;：新开发者需要理解的语法规则 +1&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;维护成本&lt;/strong&gt;：语言规范需要覆盖的边界情况 +N&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;工具成本&lt;/strong&gt;：编译器、IDE、静态分析工具都要适配&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;让我用一个具体的例子来说明这个张力。Go 1.23 引入了迭代器（iterator），这是泛型之后最重要的特性之一。看看下面这段代码：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;6
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;7
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;8
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// 现在的 Go（真实可运行代码）&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;k&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;v&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;k&#34;&gt;range&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;slices&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Sorted&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;yield&lt;/span&gt; &lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;int&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;bool&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;k&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;v&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;k&#34;&gt;range&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;nf&#34;&gt;yield&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;k&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;v&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;})&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;k&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;v&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;如果引入短函数字面量，可以写成：&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;2
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;3
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;4
+&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;5
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;k&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;v&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;k&#34;&gt;range&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;slices&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Sorted&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;fn&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;yield&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;k&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;v&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;k&#34;&gt;range&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;m&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;yield&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;k&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;v&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;})&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;k&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;v&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;第二种更短。&lt;strong&gt;但对刚入门的开发者来说，它更清晰吗？&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Go 社区的核心分歧就在这里：一派认为&lt;strong&gt;简洁本身就是清晰&lt;/strong&gt;，另一派认为&lt;strong&gt;显式才是 Go 的灵魂&lt;/strong&gt;。&lt;/p&gt;
+&lt;h2 id=&#34;接下来会怎样&#34;&gt;接下来会怎样
+&lt;/h2&gt;&lt;p&gt;截至 2026 年初，该提案尚未正式接受，但&lt;strong&gt;反对派已经输掉了核心争论&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;泛型 + 迭代器 + 函数式模式的组合，让&amp;quot;啰嗦的函数字面量&amp;quot;成为真实的人体工学问题。现在的问题不是&lt;strong&gt;要不要&lt;/strong&gt;解决，而是&lt;strong&gt;怎么&lt;/strong&gt;解决。&lt;/p&gt;
+&lt;p&gt;如果 Go 1.27 带着短函数字面量发布，这将是继泛型以来最重要的语法变化。&lt;strong&gt;八年的争论，也许就浓缩在几个字符里。&lt;/strong&gt;&lt;/p&gt;
+&lt;h2 id=&#34;总结&#34;&gt;总结
+&lt;/h2&gt;&lt;ol&gt;
+&lt;li&gt;Issue #21498 自 2017 年开放，900+ 条评论，Go 史上最长语法辩论&lt;/li&gt;
+&lt;li&gt;核心问题：编译器能推断类型时，Go 仍然强制显式标注&lt;/li&gt;
+&lt;li&gt;社区正在向 &lt;code&gt;fn(params)&lt;/code&gt; 或 &lt;code&gt;\(params)&lt;/code&gt; 收敛&lt;/li&gt;
+&lt;li&gt;Go 团队的约束：简洁不能以牺牲可读性为代价&lt;/li&gt;
+&lt;li&gt;正式提案可能在 2026 年落地，持续关注 issue #21498&lt;/li&gt;
+&lt;/ol&gt;
+&lt;hr&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/go-%E7%9A%84-lambda-%E4%B9%8B%E4%BA%89%E4%B8%80%E4%B8%AA%E6%8F%90%E6%A1%88%E4%BA%89%E8%AE%BA%E4%BA%86-8-%E5%B9%B4/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;本文长期链接&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;如果您觉得我的博客对你有帮助，请通过 &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RSS&lt;/a&gt;订阅我。&lt;/li&gt;
+&lt;li&gt;或者在&lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;X&lt;/a&gt;上关注我。&lt;/li&gt;
+&lt;li&gt;如果您有&lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt;账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+        </item>
+        <item>
         <title>为什么你的 AI Agent 总在遗忘：一套面向个人用户的实用记忆架构</title>
         <link>https://huizhou92.com/zh-cn/p/%E4%B8%BA%E4%BB%80%E4%B9%88%E4%BD%A0%E7%9A%84-ai-agent-%E6%80%BB%E5%9C%A8%E9%81%97%E5%BF%98%E4%B8%80%E5%A5%97%E9%9D%A2%E5%90%91%E4%B8%AA%E4%BA%BA%E7%94%A8%E6%88%B7%E7%9A%84%E5%AE%9E%E7%94%A8%E8%AE%B0%E5%BF%86%E6%9E%B6%E6%9E%84/</link>
         <pubDate>Mon, 02 Mar 2026 23:01:20 +0800</pubDate>
@@ -1109,209 +1282,6 @@
 </description>
         </item>
         <item>
-        <title>Go 官方再谈错误处理：新语法为何迟迟无法落地？</title>
-        <link>https://huizhou92.com/zh-cn/p/go-%E5%AE%98%E6%96%B9%E5%86%8D%E8%B0%88%E9%94%99%E8%AF%AF%E5%A4%84%E7%90%86%E6%96%B0%E8%AF%AD%E6%B3%95%E4%B8%BA%E4%BD%95%E8%BF%9F%E8%BF%9F%E6%97%A0%E6%B3%95%E8%90%BD%E5%9C%B0/</link>
-        <pubDate>Wed, 04 Jun 2025 20:14:24 +0800</pubDate>
-        
-        <guid>https://huizhou92.com/zh-cn/p/go-%E5%AE%98%E6%96%B9%E5%86%8D%E8%B0%88%E9%94%99%E8%AF%AF%E5%A4%84%E7%90%86%E6%96%B0%E8%AF%AD%E6%B3%95%E4%B8%BA%E4%BD%95%E8%BF%9F%E8%BF%9F%E6%97%A0%E6%B3%95%E8%90%BD%E5%9C%B0/</guid>
-        <description>&lt;p&gt;&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/06/0d71cfc56d9aec68cc85fd38ca37e3a7.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-		alt=&#34;Pasted image 20250605093005&#34;
-	
-	
-&gt;&lt;/p&gt;
-&lt;h1 id=&#34;go-官方再谈错误处理新语法为何迟迟无法落地&#34;&gt;Go 官方再谈错误处理：新语法为何迟迟无法落地？
-&lt;/h1&gt;&lt;p&gt;近日，Go 官方博客发布了一篇名为《&lt;a class=&#34;link&#34; href=&#34;https://go.dev/blog/error-syntax&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;On | No syntactic support for error handling&lt;/a&gt;》的文章。这篇文章没有带来期待中的语法突破，反而再次回顾了 Go 语言过去在错误处理语法上多次尝试的失败经验。&lt;br&gt;
-Go 团队为什么发表这么一篇文章？&lt;/p&gt;
-&lt;h2 id=&#34;为什么-go-团队反复探讨错误处理&#34;&gt;为什么 Go 团队反复探讨“错误处理”？
-&lt;/h2&gt;&lt;p&gt;自诞生以来，Go 语言以简洁明了著称，但却始终背负着一个无法回避的问题：错误处理语法过于冗长。&lt;br&gt;
-我们熟悉的 Go 错误处理通常长这样：&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
-&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt; 1
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 2
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 3
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 4
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 5
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 6
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 7
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 8
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt; 9
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;10
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;11
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;12
-&lt;/span&gt;&lt;span class=&#34;lnt&#34;&gt;13
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
-&lt;td class=&#34;lntd&#34;&gt;
-&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;s&#34;&gt;``&lt;/span&gt;&lt;span class=&#34;err&#34;&gt;`&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;Go&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;kd&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;printSum&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;a&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;b&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;kt&#34;&gt;error&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;x&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;err&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;strconv&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Atoi&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;a&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;err&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;!=&lt;/span&gt; &lt;span class=&#34;kc&#34;&gt;nil&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;err&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;y&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;err&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;:=&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;strconv&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Atoi&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;b&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;err&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;!=&lt;/span&gt; &lt;span class=&#34;kc&#34;&gt;nil&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;        &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;err&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;fmt&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nf&#34;&gt;Println&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;result:&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;x&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;+&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;y&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;kc&#34;&gt;nil&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
-&lt;/div&gt;
-&lt;/div&gt;&lt;p&gt;反复出现的 &lt;code&gt;if err != nil&lt;/code&gt; 显得单调乏味，代码中大量的错误处理重复模式经常被批评为“&lt;strong&gt;机械且冗余&lt;/strong&gt;”。因此，过去数年，Go 团队多次尝试设计更为简洁的新语法，但最终都未能成功落地。&lt;/p&gt;
-&lt;h2 id=&#34;曾经尝试却未成功的那些提案&#34;&gt;曾经尝试却未成功的那些提案
-&lt;/h2&gt;&lt;p&gt;Go 团队在过去提出了几种备受关注但最终放弃的方案：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;2018年：&lt;a class=&#34;link&#34; href=&#34;https://go.googlesource.com/proposal/&amp;#43;/master/design/go2draft-error-handling.md&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;&lt;code&gt;check&lt;/code&gt; 与 &lt;code&gt;handle&lt;/code&gt;&lt;/a&gt; 提案&lt;/strong&gt;
-&lt;ul&gt;
-&lt;li&gt;尝试用新关键字简化错误传播，但社区担忧复杂度增加，被否决。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;2019年：&lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/32437&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;&lt;code&gt;try&lt;/code&gt;&lt;/a&gt; 提案&lt;/strong&gt;
-&lt;ul&gt;
-&lt;li&gt;引入内置函数 &lt;code&gt;try&lt;/code&gt;，期望简化语法。但社区认为该方案过于隐式，破坏了代码的明确性，也被搁置。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;2024 年：？&lt;br&gt;
-Ian Lance Taylor 参考 Rust 的实现提出了 &lt;a class=&#34;link&#34; href=&#34;https://go.dev/issue/71203&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;“使用 &lt;code&gt;?&lt;/code&gt; ”减少错误处理样板&lt;/a&gt; 也遭遇到了大量的反对意见，  我也水了一篇博客&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;这些尝试的失败不仅仅是技术上的，更体现了 Go 社区一种特殊的文化和理念——&lt;strong&gt;明确胜于隐式&lt;/strong&gt;。&lt;/p&gt;
-&lt;h2 id=&#34;真正的动机是什么&#34;&gt;真正的动机是什么？
-&lt;/h2&gt;&lt;p&gt;细读这篇博客，我们会发现 Go 团队并不是单纯地“回忆过去”，而是在认真回应社区持续发酵的讨论：&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;究竟有没有必要为错误处理引入新语法？&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;文章的字里行间传递了一个关键的讯号：&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;“Go 社区对于新语法的需求，并非简单的‘yes or no’，而是深入涉及到语言设计哲学和社区价值观的问题。”&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;换句话说，Go 团队的动机并不是要立即给出一个新提案，而是希望借此引导社区回到初心，认真审视“我们真正需要什么样的语言设计？”&lt;/p&gt;
-&lt;h2 id=&#34;明确胜于隐式go-社区无法放弃的原则&#34;&gt;“明确胜于隐式”：Go 社区无法放弃的原则
-&lt;/h2&gt;&lt;p&gt;Go 语言的成功，正是因为其清晰且明确的设计哲学。任何新语法都必须经过社区的严格审视：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;新语法能否保持明确性？&lt;/li&gt;
-&lt;li&gt;新语法能否带来足够的收益，值得牺牲现有的简单性？&lt;/li&gt;
-&lt;li&gt;新语法是否有可能带来其他负面影响？&lt;br&gt;
-在这种原则下，每个提案都难免面临严格审视和质疑。这也是过去的尝试频频受挫的根本原因。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id=&#34;五未来的路在哪里&#34;&gt;五、未来的路在哪里？
-&lt;/h2&gt;&lt;p&gt;这篇官方博客所释放的另一个信息是：&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Go 团队已经接受了短期内不会推出新错误处理语法的现实。&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;他们似乎在暗示：错误处理的语法简化并非完全不可行，但至少现在还未找到完美的答案，社区需要更多时间的探索、实践与反思。&lt;br&gt;
-因此，未来很长一段时间内，Go 程序员仍需忍受现有模式的重复。但同时也意味着，Go 语言暂时保持了它清晰、直接、没有魔法的风格。&lt;/p&gt;
-&lt;p&gt;Go 团队主动发布这样一篇文章，看似回顾历史、承认失败，实则希望引发社区更深层次的讨论：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;我们究竟希望 Go 变成什么样子？&lt;/strong&gt;&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;为了简洁，我们愿意牺牲多少明确性？&lt;/strong&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;无论你是否赞同当前的处理方式，这样的反思和讨论对于语言生态的健康发展，都是极其重要的。&lt;br&gt;
-也许下一次提案会再次失败，也许未来某一天，社区终究找到满意的平衡点。但至少，我们可以肯定的是：&lt;br&gt;
-&lt;strong&gt;Go 社区一直在探索，一直在反思，也一直在进步。&lt;/strong&gt;&lt;br&gt;
-&lt;em&gt;原文链接：&lt;a class=&#34;link&#34; href=&#34;https://go.dev/blog/error-syntax&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;https://go.dev/blog/error-syntax&lt;/a&gt;&lt;/em&gt;&lt;/p&gt;
-&lt;hr&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/go-%E5%AE%98%E6%96%B9%E5%86%8D%E8%B0%88%E9%94%99%E8%AF%AF%E5%A4%84%E7%90%86%E6%96%B0%E8%AF%AD%E6%B3%95%E4%B8%BA%E4%BD%95%E8%BF%9F%E8%BF%9F%E6%97%A0%E6%B3%95%E8%90%BD%E5%9C%B0/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;本文长期链接&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;如果您觉得我的博客对你有帮助，请通过 &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;RSS&lt;/a&gt;订阅我。&lt;/li&gt;
-&lt;li&gt;或者在&lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;X&lt;/a&gt;上关注我。&lt;/li&gt;
-&lt;li&gt;如果您有&lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Medium&lt;/a&gt;账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。&lt;/li&gt;
-&lt;/ul&gt;
-</description>
-        </item>
-        <item>
-        <title>Go 的 map 为什么变慢了?.zh-cn</title>
-        <link>https://huizhou92.com/zh-cn/p/go-%E7%9A%84-map-%E4%B8%BA%E4%BB%80%E4%B9%88%E5%8F%98%E6%85%A2%E4%BA%86.zh-cn/</link>
-        <pubDate>Tue, 20 May 2025 22:18:57 +0800</pubDate>
-        
-        <guid>https://huizhou92.com/zh-cn/p/go-%E7%9A%84-map-%E4%B8%BA%E4%BB%80%E4%B9%88%E5%8F%98%E6%85%A2%E4%BA%86.zh-cn/</guid>
-        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2025/05/a7748f1ab7e01c49c0f35f9591f6cfd3.png" alt="Featured image of post Go 的 map 为什么变慢了?.zh-cn" /&gt;&lt;blockquote&gt;
-&lt;p&gt;这篇文章解释了为什么在 Go 1.24 版本中，你的程序可能因为 map 变慢了，以及 Go 团队是怎么计划修复这个问题的。&lt;/p&gt;&lt;/blockquote&gt;
-&lt;p&gt;Golang 1.24 中最吸引我的功能就是 &lt;strong&gt;SwissMap&lt;/strong&gt;，在以前的非官方实现中，有些场景能够提升50% 的性能，官方的实现中，也有不小的性能提升。&lt;br&gt;
-详情参考我以前的文章:&lt;br&gt;
-&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/swisstable-%E4%BC%9A%E6%88%90%E4%B8%BA-golang-std-map%E5%98%9B/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;SwissTable 会成为 Golang std map嘛？&lt;/a&gt;&lt;br&gt;
-&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/go-124-%E7%9A%84-swiss-map%E5%85%BC%E5%AE%B9%E6%80%A7%E6%89%A9%E5%B1%95%E5%93%88%E5%B8%8C%E4%B8%8E%E9%81%97%E7%95%99%E9%97%AE%E9%A2%98/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Go 1.24 的 Swiss Map：兼容性、扩展哈希与遗留问题&lt;/a&gt;&lt;/p&gt;
-&lt;!-- more--&gt;
-&lt;p&gt;但是 如果你在使用 Go 1.24 时可能会发现&lt;strong&gt;SwissMap&lt;/strong&gt; 没有达到预期的表现，甚至程序运行变慢了，特别是在 Map很大的时候，这不是你的幻觉，确实存在这个问题。&lt;br&gt;
-&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/05/4b861f761a7ffbfbd6d6a5cad8010276.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-		alt=&#34;Pasted image 20250520225045&#34;
-	
-	
-&gt;&lt;br&gt;
-&lt;a class=&#34;link&#34; href=&#34;https://x.com/valyala/status/1879988053076504761&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;https://x.com/valyala/status/1879988053076504761&lt;/a&gt;&lt;/p&gt;
-&lt;p&gt;这个问题记录在 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/70835&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Issue #70835&lt;/a&gt; 中，开发者们正在努力解决它。&lt;/p&gt;
-&lt;h2 id=&#34;问题出在哪&#34;&gt;问题出在哪？
-&lt;/h2&gt;&lt;p&gt;Go 的 map 在新版中使用了Swiss Table，它在小 map 和高并发的场景下非常快。但是当 map 很大、数据又不在 CPU 缓存里（也就是说，数据是“冷”的），就会变慢。&lt;/p&gt;
-&lt;p&gt;为什么会这样呢？&lt;/p&gt;
-&lt;p&gt;因为 SwissMap 的内部结构比较复杂，它会分几层来存储数据：&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;首先是一个 map 的头部结构&lt;/li&gt;
-&lt;li&gt;它指向一个目录，这个目录是多个 table 的指针组成的列表&lt;/li&gt;
-&lt;li&gt;每个 table 里面有控制信息、key 和 value&lt;br&gt;
-&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/01/784e3f6a0ff90601480a2da80f3cb9d0.png&#34;
-	
-	
-	
-	loading=&#34;lazy&#34;
-	
-	
-&gt;&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;当你查找一个 key 的时候，可能需要进行 &lt;strong&gt;4 到 6 次跳转&lt;/strong&gt;，每一次都可能遇到缓存未命中。这样就会导致 CPU 忙着从内存取数据，速度就慢了。&lt;/p&gt;
-&lt;p&gt;像 Prometheus 这样的大型项目就发现了这个问题。他们升级到 Go 1.24 后，CPU 使用率上升了很多，经调查发现就是因为 map 的查找变慢了。&lt;/p&gt;
-&lt;h2 id=&#34;是怎么发现的&#34;&gt;是怎么发现的？
-&lt;/h2&gt;&lt;p&gt;问题并不是在测试用例里发现的，而是在真实的线上场景中出现的。&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;使用了很大的 map（比如几兆字节大小）&lt;/li&gt;
-&lt;li&gt;经常读取 map 里的数据&lt;/li&gt;
-&lt;li&gt;数据不在 CPU 的高速缓存里&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;Go 团队的工程师 Michael Pratt 通过做很多测试，找到了 map 访问变慢的原因，并在 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/70835&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Issue #70835&lt;/a&gt; 中详细说明。&lt;/p&gt;
-&lt;h2 id=&#34;怎么修&#34;&gt;怎么修？
-&lt;/h2&gt;&lt;p&gt;为了让 map 更快，他们计划做以下几件事：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;简化目录结构&lt;/strong&gt;：把原来存指针的列表改成直接存结构，减少一次跳转&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;控制信息更紧凑&lt;/strong&gt;：把控制信息安排得更集中，这样更容易被 CPU 一次加载&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;分离 key 和 value&lt;/strong&gt;：改成“key-key-key + value-value-value”的结构，这样可以优化加载顺序&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;对齐控制字节&lt;/strong&gt;：把控制信息按照 CPU 缓存对齐，减少未命中&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;这些改动并不简单，因为会影响到 Go 的运行时核心：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;要确保垃圾回收能正常工作&lt;/li&gt;
-&lt;li&gt;map 扩容和缩容逻辑要更新&lt;/li&gt;
-&lt;li&gt;要确保对小 map 的性能没有影响&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id=&#34;哪些地方在讨论这个&#34;&gt;哪些地方在讨论这个？
-&lt;/h2&gt;&lt;p&gt;这个问题被广泛讨论和跟踪，可以通过&lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/70835&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Issue #70835&lt;/a&gt;  了解更多的 细节。 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/milestone/122&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Go Release Dashboard&lt;/a&gt; 中已经标记这个问题将会在 Go1.25 中解决&lt;br&gt;
-此外 &lt;a class=&#34;link&#34; href=&#34;https://github.com/golang/go/issues/71368&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
-    &gt;Issue #71368&lt;/a&gt; 中也讨论了 另一个与内存布局的问题。&lt;/p&gt;
-&lt;h2 id=&#34;总结&#34;&gt;总结
-&lt;/h2&gt;&lt;p&gt;Go 团队一直在努力让语言运行得更快更稳。SwissMap 是个好改进，但它也带来了新挑战，比如这次的冷缓存性能下降。&lt;br&gt;
-Issue #70835 展示了 Go 是如何通过社区反馈不断进步的。感谢像 Prometheus 这样的开源项目，他们的报告帮助 Go 做得更好。&lt;br&gt;
-如果一切顺利，Go 1.25 就能把速度和稳定性都带回来。&lt;br&gt;
-我们一起期待吧！&lt;/p&gt;
-</description>
-        </item>
-        <item>
         <title>Green Tea GC: Golang 的 ZGC？</title>
         <link>https://huizhou92.com/zh-cn/p/green-tea-gc-golang-%E7%9A%84-zgc/</link>
         <pubDate>Mon, 05 May 2025 16:30:26 +0800</pubDate>
@@ -1878,6 +1848,123 @@ Twitch 工程团队曾报告：即便在中小堆内存下（&amp;lt;450 MiB�
 &lt;hr&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/%E8%AF%91grpc%E5%A5%BD%E7%9A%84%E9%83%A8%E5%88%86/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;本文长期链接&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;如果您觉得我的博客对你有帮助，请通过 &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;RSS&lt;/a&gt;订阅我。&lt;/li&gt;
+&lt;li&gt;或者在&lt;a class=&#34;link&#34; href=&#34;https://x.com/@piaopiaopig&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;X&lt;/a&gt;上关注我。&lt;/li&gt;
+&lt;li&gt;如果您有&lt;a class=&#34;link&#34; href=&#34;https://medium.huizhou92.com/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Medium&lt;/a&gt;账号，能给我个关注嘛？我的文章第一时间都会发布在Medium。&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+        </item>
+        <item>
+        <title>网页图标（Icon）那些事</title>
+        <link>https://huizhou92.com/zh-cn/p/%E7%BD%91%E9%A1%B5%E5%9B%BE%E6%A0%87icon%E9%82%A3%E4%BA%9B%E4%BA%8B/</link>
+        <pubDate>Tue, 18 Feb 2025 11:30:38 +0800</pubDate>
+        
+        <guid>https://huizhou92.com/zh-cn/p/%E7%BD%91%E9%A1%B5%E5%9B%BE%E6%A0%87icon%E9%82%A3%E4%BA%9B%E4%BA%8B/</guid>
+        <description>&lt;img src="https://images.hxzhouh.com/blog-images/2025/02/65e64661a046efca8dcbc39b98ae2b91.png" alt="Featured image of post 网页图标（Icon）那些事" /&gt;&lt;p&gt;昨天&lt;a class=&#34;link&#34; href=&#34;https://taoshu.in/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;涛叔的博客&lt;/a&gt; 发布了一篇关于友情链接的博客，我毛遂自荐向涛叔请求添加友情链接。涛叔很快回应了我，并且在邮件中友好的提醒我，可以给博客添加一个&lt;code&gt;favicon(icon)&lt;/code&gt;，这样方便RSS订阅用户快速的区分博客。当时我心想 &lt;code&gt;favicon&lt;/code&gt; 是什么？（后端程序员伤不起）&lt;/p&gt;
+&lt;!-- more--&gt;
+&lt;p&gt;后面我咨询了DeepSeek:&lt;br&gt;
+在网页设计中，图标（icon）是一个小而重要的元素。它不仅帮助用户快速识别网站，还能提升用户体验。&lt;/p&gt;
+&lt;h3 id=&#34;常见使用场景&#34;&gt;常见使用场景：
+&lt;/h3&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;浏览器标签页&lt;/strong&gt;：显示在网页标题旁边。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;书签栏&lt;/strong&gt;：用户收藏网页时显示。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;主屏幕图标&lt;/strong&gt;：移动设备将网页添加到主屏幕时显示。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;PWA（渐进式网页应用）&lt;/strong&gt;：作为应用图标使用。&lt;br&gt;
+比如这样&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/6df56f22e8fad0c4fe55bffcab3ed090.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;在浏览器标签页展示图标&#34;
+	
+	
+&gt;&lt;br&gt;
+在浏览器标签页展示图标。&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/c2530b4f9491c01730c710dcd24a325f.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;在书签栏显示图标。&#34;
+	
+	
+&gt;&lt;br&gt;
+在书签栏显示图标。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;甚至在安卓手机 上，使用chrome浏览器的将网页添加到主屏幕功能。可以显示icon图标。&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/861e9e820063fe4d7bbff32e9f8de05b.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;使用 Android Chrome 将网页添加到手机主屏幕&#34;
+	
+	
+&gt;&lt;/p&gt;
+&lt;h2 id=&#34;如何设置&#34;&gt;如何设置
+&lt;/h2&gt;&lt;p&gt;设置icon 最简单的方式是在 网页的 &lt;code&gt;&amp;lt;head&amp;gt;&lt;/code&gt; 中添加 一行。&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;div class=&#34;chroma&#34;&gt;
+&lt;table class=&#34;lntable&#34;&gt;&lt;tr&gt;&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code&gt;&lt;span class=&#34;lnt&#34;&gt;1
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class=&#34;lntd&#34;&gt;
+&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-html&#34; data-lang=&#34;html&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;nt&#34;&gt;link&lt;/span&gt; &lt;span class=&#34;na&#34;&gt;rel&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;icon&amp;#34;&lt;/span&gt; &lt;span class=&#34;na&#34;&gt;type&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;image/png&amp;#34;&lt;/span&gt; &lt;span class=&#34;na&#34;&gt;href&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;/favicon.png&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;&amp;gt;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;如果您是使用 hugo 或者其他工具的话，可能会有favicon的设置。&lt;br&gt;
+一些大型网站 比如 &lt;code&gt;google.com&lt;/code&gt;、 &lt;code&gt;apple.com&lt;/code&gt; 它们可能需要考虑的问题更多，设置也并不完全一样。&lt;/p&gt;
+&lt;h2 id=&#34;一些需要注意的地方&#34;&gt;一些需要注意的地方
+&lt;/h2&gt;&lt;p&gt;为了优化使用体验，在各个场景下都达到最佳的显示效果， icon的的尺寸也是有说法。&lt;/p&gt;
+&lt;h3 id=&#34;常见尺寸&#34;&gt;常见尺寸：
+&lt;/h3&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;16x16&lt;/strong&gt;：浏览器标签页图标。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;32x32&lt;/strong&gt;：书签栏图标。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;64x64&lt;/strong&gt;：高分辨率屏幕图标。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;180x180&lt;/strong&gt;：iOS 设备主屏幕图标。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;192x192&lt;/strong&gt; 和 &lt;strong&gt;512x512&lt;/strong&gt;：PWA 图标。&lt;br&gt;
+所以我们在一些网站上会看到设置多个icon 的现象。比如 &lt;a class=&#34;link&#34; href=&#34;https://gohugo.io/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
+    &gt;Hugo官网 &lt;/a&gt;&lt;br&gt;
+&lt;img src=&#34;https://images.hxzhouh.com/blog-images/2025/02/4d83d2d0666f924072095b981ba2ff0e.png&#34;
+	
+	
+	
+	loading=&#34;lazy&#34;
+	
+		alt=&#34;Hugo 官网设置了两个 icon&#34;
+	
+	
+&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;现代浏览器都支持根据不同的场景，屏幕的PPI 选择不同尺寸的图标，尽量做到所有场景下都达到最好的显示效果。&lt;/p&gt;
+&lt;h3 id=&#34;图标格式的选择&#34;&gt;图标格式的选择
+&lt;/h3&gt;&lt;p&gt;icon 可以使用不同的图片格式，通过 type指定即可，常见的图标格式包括：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;ICO&lt;/strong&gt;：传统格式，兼容性好，支持多尺寸。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;PNG&lt;/strong&gt;：现代格式，支持透明背景，适合高分辨率屏幕。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;SVG&lt;/strong&gt;：矢量格式，无限缩放不失真，适合响应式设计。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id=&#34;多合一-icon&#34;&gt;多合一 Icon
+&lt;/h3&gt;&lt;p&gt;如果觉得需要维护多个 icon 文件 比较麻烦的话，可以使用多合一icon（Multi-Resolution ICO 或 Multi-Size ICO）是一种包含多种尺寸和色深的图标文件。允许在一个文件中存储多个位图（BMP 或 PNG 格式）。每个位图可以具有不同的尺寸。&lt;br&gt;
+ICO 文件包含：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;文件头&lt;/strong&gt;（Header）：定义 ICO 文件类型及包含的图像数量。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;图像目录&lt;/strong&gt;（Image Directory）：描述每个图像的尺寸、色深、偏移量等信息。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;图像数据&lt;/strong&gt;（Image Data）：实际存储图像像素数据。&lt;br&gt;
+浏览器需要一个图标时，它会从 ICO 文件中选择最合适的尺寸。缺点就是包含多个尺寸的 &lt;code&gt;.ico&lt;/code&gt; 文件可能会比单个尺寸的文件大。&lt;br&gt;
+本篇文章没有继续深挖，比如 Android Chrome 独有的 &lt;code&gt;manifest.json&lt;/code&gt; 苹果设备 &lt;code&gt;apple-mobile-web-app-capable&lt;/code&gt; 等。 感兴趣的朋友可以继续深挖。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/zh-cn/p/%E7%BD%91%E9%A1%B5%E5%9B%BE%E6%A0%87icon%E9%82%A3%E4%BA%9B%E4%BA%8B/&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;本文长期链接&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;如果您觉得我的博客对你有帮助，请通过 &lt;a class=&#34;link&#34; href=&#34;https://huizhou92.com/index.xml&#34;  target=&#34;_blank&#34; rel=&#34;noopener&#34;
     &gt;RSS&lt;/a&gt;订阅我。&lt;/li&gt;
