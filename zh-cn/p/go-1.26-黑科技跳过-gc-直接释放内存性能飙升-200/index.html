@@ -9,7 +9,7 @@
 
 <link rel='canonical' href='https://huizhou92.com/zh-cn/p/go-1.26-%E9%BB%91%E7%A7%91%E6%8A%80%E8%B7%B3%E8%BF%87-gc-%E7%9B%B4%E6%8E%A5%E9%87%8A%E6%94%BE%E5%86%85%E5%AD%98%E6%80%A7%E8%83%BD%E9%A3%99%E5%8D%87-200/'>
 
-<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css">
+<link rel="stylesheet" href="/scss/style.min.20b21821b24a8fcaadba2abf9fa81ceb2bf498798e28142c62203bfa694fbc02.css">
 <meta property='og:title' content="Go 1.26 黑科技：跳过 GC 直接释放内存，性能飙升 200%">
 <meta property='og:description' content=" 最近，Go 语言社区围绕一个全新的内存管理提案展开了激烈讨论：在不依赖垃圾回收 (GC) 的情况下直接释放并重用内存。#74299 引入了\u00a0runtime.free\u00a0及相关机制，试图让编译器和标准库在特定场景下安全地跳过 GC，对短命的内存对象进行即时回收利用github.comgo.googlesource.com。此举被认为可能为 Go 带来一次性能上的革命：初步原型显示，在\u00a0strings.Builder\u00a0这样的场景中，利用该机制性能提升可达 2 倍github.com。本文将回顾 Go 内存管理领域从\u00a0arena\u00a0实验到\u00a0memory region\u00a0构想，再到\u00a0runtime.free\u00a0提案的探索之旅，并剖析这一新提案的技术细节、产生的意义、演化过程，以及对普通开发者的影响。\nruntime.free 将在 Golang1.26 中 以 GOEXPERIMENT 的方式提供实验性支持。\n背景：一场关于“手动”内存管理的漫长探索 自 Go 语言诞生以来，自动垃圾回收（GC）就是其核心特性之一。然而在对性能极度敏感的场景（如高吞吐的服务端程序）中，GC 带来的开销始终让开发者有所顾虑。为了进一步降低 GC 负担，Go 团队近年开始了一系列关于“手动”或“半自动”内存管理的探索尝试。\nArena 实验 —— 强大却难以融合 Arena\u00a0实验#51317是 Go 团队在 2022 年迈出的大胆一步。它引入了一个新的\u00a0arena\u00a0包和\u00a0Arena\u00a0类型，允许开发者将一组生命周期相同的对象分配到一个独立的内存区域中，并在不需要时一次性释放整个区域 这一做法类似其他语言的\u00a0region-based memory management\u00a0思想：大量对象集中分配、集中释放，从而降低常规分配/回收的成本。\nArena 的优点在某些场景下非常显著：所有对象统一释放，大幅减少了 GC 扫描和回收的工作量，谷歌内部测试显示对大型应用最高可节省约15%的 CPU 和内存开销。但是，Arena 随即暴露出严重的问题——API 侵入性太强。为了使用 Arena，几乎每个相关函数都不得不增加一个\u00a0arena.Arena\u00a0参数，这导致这种用法具有“病毒式”传播效应，破坏了 Go 一贯强调的简洁与可组合性。另外，Arena 在与 Go 现有特性（如隐式接口、逃逸分析）配合时也出现了诸多不兼容之处。最终，由于 API 难以融入生态，Go 官方在 2023 年初宣布\u00a0无限期搁置 Arena 提案，并明确表示\u00a0GOEXPERIMENT=arena\u00a0仅供实验、不建议在生产中使用。\n">
 <meta property='og:url' content='https://huizhou92.com/zh-cn/p/go-1.26-%E9%BB%91%E7%A7%91%E6%8A%80%E8%B7%B3%E8%BF%87-gc-%E7%9B%B4%E6%8E%A5%E9%87%8A%E6%94%BE%E5%86%85%E5%AD%98%E6%80%A7%E8%83%BD%E9%A3%99%E5%8D%87-200/'>
@@ -24,7 +24,7 @@
       <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
       <script>
         var doNotTrack = false;
-        if ( false ) {
+        if ( true ) {
           var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
           var doNotTrack = (dnt == "1" || dnt == "yes");
         }
@@ -85,7 +85,7 @@
                     
                     
                         
-                        <img src="/img/avatar_hu_e52293b5d2b8c5f7.jpeg" width="300"
+                        <img src="/img/avatar_hu_2886835e4912e3b9.jpeg" width="300"
                             height="300" class="site-logo" loading="lazy" alt="Avatar">
                     
                 
@@ -483,7 +483,8 @@
     >go.googlesource.com</a>。此举被认为可能为 Go 带来一次<strong>性能上的革命</strong>：初步原型显示，在 <code>strings.Builder</code> 这样的场景中，利用该机制<strong>性能提升可达 2 倍</strong><a class="link" href="https://github.com/golang/go/issues/74299#:~:text=%28In%20short%2C%20currently%20,more%20allocations%20per%20benchmark%20loop"  target="_blank" rel="noopener"
     >github.com</a>。本文将回顾 Go 内存管理领域从 <em>arena</em> 实验到 <em>memory region</em> 构想，再到 <em>runtime.free</em> 提案的探索之旅，并剖析这一新提案的技术细节、产生的意义、演化过程，以及对普通开发者的影响。</p>
 <blockquote>
-<p>runtime.free 将在 Golang1.26 中 以 GOEXPERIMENT 的方式提供实验性支持。</p></blockquote>
+<p>runtime.free 将在 Golang1.26 中 以 GOEXPERIMENT 的方式提供实验性支持。</p>
+</blockquote>
 <h2 id="背景一场关于手动内存管理的漫长探索">背景：一场关于“手动”内存管理的漫长探索
 </h2><p>自 Go 语言诞生以来，自动垃圾回收（GC）就是其核心特性之一。然而在<strong>对性能极度敏感</strong>的场景（如高吞吐的服务端程序）中，GC 带来的开销始终让开发者有所顾虑。为了进一步降低 GC 负担，Go 团队近年开始了一系列关于“手动”或“半自动”内存管理的探索尝试。</p>
 <h3 id="arena-实验--强大却难以融合">Arena 实验 —— 强大却难以融合
@@ -546,20 +547,20 @@
 </span><span class="lnt">13
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// 开发者原始代码</span>
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">f</span><span class="p">()</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">buf</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">([]</span><span class="kt">byte</span><span class="p">,</span> <span class="nx">size</span><span class="p">)</span>  <span class="c1">// 可能逃逸到堆上</span>
-</span></span><span class="line"><span class="cl">    <span class="c1">// ... 使用 buf</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span> 
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="c1">// 编译器优化后的等效代码（概念示意）</span>
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">f</span><span class="p">()</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">freeables</span> <span class="p">[]</span><span class="nx">unsafe</span><span class="p">.</span><span class="nx">Pointer</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">buf</span> <span class="o">:=</span> <span class="nx">runtime</span><span class="p">.</span><span class="nf">makeslicetracked64</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">freeables</span><span class="p">)</span>  <span class="c1">// 分配受跟踪的 slice</span>
-</span></span><span class="line"><span class="cl">    <span class="c1">// ... 使用 buf</span>
-</span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nx">runtime</span><span class="p">.</span><span class="nf">freeTracked</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">freeables</span><span class="p">)</span>  <span class="c1">// 函数退出时释放 buf 对应的内存</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// 开发者原始代码</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">f</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">buf</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nb">make</span><span class="p">([]</span><span class="kt">byte</span><span class="p">,</span><span class="w"> </span><span class="nx">size</span><span class="p">)</span><span class="w">  </span><span class="c1">// 可能逃逸到堆上</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// ... 使用 buf</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w"> 
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="c1">// 编译器优化后的等效代码（概念示意）</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">f</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="nx">freeables</span><span class="w"> </span><span class="p">[]</span><span class="nx">unsafe</span><span class="p">.</span><span class="nx">Pointer</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">buf</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">runtime</span><span class="p">.</span><span class="nf">makeslicetracked64</span><span class="p">(</span><span class="o">...</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">freeables</span><span class="p">)</span><span class="w">  </span><span class="c1">// 分配受跟踪的 slice</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// ... 使用 buf</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">defer</span><span class="w"> </span><span class="nx">runtime</span><span class="p">.</span><span class="nf">freeTracked</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">freeables</span><span class="p">)</span><span class="w">  </span><span class="c1">// 函数退出时释放 buf 对应的内存</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>经过这种改写，原本可能需要 GC 扫描回收的 <code>buf</code> 内存，将在函数结束时<strong>立即归还</strong>给运行时可用的内存池。因此，未来我们编写的一些看似会产生大量堆分配的代码，有望在<strong>不改变任何源码</strong>的情况下，由编译器替我们转换成“零 GC 压力”的高效版本——开发者对此<strong>毫无感知</strong>，但程序性能却因此获益。</p>
 <h3 id="标准库协助释放-runtimefreesized">标准库协助释放 (runtime.freesized)
@@ -658,7 +659,8 @@
                 >
             </script><script>
     window.addEventListener("DOMContentLoaded", () => {
-        renderMathInElement(document.body, {
+	const mainArticleElement = document.querySelector(".main-article");
+        renderMathInElement(mainArticleElement, {
             delimiters: [
                 { left: "$$", right: "$$", display: true },
                 { left: "$", right: "$", display: false },
@@ -668,6 +670,7 @@
             ignoredClasses: ["gist"]
         });})
 </script>
+
     
 </article>
 
@@ -786,7 +789,7 @@
     
     <section class="powerby">
         使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
-        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.30.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
     </section>
     <script src="/js/adblock-detection.js" defer></script>
      
@@ -885,7 +888,7 @@
                 src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
                 
                 >
-            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+            </script><script type="text/javascript" src="/ts/main.1e9a3bafd846ced4c345d084b355fb8c7bae75701c338f8a1f8a82c780137826.js" defer></script>
 <script>
     (function () {
         const customFont = document.createElement('link');

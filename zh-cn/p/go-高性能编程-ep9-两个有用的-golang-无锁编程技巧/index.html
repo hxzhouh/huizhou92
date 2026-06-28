@@ -9,7 +9,7 @@
 
 <link rel='canonical' href='https://huizhou92.com/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8B-ep9-%E4%B8%A4%E4%B8%AA%E6%9C%89%E7%94%A8%E7%9A%84-golang-%E6%97%A0%E9%94%81%E7%BC%96%E7%A8%8B%E6%8A%80%E5%B7%A7/'>
 
-<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css">
+<link rel="stylesheet" href="/scss/style.min.20b21821b24a8fcaadba2abf9fa81ceb2bf498798e28142c62203bfa694fbc02.css">
 <meta property='og:title' content="Go 高性能编程 EP9: 两个有用的 Golang 无锁编程技巧">
 <meta property='og:description' content="对于无锁编程来讲，无锁只是一个表象，编程者设法组织 data+processing，重点在于如何消除 dataracing。而消除 dataracing 而言，传统的并发编程逻辑是采用关键区、排他性锁、读写锁等方式来保护 data 不会因为 processing 而导致错误读或错误写，那么对于无锁编程来说，则是通过消除 data 的共享性，或者消除并发操作 data 等方式来解决问题。\n所以最典型的无锁编程技法包含两个技巧：\nstructure bumper loop\n其他的方法都是相似思路的具体衍生。 这里的“其他的方法”，是指完全不使用锁定或 CAS 的算法设计方案。本文中讨论的是如何设计数据结构及其处理器（算法）来防止加锁，甚至于连 CAS 也去除。\n至于在共享的data上强行消除竞争读写问题的其他无锁方案，例如RingBuffer之类的工具类库，则是完全依赖于具体的 data 实体并在具体的 CPU 上进行设计，基本上是一种很受限的方法，不具备高层次抽象层面的通用性。尽管其具体的设计思路有迹可循，但却不是最佳的选择：一个优秀的 RingBuffer，它的致命之处就在于在单核心的CPU上，或者单颗 vCPU 的 vHost 上可能是无法降级工作的，或者即使能工作也是低效的或者高消费的。所以本文讨论的是更通用的，在任何高级语言（无论其线程、协程支持度如何）于任何 Targets 上都可以通行的无锁编程技法。\nStructure copy Structure copy是一种经典的无锁编程技巧。它的核心思想在于将易变数据交给一个 structure 管理，通常可能起名为 Entry，然后在这个 structure 上展开数据处理过程。如此，由于数据处理过程只会操作其所关联到的 structure，因此这一组数据本身就是非共享的，也就不需要考虑 dataracing 的潜在可能性的。\n1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 type Worker struct { closed int32 // avoid duplicated release rsrc in Close() entries []*Entry } type Entry struct { Count int Data []any } func (w *Worker) New(data ...any) *Entry { e:=&amp;Entry{Data:data} w.entries = append(w.entries, e) return e } func (e *Entry) Run() { // processing e.data } 假设初始化数据 data []any 被提供给 Worker，基于此产生一个 Entry，然后通过 Entry.Run 来处理初始化数据，产生结果，那么上面的示例代码就避免了数据包（Count，Data）的共享问题，因为这个数据包是排他性独立的。\n">
 <meta property='og:url' content='https://huizhou92.com/zh-cn/p/go-%E9%AB%98%E6%80%A7%E8%83%BD%E7%BC%96%E7%A8%8B-ep9-%E4%B8%A4%E4%B8%AA%E6%9C%89%E7%94%A8%E7%9A%84-golang-%E6%97%A0%E9%94%81%E7%BC%96%E7%A8%8B%E6%8A%80%E5%B7%A7/'>
@@ -24,7 +24,7 @@
       <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
       <script>
         var doNotTrack = false;
-        if ( false ) {
+        if ( true ) {
           var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
           var doNotTrack = (dnt == "1" || dnt == "yes");
         }
@@ -85,7 +85,7 @@
                     
                     
                         
-                        <img src="/img/avatar_hu_e52293b5d2b8c5f7.jpeg" width="300"
+                        <img src="/img/avatar_hu_2886835e4912e3b9.jpeg" width="300"
                             height="300" class="site-logo" loading="lazy" alt="Avatar">
                     
                 
@@ -489,7 +489,8 @@
 其他的方法都是相似思路的具体衍生。</li>
 </ol>
 <blockquote>
-<p>这里的“其他的方法”，是指完全不使用锁定或 CAS 的算法设计方案。本文中讨论的是如何设计数据结构及其处理器（算法）来防止加锁，甚至于连 CAS 也去除。</p></blockquote>
+<p>这里的“其他的方法”，是指完全不使用锁定或 CAS 的算法设计方案。本文中讨论的是如何设计数据结构及其处理器（算法）来防止加锁，甚至于连 CAS 也去除。</p>
+</blockquote>
 <p>至于在共享的<code>data</code>上强行消除竞争读写问题的其他无锁方案，例如<code>RingBuffer</code>之类的工具类库，则是完全依赖于具体的 <code>data</code> 实体并在具体的 CPU 上进行设计，基本上是一种很受限的方法，不具备高层次抽象层面的通用性。尽管其具体的设计思路有迹可循，但却不是最佳的选择：一个优秀的  <code>RingBuffer</code>，它的致命之处就在于在单核心的CPU上，或者单颗 vCPU 的 vHost 上可能是无法降级工作的，或者即使能工作也是低效的或者高消费的。所以本文讨论的是更通用的，在任何高级语言（无论其线程、协程支持度如何）于任何 Targets 上都可以通行的无锁编程技法。</p>
 <h2 id="structure-copy">Structure copy
 </h2><p><code>Structure copy</code>是一种经典的无锁编程技巧。它的核心思想在于将易变数据交给一个 structure 管理，通常可能起名为 Entry，然后在这个 structure 上展开数据处理过程。如此，由于数据处理过程只会操作其所关联到的 <code>structure</code>，因此这一组数据本身就是非共享的，也就不需要考虑 <code>dataracing</code> 的潜在可能性的。</p>
@@ -516,26 +517,26 @@
 </span><span class="lnt">19
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Worker</span> <span class="kd">struct</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">  <span class="nx">closed</span> <span class="kt">int32</span> <span class="c1">// avoid duplicated release rsrc in Close()</span>
-</span></span><span class="line"><span class="cl">  <span class="nx">entries</span> <span class="p">[]</span><span class="o">*</span><span class="nx">Entry</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Entry</span> <span class="kd">struct</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">  <span class="nx">Count</span> <span class="kt">int</span>
-</span></span><span class="line"><span class="cl">  <span class="nx">Data</span> <span class="p">[]</span><span class="kt">any</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">w</span> <span class="o">*</span><span class="nx">Worker</span><span class="p">)</span> <span class="nf">New</span><span class="p">(</span><span class="nx">data</span> <span class="o">...</span><span class="kt">any</span><span class="p">)</span> <span class="o">*</span><span class="nx">Entry</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">  <span class="nx">e</span><span class="o">:=&amp;</span><span class="nx">Entry</span><span class="p">{</span><span class="nx">Data</span><span class="p">:</span><span class="nx">data</span><span class="p">}</span>
-</span></span><span class="line"><span class="cl">  <span class="nx">w</span><span class="p">.</span><span class="nx">entries</span> <span class="p">=</span> <span class="nb">append</span><span class="p">(</span><span class="nx">w</span><span class="p">.</span><span class="nx">entries</span><span class="p">,</span> <span class="nx">e</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">  <span class="k">return</span> <span class="nx">e</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">e</span> <span class="o">*</span><span class="nx">Entry</span><span class="p">)</span> <span class="nf">Run</span><span class="p">()</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">  <span class="c1">// processing e.data</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span><span class="w"> </span><span class="nx">Worker</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nx">closed</span><span class="w"> </span><span class="kt">int32</span><span class="w"> </span><span class="c1">// avoid duplicated release rsrc in Close()</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nx">entries</span><span class="w"> </span><span class="p">[]</span><span class="o">*</span><span class="nx">Entry</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">type</span><span class="w"> </span><span class="nx">Entry</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nx">Count</span><span class="w"> </span><span class="kt">int</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nx">Data</span><span class="w"> </span><span class="p">[]</span><span class="kt">any</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">w</span><span class="w"> </span><span class="o">*</span><span class="nx">Worker</span><span class="p">)</span><span class="w"> </span><span class="nf">New</span><span class="p">(</span><span class="nx">data</span><span class="w"> </span><span class="o">...</span><span class="kt">any</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="nx">Entry</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nx">e</span><span class="o">:=&amp;</span><span class="nx">Entry</span><span class="p">{</span><span class="nx">Data</span><span class="p">:</span><span class="nx">data</span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nx">w</span><span class="p">.</span><span class="nx">entries</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nb">append</span><span class="p">(</span><span class="nx">w</span><span class="p">.</span><span class="nx">entries</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">e</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="o">*</span><span class="nx">Entry</span><span class="p">)</span><span class="w"> </span><span class="nf">Run</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="c1">// processing e.data</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>假设初始化数据 <code>data []any</code> 被提供给 Worker，基于此产生一个 <code>Entry</code>，然后通过 <code>Entry.Run</code> 来处理初始化数据，产生结果，那么上面的示例代码就避免了数据包（Count，Data）的共享问题，因为这个数据包是排他性独立的。</p>
 <p>有时候我们的数据包很难拆解，此时可以以衍生技法来实现拆解。具体的思路是设法进行分治。即数据包可以按照推进程度重新设计为 step1，step2，等等，每一步骤中的小数据包的计算结果依次提交给下一步骤。又或者数据包可以拆解为若干个小计项目，最后将多个小计结果合并计算（Map-Reduce?）。</p>
@@ -565,31 +566,32 @@
 </span><span class="lnt">17
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Logger</span> <span class="kd">struct</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">handler</span> <span class="nx">Handler</span> <span class="c1">// for structured logging  </span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Handler</span> <span class="kd">interface</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">	 <span class="nf">Handle</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span> <span class="nx">Record</span><span class="p">)</span> <span class="kt">error</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">l</span> <span class="o">*</span><span class="nx">Logger</span><span class="p">)</span> <span class="nf">Debug</span><span class="p">(</span><span class="nx">msg</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">args</span> <span class="o">...</span><span class="kt">any</span><span class="p">)</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">l</span><span class="p">.</span><span class="nf">log</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(),</span> <span class="nx">LevelDebug</span><span class="p">,</span> <span class="nx">msg</span><span class="p">,</span> <span class="nx">args</span><span class="o">...</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">l</span> <span class="o">*</span><span class="nx">Logger</span><span class="p">)</span> <span class="nf">log</span><span class="p">(</span><span class="nx">ctx</span> <span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span> <span class="nx">level</span> <span class="nx">Level</span><span class="p">,</span> <span class="nx">msg</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">args</span> <span class="o">...</span><span class="kt">any</span><span class="p">)</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="err">。。。。</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">r</span> <span class="o">:=</span> <span class="nf">NewRecord</span><span class="p">(</span><span class="nx">time</span><span class="p">.</span><span class="nf">Now</span><span class="p">(),</span> <span class="nx">level</span><span class="p">,</span> <span class="nx">msg</span><span class="p">,</span> <span class="nx">pc</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="err">。。。。</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">_</span> <span class="p">=</span> <span class="nx">l</span><span class="p">.</span><span class="nf">Handler</span><span class="p">().</span><span class="nf">Handle</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span><span class="w"> </span><span class="nx">Logger</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">handler</span><span class="w"> </span><span class="nx">Handler</span><span class="w"> </span><span class="c1">// for structured logging  </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">type</span><span class="w"> </span><span class="nx">Handler</span><span class="w"> </span><span class="kd">interface</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">	 </span><span class="nf">Handle</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span><span class="w"> </span><span class="nx">Record</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">l</span><span class="w"> </span><span class="o">*</span><span class="nx">Logger</span><span class="p">)</span><span class="w"> </span><span class="nf">Debug</span><span class="p">(</span><span class="nx">msg</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">args</span><span class="w"> </span><span class="o">...</span><span class="kt">any</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">l</span><span class="p">.</span><span class="nf">log</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(),</span><span class="w"> </span><span class="nx">LevelDebug</span><span class="p">,</span><span class="w"> </span><span class="nx">msg</span><span class="p">,</span><span class="w"> </span><span class="nx">args</span><span class="o">...</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">l</span><span class="w"> </span><span class="o">*</span><span class="nx">Logger</span><span class="p">)</span><span class="w"> </span><span class="nf">log</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span><span class="w"> </span><span class="nx">level</span><span class="w"> </span><span class="nx">Level</span><span class="p">,</span><span class="w"> </span><span class="nx">msg</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">args</span><span class="w"> </span><span class="o">...</span><span class="kt">any</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="err">。。。。</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">r</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nf">NewRecord</span><span class="p">(</span><span class="nx">time</span><span class="p">.</span><span class="nf">Now</span><span class="p">(),</span><span class="w"> </span><span class="nx">level</span><span class="p">,</span><span class="w"> </span><span class="nx">msg</span><span class="p">,</span><span class="w"> </span><span class="nx">pc</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="err">。。。。</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">_</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">l</span><span class="p">.</span><span class="nf">Handler</span><span class="p">().</span><span class="nf">Handle</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">r</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>在 <code>slog</code> 中，每条日志都会被包装成一个<code>NewRecord</code> ，避免了数据竞争。<br>
 Entry 模式可以说是到处都有在用，用途也不一定限于为了无锁。然而凡是运用到该模式的地方，自动获得了无锁的收益，这其实是很划算的。</p>
 <h2 id="bumper-loop">Bumper Loop
 </h2><p>Bumper Loop是一种设计模式</p>
 <blockquote>
-<p>Bumper Loop 最经典的例子是Redis, Redis 使用多线程网络模型，但是在事务处理上使用单线程。</p></blockquote>
+<p>Bumper Loop 最经典的例子是Redis, Redis 使用多线程网络模型，但是在事务处理上使用单线程。</p>
+</blockquote>
 <p>它的核心思想是将并行事件强行序列化，然后再一一分发给具体处理程序。于是对于这些具体处理程序来讲，共享数据总是排他性的：因为所有处理程序在同一时间下只会运行一个。如果具体处理程序总是飞快地完成，没有阻塞的忧虑，那么<code>Bumper Loop</code>模式将会是一个非常好的消费模式。</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
@@ -603,15 +605,15 @@ Entry 模式可以说是到处都有在用，用途也不一定限于为了无�
 </span><span class="lnt">8
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">w</span> <span class="o">*</span><span class="nx">Worker</span><span class="p">)</span> <span class="nf">runLoop</span><span class="p">()</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">  <span class="k">for</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="k">switch</span><span class="p">{</span>
-</span></span><span class="line"><span class="cl">      <span class="k">case</span> <span class="nx">ev</span><span class="o">:=&lt;-</span><span class="nx">fileWatcherCh</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">        <span class="nf">onFileChanged</span><span class="p">(</span><span class="nx">ev</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">  <span class="p">}</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">w</span><span class="w"> </span><span class="o">*</span><span class="nx">Worker</span><span class="p">)</span><span class="w"> </span><span class="nf">runLoop</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">switch</span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">      </span><span class="k">case</span><span class="w"> </span><span class="nx">ev</span><span class="o">:=&lt;-</span><span class="nx">fileWatcherCh</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nf">onFileChanged</span><span class="p">(</span><span class="nx">ev</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>对于低频事件的分发和简化并在此同时去除加锁需求、提升性能来说，循环泵模式是一时之选。在诸如 TCP/IP 服务器的<code> incoming data</code> 处理上通常<code>Bumper Loop</code> 是最佳选择：</p>
 <p>对新进连接请求采取 Entry 模式制作一个独立的处理器 connectionProcessor，该处理器中以循环泵模式接受输入数据，识别输入数据的模式为规约命令，然后分发给具体的规约命令处理器。</p>
@@ -676,7 +678,8 @@ Entry 模式可以说是到处都有在用，用途也不一定限于为了无�
                 >
             </script><script>
     window.addEventListener("DOMContentLoaded", () => {
-        renderMathInElement(document.body, {
+	const mainArticleElement = document.querySelector(".main-article");
+        renderMathInElement(mainArticleElement, {
             delimiters: [
                 { left: "$$", right: "$$", display: true },
                 { left: "$", right: "$", display: false },
@@ -686,6 +689,7 @@ Entry 模式可以说是到处都有在用，用途也不一定限于为了无�
             ignoredClasses: ["gist"]
         });})
 </script>
+
     
 </article>
 
@@ -804,7 +808,7 @@ Entry 模式可以说是到处都有在用，用途也不一定限于为了无�
     
     <section class="powerby">
         使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
-        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.30.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
     </section>
     <script src="/js/adblock-detection.js" defer></script>
      
@@ -903,7 +907,7 @@ Entry 模式可以说是到处都有在用，用途也不一定限于为了无�
                 src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
                 
                 >
-            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+            </script><script type="text/javascript" src="/ts/main.1e9a3bafd846ced4c345d084b355fb8c7bae75701c338f8a1f8a82c780137826.js" defer></script>
 <script>
     (function () {
         const customFont = document.createElement('link');

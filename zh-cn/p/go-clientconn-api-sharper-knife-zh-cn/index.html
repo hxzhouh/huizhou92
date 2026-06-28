@@ -4,27 +4,27 @@
 
 <meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
-<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content=" 解析 net/http 新提案「ClientConn API」的潜台词、争议与未来写法\n在 Go 官方仓库最近的一则提案#75772里，Go 团队放出了一个看似不起眼、但可能影响未来原生服务端写法的更新：给 net/http 增加“连接级别（ClientConn）”操作能力。\n这个提案最近已被标记为 Proposal-Accepted 预计会在 Go 1.27 发布。\n这意味着一件大事：\nGo 准备在标准库里正式暴露 “我想拿到一条 HTTP 客户端连接，并直接控制它” 的能力。\n对于只写 REST API 的普通用户来说，你可能根本不关心连接。\n但对于那些做：\n高性能 HTTP 客户端 自定义连接池 IoT 长连接 代理、隧道 HTTP/2 / HTTP/3 多流复用\n的工程师，这个能力就像开了天眼。 本文将浅度的探讨一下这个改动\n起点：Transport 池是个“黑盒”，高级用户被卡死很多年 先看一个图，解释现在 net/http 的模型：\n你能看到的：\nClient → Transport → Do()\n你看不到的： 哪条连接被用？ 我能不能让多条请求固定在同一个连接上？ HTTP/2 连接的并发限制是多少？ 这条连接是不是刚被服务器发送 GOAWAY？ 这条连接还能不能继续承担更多 stream？ 对普通用户来说看不到没关系，但对高级用户就非常痛苦。\n过去几年里，你可能见过这些 &ldquo;hack&quot;的 编程方式：\n">
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content=" 解析 net/http 新提案「ClientConn API」的潜台词、争议与未来写法\n在 Go 官方仓库最近的一则提案#75772里，Go 团队放出了一个看似不起眼、但可能影响未来原生服务端写法的更新：给 net/http 增加“连接级别（ClientConn）”操作能力。\n这个提案最近已被标记为 Proposal-Accepted 预计会在 Go 1.27 发布。\n这意味着一件大事：\nGo 准备在标准库里正式暴露 “我想拿到一条 HTTP 客户端连接，并直接控制它” 的能力。\n对于只写 REST API 的普通用户来说，你可能根本不关心连接。\n但对于那些做：\n高性能 HTTP 客户端 自定义连接池 IoT 长连接 代理、隧道 HTTP/2 / HTTP/3 多流复用\n的工程师，这个能力就像开了天眼。 本文将浅度的探讨一下这个改动\n起点：Transport 池是个“黑盒”，高级用户被卡死很多年 先看一个图，解释现在 net/http 的模型：\n你能看到的：\nClient → Transport → Do()\n你看不到的： 哪条连接被用？ 我能不能让多条请求固定在同一个连接上？ HTTP/2 连接的并发限制是多少？ 这条连接是不是刚被服务器发送 GOAWAY？ 这条连接还能不能继续承担更多 stream？ 对普通用户来说看不到没关系，但对高级用户就非常痛苦。\n过去几年里，你可能见过这些 &ldquo;hack&quot;的 编程方式：\nDisableKeepAlives: true —— 强行每次新建连接 设置 MaxConnsPerHost 来“勉强”控制连接数量 复制 DefaultTransport 然后塞各种私货 手工在 x/net/http2 里拿 ClientConn 但这些都不是“拿到一条我能掌控的连接”的解决方案。\nGo 一直避免暴露“连接层”能力，因为那是“专家模式”。\n但随着 HTTP/2 走向标准库、HTTP/3 成熟，这堵墙快挡不住了。\n">
 <title>Go 正在给开发者一把更锋利的刀：ClientConn</title>
 
 <link rel='canonical' href='https://huizhou92.com/zh-cn/p/go-clientconn-api-sharper-knife-zh-cn/'>
 
-<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css">
+<link rel="stylesheet" href="/scss/style.min.20b21821b24a8fcaadba2abf9fa81ceb2bf498798e28142c62203bfa694fbc02.css">
 <meta property='og:title' content="Go 正在给开发者一把更锋利的刀：ClientConn">
-<meta property='og:description' content=" 解析 net/http 新提案「ClientConn API」的潜台词、争议与未来写法\n在 Go 官方仓库最近的一则提案#75772里，Go 团队放出了一个看似不起眼、但可能影响未来原生服务端写法的更新：给 net/http 增加“连接级别（ClientConn）”操作能力。\n这个提案最近已被标记为 Proposal-Accepted 预计会在 Go 1.27 发布。\n这意味着一件大事：\nGo 准备在标准库里正式暴露 “我想拿到一条 HTTP 客户端连接，并直接控制它” 的能力。\n对于只写 REST API 的普通用户来说，你可能根本不关心连接。\n但对于那些做：\n高性能 HTTP 客户端 自定义连接池 IoT 长连接 代理、隧道 HTTP/2 / HTTP/3 多流复用\n的工程师，这个能力就像开了天眼。 本文将浅度的探讨一下这个改动\n起点：Transport 池是个“黑盒”，高级用户被卡死很多年 先看一个图，解释现在 net/http 的模型：\n你能看到的：\nClient → Transport → Do()\n你看不到的： 哪条连接被用？ 我能不能让多条请求固定在同一个连接上？ HTTP/2 连接的并发限制是多少？ 这条连接是不是刚被服务器发送 GOAWAY？ 这条连接还能不能继续承担更多 stream？ 对普通用户来说看不到没关系，但对高级用户就非常痛苦。\n过去几年里，你可能见过这些 &ldquo;hack&quot;的 编程方式：\n">
+<meta property='og:description' content=" 解析 net/http 新提案「ClientConn API」的潜台词、争议与未来写法\n在 Go 官方仓库最近的一则提案#75772里，Go 团队放出了一个看似不起眼、但可能影响未来原生服务端写法的更新：给 net/http 增加“连接级别（ClientConn）”操作能力。\n这个提案最近已被标记为 Proposal-Accepted 预计会在 Go 1.27 发布。\n这意味着一件大事：\nGo 准备在标准库里正式暴露 “我想拿到一条 HTTP 客户端连接，并直接控制它” 的能力。\n对于只写 REST API 的普通用户来说，你可能根本不关心连接。\n但对于那些做：\n高性能 HTTP 客户端 自定义连接池 IoT 长连接 代理、隧道 HTTP/2 / HTTP/3 多流复用\n的工程师，这个能力就像开了天眼。 本文将浅度的探讨一下这个改动\n起点：Transport 池是个“黑盒”，高级用户被卡死很多年 先看一个图，解释现在 net/http 的模型：\n你能看到的：\nClient → Transport → Do()\n你看不到的： 哪条连接被用？ 我能不能让多条请求固定在同一个连接上？ HTTP/2 连接的并发限制是多少？ 这条连接是不是刚被服务器发送 GOAWAY？ 这条连接还能不能继续承担更多 stream？ 对普通用户来说看不到没关系，但对高级用户就非常痛苦。\n过去几年里，你可能见过这些 &ldquo;hack&quot;的 编程方式：\nDisableKeepAlives: true —— 强行每次新建连接 设置 MaxConnsPerHost 来“勉强”控制连接数量 复制 DefaultTransport 然后塞各种私货 手工在 x/net/http2 里拿 ClientConn 但这些都不是“拿到一条我能掌控的连接”的解决方案。\nGo 一直避免暴露“连接层”能力，因为那是“专家模式”。\n但随着 HTTP/2 走向标准库、HTTP/3 成熟，这堵墙快挡不住了。\n">
 <meta property='og:url' content='https://huizhou92.com/zh-cn/p/go-clientconn-api-sharper-knife-zh-cn/'>
 <meta property='og:site_name' content='huizhou92&#39;s Blog'>
 <meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='og:image' content='https://huizhou92.com/head.png' />
 <meta name="twitter:site" content="@piaopiaopig">
     <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="Go 正在给开发者一把更锋利的刀：ClientConn">
-<meta name="twitter:description" content=" 解析 net/http 新提案「ClientConn API」的潜台词、争议与未来写法\n在 Go 官方仓库最近的一则提案#75772里，Go 团队放出了一个看似不起眼、但可能影响未来原生服务端写法的更新：给 net/http 增加“连接级别（ClientConn）”操作能力。\n这个提案最近已被标记为 Proposal-Accepted 预计会在 Go 1.27 发布。\n这意味着一件大事：\nGo 准备在标准库里正式暴露 “我想拿到一条 HTTP 客户端连接，并直接控制它” 的能力。\n对于只写 REST API 的普通用户来说，你可能根本不关心连接。\n但对于那些做：\n高性能 HTTP 客户端 自定义连接池 IoT 长连接 代理、隧道 HTTP/2 / HTTP/3 多流复用\n的工程师，这个能力就像开了天眼。 本文将浅度的探讨一下这个改动\n起点：Transport 池是个“黑盒”，高级用户被卡死很多年 先看一个图，解释现在 net/http 的模型：\n你能看到的：\nClient → Transport → Do()\n你看不到的： 哪条连接被用？ 我能不能让多条请求固定在同一个连接上？ HTTP/2 连接的并发限制是多少？ 这条连接是不是刚被服务器发送 GOAWAY？ 这条连接还能不能继续承担更多 stream？ 对普通用户来说看不到没关系，但对高级用户就非常痛苦。\n过去几年里，你可能见过这些 &ldquo;hack&quot;的 编程方式：\n"><meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:description" content=" 解析 net/http 新提案「ClientConn API」的潜台词、争议与未来写法\n在 Go 官方仓库最近的一则提案#75772里，Go 团队放出了一个看似不起眼、但可能影响未来原生服务端写法的更新：给 net/http 增加“连接级别（ClientConn）”操作能力。\n这个提案最近已被标记为 Proposal-Accepted 预计会在 Go 1.27 发布。\n这意味着一件大事：\nGo 准备在标准库里正式暴露 “我想拿到一条 HTTP 客户端连接，并直接控制它” 的能力。\n对于只写 REST API 的普通用户来说，你可能根本不关心连接。\n但对于那些做：\n高性能 HTTP 客户端 自定义连接池 IoT 长连接 代理、隧道 HTTP/2 / HTTP/3 多流复用\n的工程师，这个能力就像开了天眼。 本文将浅度的探讨一下这个改动\n起点：Transport 池是个“黑盒”，高级用户被卡死很多年 先看一个图，解释现在 net/http 的模型：\n你能看到的：\nClient → Transport → Do()\n你看不到的： 哪条连接被用？ 我能不能让多条请求固定在同一个连接上？ HTTP/2 连接的并发限制是多少？ 这条连接是不是刚被服务器发送 GOAWAY？ 这条连接还能不能继续承担更多 stream？ 对普通用户来说看不到没关系，但对高级用户就非常痛苦。\n过去几年里，你可能见过这些 &ldquo;hack&quot;的 编程方式：\nDisableKeepAlives: true —— 强行每次新建连接 设置 MaxConnsPerHost 来“勉强”控制连接数量 复制 DefaultTransport 然后塞各种私货 手工在 x/net/http2 里拿 ClientConn 但这些都不是“拿到一条我能掌控的连接”的解决方案。\nGo 一直避免暴露“连接层”能力，因为那是“专家模式”。\n但随着 HTTP/2 走向标准库、HTTP/3 成熟，这堵墙快挡不住了。\n"><meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:image" content='https://huizhou92.com/head.png' />
     <link rel="shortcut icon" href="/favicon.png" />
 
       <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
       <script>
         var doNotTrack = false;
-        if ( false ) {
+        if ( true ) {
           var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
           var doNotTrack = (dnt == "1" || dnt == "yes");
         }
@@ -35,7 +35,7 @@
           gtag('config', 'G-JMPMQ2QREG');
         }
       </script>
-        <link rel="alternate" hreflang="en" href="https://huizhou92.com/p/go-clientconn-api-sharper-knife/">
+        <link rel="alternate" hreflang="en-us" href="https://huizhou92.com/p/go-clientconn-api-sharper-knife/">
         <link rel="alternate" hreflang="zh-cn" href="https://huizhou92.com/zh-cn/p/go-clientconn-api-sharper-knife-zh-cn/">
             <link rel="alternate" hreflang="x-default" href="https://huizhou92.com/p/go-clientconn-api-sharper-knife/">
 <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
@@ -87,7 +87,7 @@
                     
                     
                         
-                        <img src="/img/avatar_hu_e52293b5d2b8c5f7.jpeg" width="300"
+                        <img src="/img/avatar_hu_2886835e4912e3b9.jpeg" width="300"
                             height="300" class="site-logo" loading="lazy" alt="Avatar">
                     
                 
@@ -487,13 +487,15 @@
     
     
     <blockquote>
-<p>解析 net/http 新提案「ClientConn API」的潜台词、争议与未来写法</p></blockquote>
+<p>解析 net/http 新提案「ClientConn API」的潜台词、争议与未来写法</p>
+</blockquote>
 <p>在 Go 官方仓库最近的一则提案<a class="link" href="https://github.com/golang/go/issues/75772"  target="_blank" rel="noopener"
     >#75772</a>里，Go 团队放出了一个看似不起眼、但可能影响未来原生服务端写法的更新：<strong>给 <code>net/http</code> 增加“连接级别（ClientConn）”操作能力</strong>。<br>
 这个提案最近已被标记为 <em>Proposal-Accepted</em> 预计会在 Go 1.27 发布。<br>
 这意味着一件大事：</p>
 <blockquote>
-<p>Go 准备在标准库里正式暴露 “我想拿到一条 HTTP 客户端连接，并直接控制它” 的能力。</p></blockquote>
+<p>Go 准备在标准库里正式暴露 “我想拿到一条 HTTP 客户端连接，并直接控制它” 的能力。</p>
+</blockquote>
 <p>对于只写 REST API 的普通用户来说，你可能根本不关心连接。<br>
 但对于那些做：</p>
 <ul>
@@ -552,14 +554,14 @@ Go 一直避免暴露“连接层”能力，因为那是“专家模式”。<b
 </span><span class="lnt">7
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">Transport</span><span class="p">)</span> <span class="nf">NewClientConn</span><span class="p">(</span><span class="nx">ctx</span> <span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span> <span class="nx">scheme</span><span class="p">,</span> <span class="nx">address</span> <span class="kt">string</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">ClientConn</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">ClientConn</span> <span class="kd">struct</span><span class="p">{}</span>
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">cc</span> <span class="o">*</span><span class="nx">ClientConn</span><span class="p">)</span> <span class="nf">RoundTrip</span><span class="p">(</span><span class="nx">req</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Response</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">cc</span> <span class="o">*</span><span class="nx">ClientConn</span><span class="p">)</span> <span class="nf">Close</span><span class="p">()</span> <span class="kt">error</span>
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">cc</span> <span class="o">*</span><span class="nx">ClientConn</span><span class="p">)</span> <span class="nf">Err</span><span class="p">()</span> <span class="kt">error</span>
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">cc</span> <span class="o">*</span><span class="nx">ClientConn</span><span class="p">)</span> <span class="nf">RequestLimit</span><span class="p">()</span> <span class="kt">int64</span>
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">cc</span> <span class="o">*</span><span class="nx">ClientConn</span><span class="p">)</span> <span class="nf">RequestsCompleted</span><span class="p">()</span> <span class="kt">int64</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">t</span><span class="w"> </span><span class="o">*</span><span class="nx">Transport</span><span class="p">)</span><span class="w"> </span><span class="nf">NewClientConn</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span><span class="w"> </span><span class="nx">scheme</span><span class="p">,</span><span class="w"> </span><span class="nx">address</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="nx">ClientConn</span><span class="p">,</span><span class="w"> </span><span class="kt">error</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">type</span><span class="w"> </span><span class="nx">ClientConn</span><span class="w"> </span><span class="kd">struct</span><span class="p">{}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">cc</span><span class="w"> </span><span class="o">*</span><span class="nx">ClientConn</span><span class="p">)</span><span class="w"> </span><span class="nf">RoundTrip</span><span class="p">(</span><span class="nx">req</span><span class="w"> </span><span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Response</span><span class="p">,</span><span class="w"> </span><span class="kt">error</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">cc</span><span class="w"> </span><span class="o">*</span><span class="nx">ClientConn</span><span class="p">)</span><span class="w"> </span><span class="nf">Close</span><span class="p">()</span><span class="w"> </span><span class="kt">error</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">cc</span><span class="w"> </span><span class="o">*</span><span class="nx">ClientConn</span><span class="p">)</span><span class="w"> </span><span class="nf">Err</span><span class="p">()</span><span class="w"> </span><span class="kt">error</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">cc</span><span class="w"> </span><span class="o">*</span><span class="nx">ClientConn</span><span class="p">)</span><span class="w"> </span><span class="nf">RequestLimit</span><span class="p">()</span><span class="w"> </span><span class="kt">int64</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">cc</span><span class="w"> </span><span class="o">*</span><span class="nx">ClientConn</span><span class="p">)</span><span class="w"> </span><span class="nf">RequestsCompleted</span><span class="p">()</span><span class="w"> </span><span class="kt">int64</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>几个关键点：</p>
 <p><strong>1. 这是“单条连接”，绝不进 Transport 池</strong></p>
@@ -567,7 +569,8 @@ Go 一直避免暴露“连接层”能力，因为那是“专家模式”。<b
 <code>NewClientConn()</code> 仍会<strong>建一条全新的</strong>。<br>
 这也是高级用户想要的：</p>
 <blockquote>
-<p>“我不要你的池，我要我自己的池。”</p></blockquote>
+<p>“我不要你的池，我要我自己的池。”</p>
+</blockquote>
 <p><strong>在这条连接上发请求：<code>cc.RoundTrip(req)</code></strong></p>
 <ul>
 <li>HTTP/1：串行复用，req2 会等 req1 的 Body 被 close</li>
@@ -594,7 +597,8 @@ Go 一直避免暴露“连接层”能力，因为那是“专家模式”。<b
 </ul>
 <p>提供一个统一接口意味着：</p>
 <blockquote>
-<p>Go 要把协议差异塞进一个“能力视图（RequestLimit）”模型。</p></blockquote>
+<p>Go 要把协议差异塞进一个“能力视图（RequestLimit）”模型。</p>
+</blockquote>
 <p>这很复杂，但也非常优雅。</p>
 <h3 id="2-transport-池和-clientconn-之间的边界怎么划">2. Transport 池和 ClientConn 之间的边界怎么划？
 </h3><ul>
@@ -607,7 +611,8 @@ Go 要做抽象分层重构。</li>
 </h3><p>现在 HTTP/2 客户端和服务端还在 <code>x/net/http2</code>。<br>
 这个提案实际上是：</p>
 <blockquote>
-<p>把 HTTP/2 真正搬进 std 的必经之路。</p></blockquote>
+<p>把 HTTP/2 真正搬进 std 的必经之路。</p>
+</blockquote>
 <p>未来几个版本里：</p>
 <ul>
 <li>x/net/http2 会变成过渡层</li>
@@ -622,9 +627,9 @@ Go 要做抽象分层重构。</li>
 </span><span class="lnt">2
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">client</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">http</span><span class="p">.</span><span class="nx">Client</span><span class="p">{}</span>
-</span></span><span class="line"><span class="cl"><span class="nx">resp</span><span class="p">,</span> <span class="nx">_</span> <span class="o">:=</span> <span class="nx">client</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="s">&#34;https://example.com&#34;</span><span class="p">)</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">client</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">http</span><span class="p">.</span><span class="nx">Client</span><span class="p">{}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nx">resp</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">client</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="s">&#34;https://example.com&#34;</span><span class="p">)</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>你根本不知道走了哪条连接。</p>
 <p>如果想每次新建连接，只能靠破坏性的 hack：</p>
@@ -635,10 +640,10 @@ Go 要做抽象分层重构。</li>
 </span><span class="lnt">3
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">tr</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">http</span><span class="p">.</span><span class="nx">Transport</span><span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">DisableKeepAlives</span><span class="p">:</span> <span class="kc">true</span><span class="p">,</span> <span class="c1">// 简陋且副作用大</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">tr</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">http</span><span class="p">.</span><span class="nx">Transport</span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">DisableKeepAlives</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="c1">// 简陋且副作用大</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p><strong>将来：你能真正拿到一条连接，并在其上发多个请求</strong></p>
 <div class="highlight"><div class="chroma">
@@ -667,29 +672,29 @@ Go 要做抽象分层重构。</li>
 </span><span class="lnt">22
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">ctx</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">()</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="nx">tr</span> <span class="o">:=</span> <span class="nx">http</span><span class="p">.</span><span class="nx">DefaultTransport</span><span class="p">.(</span><span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Transport</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="c1">// 关键：创建“单条连接”</span>
-</span></span><span class="line"><span class="cl"><span class="nx">cc</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">tr</span><span class="p">.</span><span class="nf">NewClientConn</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="s">&#34;https&#34;</span><span class="p">,</span> <span class="s">&#34;example.com:443&#34;</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span> <span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span> <span class="p">}</span>
-</span></span><span class="line"><span class="cl"><span class="k">defer</span> <span class="nx">cc</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="c1">// 所有请求都固定走这条连接</span>
-</span></span><span class="line"><span class="cl"><span class="nx">do</span> <span class="o">:=</span> <span class="kd">func</span><span class="p">(</span><span class="nx">path</span> <span class="kt">string</span><span class="p">)</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">req</span><span class="p">,</span> <span class="nx">_</span> <span class="o">:=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">NewRequest</span><span class="p">(</span><span class="s">&#34;GET&#34;</span><span class="p">,</span> <span class="s">&#34;https://example.com&#34;</span><span class="o">+</span><span class="nx">path</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">resp</span><span class="p">,</span> <span class="nx">_</span> <span class="o">:=</span> <span class="nx">cc</span><span class="p">.</span><span class="nf">RoundTrip</span><span class="p">(</span><span class="nx">req</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nx">resp</span><span class="p">.</span><span class="nx">Body</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="nf">do</span><span class="p">(</span><span class="s">&#34;/api/a&#34;</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl"><span class="nf">do</span><span class="p">(</span><span class="s">&#34;/api/b&#34;</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl"><span class="nf">do</span><span class="p">(</span><span class="s">&#34;/api/c&#34;</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="nx">log</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;limit:&#34;</span><span class="p">,</span> <span class="nx">cc</span><span class="p">.</span><span class="nf">RequestLimit</span><span class="p">())</span>
-</span></span><span class="line"><span class="cl"><span class="nx">log</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;done:&#34;</span><span class="p">,</span> <span class="nx">cc</span><span class="p">.</span><span class="nf">RequestsCompleted</span><span class="p">())</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">ctx</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">()</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nx">tr</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">http</span><span class="p">.</span><span class="nx">DefaultTransport</span><span class="p">.(</span><span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Transport</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="c1">// 关键：创建“单条连接”</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nx">cc</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">tr</span><span class="p">.</span><span class="nf">NewClientConn</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;https&#34;</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;example.com:443&#34;</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span><span class="w"> </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="k">defer</span><span class="w"> </span><span class="nx">cc</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="c1">// 所有请求都固定走这条连接</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nx">do</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">path</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">req</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">http</span><span class="p">.</span><span class="nf">NewRequest</span><span class="p">(</span><span class="s">&#34;GET&#34;</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;https://example.com&#34;</span><span class="o">+</span><span class="nx">path</span><span class="p">,</span><span class="w"> </span><span class="kc">nil</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">resp</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">cc</span><span class="p">.</span><span class="nf">RoundTrip</span><span class="p">(</span><span class="nx">req</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">defer</span><span class="w"> </span><span class="nx">resp</span><span class="p">.</span><span class="nx">Body</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nf">do</span><span class="p">(</span><span class="s">&#34;/api/a&#34;</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nf">do</span><span class="p">(</span><span class="s">&#34;/api/b&#34;</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nf">do</span><span class="p">(</span><span class="s">&#34;/api/c&#34;</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nx">log</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;limit:&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">cc</span><span class="p">.</span><span class="nf">RequestLimit</span><span class="p">())</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nx">log</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;done:&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">cc</span><span class="p">.</span><span class="nf">RequestsCompleted</span><span class="p">())</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>这是彻底不同的能力。</p>
 <p><strong>你甚至可以自己实现一个“用户态连接池”</strong></p>
@@ -739,52 +744,53 @@ Go 要做抽象分层重构。</li>
 </span><span class="lnt">41
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">pooledConn</span> <span class="kd">struct</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">cc</span>    <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">ClientConn</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">inUse</span> <span class="kt">int64</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">ConnPool</span> <span class="kd">struct</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">mu</span>    <span class="nx">sync</span><span class="p">.</span><span class="nx">Mutex</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">conns</span> <span class="p">[]</span><span class="o">*</span><span class="nx">pooledConn</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">tr</span>    <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Transport</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">addr</span>  <span class="kt">string</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">p</span> <span class="o">*</span><span class="nx">ConnPool</span><span class="p">)</span> <span class="nf">get</span><span class="p">(</span><span class="nx">ctx</span> <span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">pooledConn</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">p</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nf">Lock</span><span class="p">()</span>
-</span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nx">p</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">()</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">pc</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">p</span><span class="p">.</span><span class="nx">conns</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="nx">pc</span><span class="p">.</span><span class="nx">cc</span><span class="p">.</span><span class="nf">Err</span><span class="p">()</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">            <span class="k">continue</span>
-</span></span><span class="line"><span class="cl">        <span class="p">}</span>
-</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="nx">pc</span><span class="p">.</span><span class="nx">inUse</span> <span class="p">&lt;</span> <span class="nx">pc</span><span class="p">.</span><span class="nx">cc</span><span class="p">.</span><span class="nf">RequestLimit</span><span class="p">()</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">            <span class="nx">pc</span><span class="p">.</span><span class="nx">inUse</span><span class="o">++</span>
-</span></span><span class="line"><span class="cl">            <span class="k">return</span> <span class="nx">pc</span><span class="p">,</span> <span class="kc">nil</span>
-</span></span><span class="line"><span class="cl">        <span class="p">}</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">    <span class="nx">cc</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">p</span><span class="p">.</span><span class="nx">tr</span><span class="p">.</span><span class="nf">NewClientConn</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="s">&#34;https&#34;</span><span class="p">,</span> <span class="nx">p</span><span class="p">.</span><span class="nx">addr</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">    <span class="nx">pc</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">pooledConn</span><span class="p">{</span><span class="nx">cc</span><span class="p">:</span> <span class="nx">cc</span><span class="p">,</span> <span class="nx">inUse</span><span class="p">:</span> <span class="mi">1</span><span class="p">}</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">p</span><span class="p">.</span><span class="nx">conns</span> <span class="p">=</span> <span class="nb">append</span><span class="p">(</span><span class="nx">p</span><span class="p">.</span><span class="nx">conns</span><span class="p">,</span> <span class="nx">pc</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">pc</span><span class="p">,</span> <span class="kc">nil</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">p</span> <span class="o">*</span><span class="nx">ConnPool</span><span class="p">)</span> <span class="nf">put</span><span class="p">(</span><span class="nx">pc</span> <span class="o">*</span><span class="nx">pooledConn</span><span class="p">)</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">p</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nf">Lock</span><span class="p">()</span>
-</span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nx">p</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">()</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">pc</span><span class="p">.</span><span class="nx">inUse</span><span class="o">--</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span><span class="w"> </span><span class="nx">pooledConn</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">cc</span><span class="w">    </span><span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">ClientConn</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">inUse</span><span class="w"> </span><span class="kt">int64</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">type</span><span class="w"> </span><span class="nx">ConnPool</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">mu</span><span class="w">    </span><span class="nx">sync</span><span class="p">.</span><span class="nx">Mutex</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">conns</span><span class="w"> </span><span class="p">[]</span><span class="o">*</span><span class="nx">pooledConn</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">tr</span><span class="w">    </span><span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Transport</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">addr</span><span class="w">  </span><span class="kt">string</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">p</span><span class="w"> </span><span class="o">*</span><span class="nx">ConnPool</span><span class="p">)</span><span class="w"> </span><span class="nf">get</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="nx">pooledConn</span><span class="p">,</span><span class="w"> </span><span class="kt">error</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">p</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nf">Lock</span><span class="p">()</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">defer</span><span class="w"> </span><span class="nx">p</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">()</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">pc</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="nx">p</span><span class="p">.</span><span class="nx">conns</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="nx">pc</span><span class="p">.</span><span class="nx">cc</span><span class="p">.</span><span class="nf">Err</span><span class="p">()</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="k">continue</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="nx">pc</span><span class="p">.</span><span class="nx">inUse</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="nx">pc</span><span class="p">.</span><span class="nx">cc</span><span class="p">.</span><span class="nf">RequestLimit</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nx">pc</span><span class="p">.</span><span class="nx">inUse</span><span class="o">++</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="nx">pc</span><span class="p">,</span><span class="w"> </span><span class="kc">nil</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">cc</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">p</span><span class="p">.</span><span class="nx">tr</span><span class="p">.</span><span class="nf">NewClientConn</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;https&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">p</span><span class="p">.</span><span class="nx">addr</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">pc</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">pooledConn</span><span class="p">{</span><span class="nx">cc</span><span class="p">:</span><span class="w"> </span><span class="nx">cc</span><span class="p">,</span><span class="w"> </span><span class="nx">inUse</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">p</span><span class="p">.</span><span class="nx">conns</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nb">append</span><span class="p">(</span><span class="nx">p</span><span class="p">.</span><span class="nx">conns</span><span class="p">,</span><span class="w"> </span><span class="nx">pc</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">pc</span><span class="p">,</span><span class="w"> </span><span class="kc">nil</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">p</span><span class="w"> </span><span class="o">*</span><span class="nx">ConnPool</span><span class="p">)</span><span class="w"> </span><span class="nf">put</span><span class="p">(</span><span class="nx">pc</span><span class="w"> </span><span class="o">*</span><span class="nx">pooledConn</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">p</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nf">Lock</span><span class="p">()</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">defer</span><span class="w"> </span><span class="nx">p</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">()</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">pc</span><span class="p">.</span><span class="nx">inUse</span><span class="o">--</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>你会看到：</p>
 <blockquote>
-<p>这已经接近 Java Netty / Rust hyper 级别的“用户态连接调度”。</p></blockquote>
+<p>这已经接近 Java Netty / Rust hyper 级别的“用户态连接调度”。</p>
+</blockquote>
 <p>Go 以前根本做不了。</p>
 <h2 id="五mermaid未来连接模型的完整视图">五、Mermaid：未来连接模型的完整视图
 </h2><h3 id="1双路径默认池--手工连接">1）双路径：默认池 &amp; 手工连接
@@ -924,7 +930,8 @@ Go 要做抽象分层重构。</li>
 <p><strong>4. 这把刀很锋利，但只给懂得用的人。</strong></p>
 <p>Go 团队的态度很明确：</p>
 <blockquote>
-<p>我们不会让 Transport 更复杂，但我们会把“真正的控制权”给那些需要的人。</p></blockquote>
+<p>我们不会让 Transport 更复杂，但我们会把“真正的控制权”给那些需要的人。</p>
+</blockquote>
 
 </section>
 
@@ -961,7 +968,8 @@ Go 要做抽象分层重构。</li>
                 >
             </script><script>
     window.addEventListener("DOMContentLoaded", () => {
-        renderMathInElement(document.body, {
+	const mainArticleElement = document.querySelector(".main-article");
+        renderMathInElement(mainArticleElement, {
             delimiters: [
                 { left: "$$", right: "$$", display: true },
                 { left: "$", right: "$", display: false },
@@ -971,6 +979,7 @@ Go 要做抽象分层重构。</li>
             ignoredClasses: ["gist"]
         });})
 </script>
+
     
 </article>
 
@@ -994,7 +1003,7 @@ Go 要做抽象分层重构。</li>
     
     <section class="powerby">
         使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
-        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.30.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
     </section>
     <script src="/js/adblock-detection.js" defer></script>
      
@@ -1093,7 +1102,7 @@ Go 要做抽象分层重构。</li>
                 src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
                 
                 >
-            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+            </script><script type="text/javascript" src="/ts/main.1e9a3bafd846ced4c345d084b355fb8c7bae75701c338f8a1f8a82c780137826.js" defer></script>
 <script>
     (function () {
         const customFont = document.createElement('link');

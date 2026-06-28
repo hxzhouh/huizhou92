@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" dir="ltr">
+<html lang="en-us" dir="ltr">
     <head>
 
 <meta charset='utf-8'>
@@ -9,7 +9,7 @@
 
 <link rel='canonical' href='https://huizhou92.com/p/performance-analysis-of-goroutine-switching/'>
 
-<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css">
+<link rel="stylesheet" href="/scss/style.min.20b21821b24a8fcaadba2abf9fa81ceb2bf498798e28142c62203bfa694fbc02.css">
 <meta property='og:title' content="Performance analysis of goroutine switching">
 <meta property='og:description' content="Introduction In the previous article, we verified the context switch overhead of Linux processes and threads experimentally, which was approximately between 3-5 microseconds. This overhead is not significant, but for massively concurrent internet servers and typical computer programs, the characteristics are as follows:\nHigh concurrency: Thousands to tens of thousands of user requests need to be processed per second. Short cycles: The processing time per user should be as short as possible, often in the millisecond range. High network I/O: Often requires network I/O from other machines, such as Redis, MySQL, etc. Low computation: General CPU-intensive operations are not frequent. ">
 <meta property='og:url' content='https://huizhou92.com/p/performance-analysis-of-goroutine-switching/'>
@@ -24,7 +24,7 @@
       <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
       <script>
         var doNotTrack = false;
-        if ( false ) {
+        if ( true ) {
           var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
           var doNotTrack = (dnt == "1" || dnt == "yes");
         }
@@ -35,7 +35,7 @@
           gtag('config', 'G-JMPMQ2QREG');
         }
       </script>
-        <link rel="alternate" hreflang="en" href="https://huizhou92.com/p/performance-analysis-of-goroutine-switching/">
+        <link rel="alternate" hreflang="en-us" href="https://huizhou92.com/p/performance-analysis-of-goroutine-switching/">
             <link rel="alternate" hreflang="x-default" href="https://huizhou92.com/p/performance-analysis-of-goroutine-switching/">
 <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
   <meta name="referrer" content="no-referrer-when-downgrade">
@@ -86,7 +86,7 @@
                     
                     
                         
-                        <img src="/img/avatar_hu_e52293b5d2b8c5f7.jpeg" width="300"
+                        <img src="/img/avatar_hu_2886835e4912e3b9.jpeg" width="300"
                             height="300" class="site-logo" loading="lazy" alt="Avatar">
                     
                 
@@ -483,14 +483,16 @@
 </ul>
 <blockquote>
 <p>This article is first published in the medium MPP plan. If you are a medium user, please follow me in <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
-    >medium</a>. Thank you very much.</p></blockquote>
+    >medium</a>. Thank you very much.</p>
+</blockquote>
 <p>Even with a context switch overhead of 3-5 microseconds, it can still appear somewhat performance-degrading if the context switch volume is particularly high. For example, the Apache web server, which was the software product under this model, suffered from this. (In fact, when Linux operating system was designed, its goal was to be a general-purpose operating system rather than specifically designed for high-concurrency server-side applications.)</p>
 <p>To avoid frequent context switches, there is another asynchronous non-blocking development model. That is to use a process or thread to handle a large number of user requests and then improve performance through IO multiplexing (processes or threads do not block, saving the overhead of context switches). Nginx and Node.js are typical representatives of this model. Frankly speaking, in terms of program execution efficiency, this model is the most machine-friendly, with the highest efficiency (better than the coroutine development model mentioned below). Therefore, Nginx has replaced Apache as the preferred web server. However, the problem with this programming model lies in its unfriendliness to development, which is overly mechanized and deviates from the original intention of abstracting the concept of processes. Normal linear thinking of humans is disrupted, and application layer developers are forced to write code with non-human-like thinking, making code debugging extremely difficult.</p>
 <p>So, some smart heads continued to brainstorm at the application layer and designed &ldquo;threads&rdquo; that do not require process/thread context switching, called coroutines. Using coroutines to handle high-concurrency application scenarios can not only meet the original intention of processes but also allow developers to use normal linear thinking to handle their business, while also eliminating the expensive overhead of process/thread context switches. Therefore, it can be said that coroutines are a good patch for the process model in the scenario of processing massive requests on Linux.</p>
 <p>With the background introduced, what I want to say is that although coroutine encapsulation is lightweight, it still incurs some additional costs. So, let&rsquo;s take a look at how small these additional costs are.</p>
 <h2 id="coroutine-overhead-test">Coroutine Overhead Test
 </h2><blockquote>
-<p>This article is based on go 1.22.1.</p></blockquote>
+<p>This article is based on go 1.22.1.</p>
+</blockquote>
 <ul>
 <li><strong>1. Coroutine Context Switch CPU Overhead</strong><br>
 The test process involves continuously yielding the CPU between coroutines. The core code is as follows.</li>
@@ -524,32 +526,32 @@ The test process involves continuously yielding the CPU between coroutines. The 
 </span><span class="lnt">25
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">main</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="p">(</span>  
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;fmt&#34;</span>  
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;runtime&#34;</span>    
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;time&#34;</span>
-</span></span><span class="line"><span class="cl"><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">cal</span><span class="p">()</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="mi">1000000</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">runtime</span><span class="p">.</span><span class="nf">Gosched</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">runtime</span><span class="p">.</span><span class="nf">GOMAXPROCS</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">currentTime</span> <span class="o">:=</span> <span class="nx">time</span><span class="p">.</span><span class="nf">Now</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nx">currentTime</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">go</span> <span class="nf">cal</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="mi">1000000</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">runtime</span><span class="p">.</span><span class="nf">Gosched</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nx">time</span><span class="p">.</span><span class="nf">Now</span><span class="p">().</span><span class="nf">Sub</span><span class="p">(</span><span class="nx">currentTime</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2000000</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span><span class="w"> </span><span class="nx">main</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="kn">import</span><span class="w"> </span><span class="p">(</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="s">&#34;fmt&#34;</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="s">&#34;runtime&#34;</span><span class="w">    
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="s">&#34;time&#34;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">cal</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="mi">1000000</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="o">++</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">runtime</span><span class="p">.</span><span class="nf">Gosched</span><span class="p">()</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">runtime</span><span class="p">.</span><span class="nf">GOMAXPROCS</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">currentTime</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">time</span><span class="p">.</span><span class="nf">Now</span><span class="p">()</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nx">currentTime</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">go</span><span class="w"> </span><span class="nf">cal</span><span class="p">()</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="mi">1000000</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="o">++</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">runtime</span><span class="p">.</span><span class="nf">Gosched</span><span class="p">()</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nx">time</span><span class="p">.</span><span class="nf">Now</span><span class="p">().</span><span class="nf">Sub</span><span class="p">(</span><span class="nx">currentTime</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2000000</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>Compilation and execution</p>
 <div class="highlight"><div class="chroma">
@@ -651,7 +653,8 @@ In terms of performance, IO multiplexing + thread pool completely outperforms co
                 >
             </script><script>
     window.addEventListener("DOMContentLoaded", () => {
-        renderMathInElement(document.body, {
+	const mainArticleElement = document.querySelector(".main-article");
+        renderMathInElement(mainArticleElement, {
             delimiters: [
                 { left: "$$", right: "$$", display: true },
                 { left: "$", right: "$", display: false },
@@ -661,6 +664,7 @@ In terms of performance, IO multiplexing + thread pool completely outperforms co
             ignoredClasses: ["gist"]
         });})
 </script>
+
     
 </article>
 
@@ -785,7 +789,7 @@ In terms of performance, IO multiplexing + thread pool completely outperforms co
     
     <section class="powerby">
         Built with <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> <br />
-        Theme <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> designed by <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a>
+        Theme <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.30.0">Stack</a></b> designed by <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a>
     </section>
     <script src="/js/adblock-detection.js" defer></script>
      
@@ -884,7 +888,7 @@ In terms of performance, IO multiplexing + thread pool completely outperforms co
                 src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
                 
                 >
-            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+            </script><script type="text/javascript" src="/ts/main.1e9a3bafd846ced4c345d084b355fb8c7bae75701c338f8a1f8a82c780137826.js" defer></script>
 <script>
     (function () {
         const customFont = document.createElement('link');

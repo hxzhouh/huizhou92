@@ -4,27 +4,27 @@
 
 <meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
-<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="作为软件工程师，我们都在努力编写整洁、可维护且易于测试的代码。我们遵循最佳实践，阅读软件设计书籍，并进行严格的代码审查。但如果我们一些根深蒂固的习惯实际上是隐蔽的反模式呢？如果存在更有效、虽然不那么明显的方法来解决常见的编码问题呢？\n在最近的 GopherCon Europe 大会上，Dave Cheney 分享了他对于什么是好代码的一些&quot;非常强烈的观点&quot;。这些观点在生产系统的淬炼中形成，常常挑战传统智慧。本文提炼了一些最令人惊讶、最具影响力的要点，它们可能会改变你编写 Go 代码的方式。\n1. &ldquo;If 不好，Else 更糟&rdquo; Cheney 的第一条颇具挑战性的建议是：对 if 语句保持强烈的厌恶，对 else 更是如此。他认为，每当我们看到 if，就应该想要隐藏它；每当看到 else，就应该重构代码让它消失。\n他批评的一个典型模式是&quot;延迟初始化（Lazy Initialization）&quot;。假设你有一个变量 thing，需要在生产环境中初始化为真实实现，在其他情况下使用 mock。许多开发者会这样写：\n1 2 3 4 5 6 var thing *Thing if os.Getenv(&#34;ENV&#34;) == &#34;production&#34; { thing = NewRealThing() } else { thing = NewMockThing() } 这里的问题是 thing 一开始是 nil。任何意外绕过这个 if/else 块的重构都可能导致 thing 未被初始化。更好的方法是通过先将 thing 初始化为一个安全的默认值来消除 else：\n1 2 3 4 thing := NewMockThing() // 总是初始化为安全的默认值 if os.Getenv(&#34;ENV&#34;) == &#34;production&#34; { thing = NewRealThing() // 仅在生产环境下覆盖 } 这是一个改进，因为 thing 永远不会是 nil。然而，正如 Cheney 所承认的，这引发了一个性能问题：如果创建 mock 的成本很高，我们是否在生产环境中付出了这个代价，却只是为了立即丢弃它？虽然这在应用程序初始化阶段可能是可以接受的，但在每个请求的上下文中确实是一个合理的担忧。这个权衡完美地引出了最佳解决方案：将这个逻辑封装在一个辅助函数中。\n1 2 3 4 5 6 7 8 9 func newThing(env string) *Thing { if env == &#34;production&#34; { return NewRealThing() } return NewMockThing() } // 在调用代码中： thing := newThing(os.Getenv(&#34;ENV&#34;)) 这种方法提供了几个具体的好处。从调用者的角度来看，thing 总是 从单个函数调用初始化。条件逻辑被赋予了一个描述性的名称（newThing），最重要的是，newThing 现在是一个简单的、独立的函数，可以独立进行单元测试。Cheney 更进一步指出，因为这是基于环境的 选择，他更喜欢使用 switch 语句，这样意图更清晰，当添加新环境时代码也更容易扩展。\n">
+<meta name="baidu-site-verification" content="codeva-3VTxLtnqFP" /><meta name='description' content="作为软件工程师，我们都在努力编写整洁、可维护且易于测试的代码。我们遵循最佳实践，阅读软件设计书籍，并进行严格的代码审查。但如果我们一些根深蒂固的习惯实际上是隐蔽的反模式呢？如果存在更有效、虽然不那么明显的方法来解决常见的编码问题呢？\n在最近的 GopherCon Europe 大会上，Dave Cheney 分享了他对于什么是好代码的一些&quot;非常强烈的观点&quot;。这些观点在生产系统的淬炼中形成，常常挑战传统智慧。本文提炼了一些最令人惊讶、最具影响力的要点，它们可能会改变你编写 Go 代码的方式。\n1. &ldquo;If 不好，Else 更糟&rdquo; Cheney 的第一条颇具挑战性的建议是：对 if 语句保持强烈的厌恶，对 else 更是如此。他认为，每当我们看到 if，就应该想要隐藏它；每当看到 else，就应该重构代码让它消失。\n他批评的一个典型模式是&quot;延迟初始化（Lazy Initialization）&quot;。假设你有一个变量 thing，需要在生产环境中初始化为真实实现，在其他情况下使用 mock。许多开发者会这样写：\n1 2 3 4 5 6 var thing *Thing if os.Getenv(&#34;ENV&#34;) == &#34;production&#34; { thing = NewRealThing() } else { thing = NewMockThing() } 这里的问题是 thing 一开始是 nil。任何意外绕过这个 if/else 块的重构都可能导致 thing 未被初始化。更好的方法是通过先将 thing 初始化为一个安全的默认值来消除 else：\n1 2 3 4 thing := NewMockThing() // 总是初始化为安全的默认值 if os.Getenv(&#34;ENV&#34;) == &#34;production&#34; { thing = NewRealThing() // 仅在生产环境下覆盖 } 这是一个改进，因为 thing 永远不会是 nil。然而，正如 Cheney 所承认的，这引发了一个性能问题：如果创建 mock 的成本很高，我们是否在生产环境中付出了这个代价，却只是为了立即丢弃它？虽然这在应用程序初始化阶段可能是可以接受的，但在每个请求的上下文中确实是一个合理的担忧。这个权衡完美地引出了最佳解决方案：将这个逻辑封装在一个辅助函数中。\n">
 <title>重新思考 Go：写了十年代码后，Dave Cheney 保留的 4 个非常规习惯</title>
 
 <link rel='canonical' href='https://huizhou92.com/zh-cn/p/rethinking-go-dave-cheney-four-unconventional-habits-zh-cn/'>
 
-<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css">
+<link rel="stylesheet" href="/scss/style.min.20b21821b24a8fcaadba2abf9fa81ceb2bf498798e28142c62203bfa694fbc02.css">
 <meta property='og:title' content="重新思考 Go：写了十年代码后，Dave Cheney 保留的 4 个非常规习惯">
-<meta property='og:description' content="作为软件工程师，我们都在努力编写整洁、可维护且易于测试的代码。我们遵循最佳实践，阅读软件设计书籍，并进行严格的代码审查。但如果我们一些根深蒂固的习惯实际上是隐蔽的反模式呢？如果存在更有效、虽然不那么明显的方法来解决常见的编码问题呢？\n在最近的 GopherCon Europe 大会上，Dave Cheney 分享了他对于什么是好代码的一些&quot;非常强烈的观点&quot;。这些观点在生产系统的淬炼中形成，常常挑战传统智慧。本文提炼了一些最令人惊讶、最具影响力的要点，它们可能会改变你编写 Go 代码的方式。\n1. &ldquo;If 不好，Else 更糟&rdquo; Cheney 的第一条颇具挑战性的建议是：对 if 语句保持强烈的厌恶，对 else 更是如此。他认为，每当我们看到 if，就应该想要隐藏它；每当看到 else，就应该重构代码让它消失。\n他批评的一个典型模式是&quot;延迟初始化（Lazy Initialization）&quot;。假设你有一个变量 thing，需要在生产环境中初始化为真实实现，在其他情况下使用 mock。许多开发者会这样写：\n1 2 3 4 5 6 var thing *Thing if os.Getenv(&#34;ENV&#34;) == &#34;production&#34; { thing = NewRealThing() } else { thing = NewMockThing() } 这里的问题是 thing 一开始是 nil。任何意外绕过这个 if/else 块的重构都可能导致 thing 未被初始化。更好的方法是通过先将 thing 初始化为一个安全的默认值来消除 else：\n1 2 3 4 thing := NewMockThing() // 总是初始化为安全的默认值 if os.Getenv(&#34;ENV&#34;) == &#34;production&#34; { thing = NewRealThing() // 仅在生产环境下覆盖 } 这是一个改进，因为 thing 永远不会是 nil。然而，正如 Cheney 所承认的，这引发了一个性能问题：如果创建 mock 的成本很高，我们是否在生产环境中付出了这个代价，却只是为了立即丢弃它？虽然这在应用程序初始化阶段可能是可以接受的，但在每个请求的上下文中确实是一个合理的担忧。这个权衡完美地引出了最佳解决方案：将这个逻辑封装在一个辅助函数中。\n1 2 3 4 5 6 7 8 9 func newThing(env string) *Thing { if env == &#34;production&#34; { return NewRealThing() } return NewMockThing() } // 在调用代码中： thing := newThing(os.Getenv(&#34;ENV&#34;)) 这种方法提供了几个具体的好处。从调用者的角度来看，thing 总是 从单个函数调用初始化。条件逻辑被赋予了一个描述性的名称（newThing），最重要的是，newThing 现在是一个简单的、独立的函数，可以独立进行单元测试。Cheney 更进一步指出，因为这是基于环境的 选择，他更喜欢使用 switch 语句，这样意图更清晰，当添加新环境时代码也更容易扩展。\n">
+<meta property='og:description' content="作为软件工程师，我们都在努力编写整洁、可维护且易于测试的代码。我们遵循最佳实践，阅读软件设计书籍，并进行严格的代码审查。但如果我们一些根深蒂固的习惯实际上是隐蔽的反模式呢？如果存在更有效、虽然不那么明显的方法来解决常见的编码问题呢？\n在最近的 GopherCon Europe 大会上，Dave Cheney 分享了他对于什么是好代码的一些&quot;非常强烈的观点&quot;。这些观点在生产系统的淬炼中形成，常常挑战传统智慧。本文提炼了一些最令人惊讶、最具影响力的要点，它们可能会改变你编写 Go 代码的方式。\n1. &ldquo;If 不好，Else 更糟&rdquo; Cheney 的第一条颇具挑战性的建议是：对 if 语句保持强烈的厌恶，对 else 更是如此。他认为，每当我们看到 if，就应该想要隐藏它；每当看到 else，就应该重构代码让它消失。\n他批评的一个典型模式是&quot;延迟初始化（Lazy Initialization）&quot;。假设你有一个变量 thing，需要在生产环境中初始化为真实实现，在其他情况下使用 mock。许多开发者会这样写：\n1 2 3 4 5 6 var thing *Thing if os.Getenv(&#34;ENV&#34;) == &#34;production&#34; { thing = NewRealThing() } else { thing = NewMockThing() } 这里的问题是 thing 一开始是 nil。任何意外绕过这个 if/else 块的重构都可能导致 thing 未被初始化。更好的方法是通过先将 thing 初始化为一个安全的默认值来消除 else：\n1 2 3 4 thing := NewMockThing() // 总是初始化为安全的默认值 if os.Getenv(&#34;ENV&#34;) == &#34;production&#34; { thing = NewRealThing() // 仅在生产环境下覆盖 } 这是一个改进，因为 thing 永远不会是 nil。然而，正如 Cheney 所承认的，这引发了一个性能问题：如果创建 mock 的成本很高，我们是否在生产环境中付出了这个代价，却只是为了立即丢弃它？虽然这在应用程序初始化阶段可能是可以接受的，但在每个请求的上下文中确实是一个合理的担忧。这个权衡完美地引出了最佳解决方案：将这个逻辑封装在一个辅助函数中。\n">
 <meta property='og:url' content='https://huizhou92.com/zh-cn/p/rethinking-go-dave-cheney-four-unconventional-habits-zh-cn/'>
 <meta property='og:site_name' content='huizhou92&#39;s Blog'>
 <meta property='og:type' content='article'><meta property='article:section' content='Post' /><meta property='og:image' content='https://huizhou92.com/head.png' />
 <meta name="twitter:site" content="@piaopiaopig">
     <meta name="twitter:creator" content="@piaopiaopig"><meta name="twitter:title" content="重新思考 Go：写了十年代码后，Dave Cheney 保留的 4 个非常规习惯">
-<meta name="twitter:description" content="作为软件工程师，我们都在努力编写整洁、可维护且易于测试的代码。我们遵循最佳实践，阅读软件设计书籍，并进行严格的代码审查。但如果我们一些根深蒂固的习惯实际上是隐蔽的反模式呢？如果存在更有效、虽然不那么明显的方法来解决常见的编码问题呢？\n在最近的 GopherCon Europe 大会上，Dave Cheney 分享了他对于什么是好代码的一些&quot;非常强烈的观点&quot;。这些观点在生产系统的淬炼中形成，常常挑战传统智慧。本文提炼了一些最令人惊讶、最具影响力的要点，它们可能会改变你编写 Go 代码的方式。\n1. &ldquo;If 不好，Else 更糟&rdquo; Cheney 的第一条颇具挑战性的建议是：对 if 语句保持强烈的厌恶，对 else 更是如此。他认为，每当我们看到 if，就应该想要隐藏它；每当看到 else，就应该重构代码让它消失。\n他批评的一个典型模式是&quot;延迟初始化（Lazy Initialization）&quot;。假设你有一个变量 thing，需要在生产环境中初始化为真实实现，在其他情况下使用 mock。许多开发者会这样写：\n1 2 3 4 5 6 var thing *Thing if os.Getenv(&#34;ENV&#34;) == &#34;production&#34; { thing = NewRealThing() } else { thing = NewMockThing() } 这里的问题是 thing 一开始是 nil。任何意外绕过这个 if/else 块的重构都可能导致 thing 未被初始化。更好的方法是通过先将 thing 初始化为一个安全的默认值来消除 else：\n1 2 3 4 thing := NewMockThing() // 总是初始化为安全的默认值 if os.Getenv(&#34;ENV&#34;) == &#34;production&#34; { thing = NewRealThing() // 仅在生产环境下覆盖 } 这是一个改进，因为 thing 永远不会是 nil。然而，正如 Cheney 所承认的，这引发了一个性能问题：如果创建 mock 的成本很高，我们是否在生产环境中付出了这个代价，却只是为了立即丢弃它？虽然这在应用程序初始化阶段可能是可以接受的，但在每个请求的上下文中确实是一个合理的担忧。这个权衡完美地引出了最佳解决方案：将这个逻辑封装在一个辅助函数中。\n1 2 3 4 5 6 7 8 9 func newThing(env string) *Thing { if env == &#34;production&#34; { return NewRealThing() } return NewMockThing() } // 在调用代码中： thing := newThing(os.Getenv(&#34;ENV&#34;)) 这种方法提供了几个具体的好处。从调用者的角度来看，thing 总是 从单个函数调用初始化。条件逻辑被赋予了一个描述性的名称（newThing），最重要的是，newThing 现在是一个简单的、独立的函数，可以独立进行单元测试。Cheney 更进一步指出，因为这是基于环境的 选择，他更喜欢使用 switch 语句，这样意图更清晰，当添加新环境时代码也更容易扩展。\n"><meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:description" content="作为软件工程师，我们都在努力编写整洁、可维护且易于测试的代码。我们遵循最佳实践，阅读软件设计书籍，并进行严格的代码审查。但如果我们一些根深蒂固的习惯实际上是隐蔽的反模式呢？如果存在更有效、虽然不那么明显的方法来解决常见的编码问题呢？\n在最近的 GopherCon Europe 大会上，Dave Cheney 分享了他对于什么是好代码的一些&quot;非常强烈的观点&quot;。这些观点在生产系统的淬炼中形成，常常挑战传统智慧。本文提炼了一些最令人惊讶、最具影响力的要点，它们可能会改变你编写 Go 代码的方式。\n1. &ldquo;If 不好，Else 更糟&rdquo; Cheney 的第一条颇具挑战性的建议是：对 if 语句保持强烈的厌恶，对 else 更是如此。他认为，每当我们看到 if，就应该想要隐藏它；每当看到 else，就应该重构代码让它消失。\n他批评的一个典型模式是&quot;延迟初始化（Lazy Initialization）&quot;。假设你有一个变量 thing，需要在生产环境中初始化为真实实现，在其他情况下使用 mock。许多开发者会这样写：\n1 2 3 4 5 6 var thing *Thing if os.Getenv(&#34;ENV&#34;) == &#34;production&#34; { thing = NewRealThing() } else { thing = NewMockThing() } 这里的问题是 thing 一开始是 nil。任何意外绕过这个 if/else 块的重构都可能导致 thing 未被初始化。更好的方法是通过先将 thing 初始化为一个安全的默认值来消除 else：\n1 2 3 4 thing := NewMockThing() // 总是初始化为安全的默认值 if os.Getenv(&#34;ENV&#34;) == &#34;production&#34; { thing = NewRealThing() // 仅在生产环境下覆盖 } 这是一个改进，因为 thing 永远不会是 nil。然而，正如 Cheney 所承认的，这引发了一个性能问题：如果创建 mock 的成本很高，我们是否在生产环境中付出了这个代价，却只是为了立即丢弃它？虽然这在应用程序初始化阶段可能是可以接受的，但在每个请求的上下文中确实是一个合理的担忧。这个权衡完美地引出了最佳解决方案：将这个逻辑封装在一个辅助函数中。\n"><meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:image" content='https://huizhou92.com/head.png' />
     <link rel="shortcut icon" href="/favicon.png" />
 
       <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
       <script>
         var doNotTrack = false;
-        if ( false ) {
+        if ( true ) {
           var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
           var doNotTrack = (dnt == "1" || dnt == "yes");
         }
@@ -85,7 +85,7 @@
                     
                     
                         
-                        <img src="/img/avatar_hu_e52293b5d2b8c5f7.jpeg" width="300"
+                        <img src="/img/avatar_hu_2886835e4912e3b9.jpeg" width="300"
                             height="300" class="site-logo" loading="lazy" alt="Avatar">
                     
                 
@@ -465,13 +465,13 @@
 </span><span class="lnt">6
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">var</span> <span class="nx">thing</span> <span class="o">*</span><span class="nx">Thing</span>
-</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">os</span><span class="p">.</span><span class="nf">Getenv</span><span class="p">(</span><span class="s">&#34;ENV&#34;</span><span class="p">)</span> <span class="o">==</span> <span class="s">&#34;production&#34;</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">thing</span> <span class="p">=</span> <span class="nf">NewRealThing</span><span class="p">()</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">thing</span> <span class="p">=</span> <span class="nf">NewMockThing</span><span class="p">()</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">var</span><span class="w"> </span><span class="nx">thing</span><span class="w"> </span><span class="o">*</span><span class="nx">Thing</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="k">if</span><span class="w"> </span><span class="nx">os</span><span class="p">.</span><span class="nf">Getenv</span><span class="p">(</span><span class="s">&#34;ENV&#34;</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">&#34;production&#34;</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">thing</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nf">NewRealThing</span><span class="p">()</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">thing</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nf">NewMockThing</span><span class="p">()</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>这里的问题是 <code>thing</code> 一开始是 <code>nil</code>。任何意外绕过这个 <code>if/else</code> 块的重构都可能导致 <code>thing</code> 未被初始化。更好的方法是通过先将 <code>thing</code> 初始化为一个安全的默认值来消除 <code>else</code>：</p>
 <div class="highlight"><div class="chroma">
@@ -482,11 +482,11 @@
 </span><span class="lnt">4
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">thing</span> <span class="o">:=</span> <span class="nf">NewMockThing</span><span class="p">()</span> <span class="c1">// 总是初始化为安全的默认值</span>
-</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">os</span><span class="p">.</span><span class="nf">Getenv</span><span class="p">(</span><span class="s">&#34;ENV&#34;</span><span class="p">)</span> <span class="o">==</span> <span class="s">&#34;production&#34;</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">thing</span> <span class="p">=</span> <span class="nf">NewRealThing</span><span class="p">()</span> <span class="c1">// 仅在生产环境下覆盖</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">thing</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nf">NewMockThing</span><span class="p">()</span><span class="w"> </span><span class="c1">// 总是初始化为安全的默认值</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="k">if</span><span class="w"> </span><span class="nx">os</span><span class="p">.</span><span class="nf">Getenv</span><span class="p">(</span><span class="s">&#34;ENV&#34;</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">&#34;production&#34;</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">thing</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nf">NewRealThing</span><span class="p">()</span><span class="w"> </span><span class="c1">// 仅在生产环境下覆盖</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>这是一个改进，因为 <code>thing</code> 永远不会是 <code>nil</code>。然而，正如 Cheney 所承认的，这引发了一个性能问题：如果创建 mock 的成本很高，我们是否在生产环境中付出了这个代价，却只是为了立即丢弃它？虽然这在应用程序初始化阶段可能是可以接受的，但在每个请求的上下文中确实是一个合理的担忧。这个权衡完美地引出了最佳解决方案：将这个逻辑封装在一个辅助函数中。</p>
 <div class="highlight"><div class="chroma">
@@ -502,16 +502,16 @@
 </span><span class="lnt">9
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">newThing</span><span class="p">(</span><span class="nx">env</span> <span class="kt">string</span><span class="p">)</span> <span class="o">*</span><span class="nx">Thing</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">env</span> <span class="o">==</span> <span class="s">&#34;production&#34;</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="nf">NewRealThing</span><span class="p">()</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nf">NewMockThing</span><span class="p">()</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="c1">// 在调用代码中：</span>
-</span></span><span class="line"><span class="cl"><span class="nx">thing</span> <span class="o">:=</span> <span class="nf">newThing</span><span class="p">(</span><span class="nx">os</span><span class="p">.</span><span class="nf">Getenv</span><span class="p">(</span><span class="s">&#34;ENV&#34;</span><span class="p">))</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">newThing</span><span class="p">(</span><span class="nx">env</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="nx">Thing</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">env</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">&#34;production&#34;</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nf">NewRealThing</span><span class="p">()</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nf">NewMockThing</span><span class="p">()</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="c1">// 在调用代码中：</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nx">thing</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nf">newThing</span><span class="p">(</span><span class="nx">os</span><span class="p">.</span><span class="nf">Getenv</span><span class="p">(</span><span class="s">&#34;ENV&#34;</span><span class="p">))</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>这种方法提供了几个具体的好处。从调用者的角度来看，<code>thing</code> <em>总是</em> 从单个函数调用初始化。条件逻辑被赋予了一个描述性的名称（<code>newThing</code>），最重要的是，<code>newThing</code> 现在是一个简单的、独立的函数，可以独立进行单元测试。Cheney 更进一步指出，因为这是基于环境的 <em>选择</em>，他更喜欢使用 <code>switch</code> 语句，这样意图更清晰，当添加新环境时代码也更容易扩展。</p>
 <h3 id="2-有时候最好的名字就是没有名字">2. 有时候，最好的名字就是没有名字
@@ -536,20 +536,20 @@
 </span><span class="lnt">13
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">MyHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">payload</span> <span class="kd">struct</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">Name</span>  <span class="kt">string</span> <span class="s">`json:&#34;name&#34;`</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">Value</span> <span class="kt">int</span>    <span class="s">`json:&#34;value&#34;`</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">json</span><span class="p">.</span><span class="nf">NewDecoder</span><span class="p">(</span><span class="nx">r</span><span class="p">.</span><span class="nx">Body</span><span class="p">).</span><span class="nf">Decode</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">payload</span><span class="p">);</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="c1">// 处理错误</span>
-</span></span><span class="line"><span class="cl">        <span class="k">return</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">    <span class="c1">// ...验证 payload 并创建最终的领域类型...</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">MyHandler</span><span class="p">(</span><span class="nx">w</span><span class="w"> </span><span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="nx">r</span><span class="w"> </span><span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="nx">payload</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">Name</span><span class="w">  </span><span class="kt">string</span><span class="w"> </span><span class="s">`json:&#34;name&#34;`</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">Value</span><span class="w"> </span><span class="kt">int</span><span class="w">    </span><span class="s">`json:&#34;value&#34;`</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">json</span><span class="p">.</span><span class="nf">NewDecoder</span><span class="p">(</span><span class="nx">r</span><span class="p">.</span><span class="nx">Body</span><span class="p">).</span><span class="nf">Decode</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">payload</span><span class="p">);</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="c1">// 处理错误</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="k">return</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// ...验证 payload 并创建最终的领域类型...</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>这个匿名结构体永远不会逃逸出这个函数，也永远不会被其他人看到。通过不给它命名，你避免了用一个在这个特定上下文之外没有意义的标识符来污染包的命名空间。这个小改变减少了认知负担，并让注意力集中在应用程序中真正重要的标识符上。</p>
 <h3 id="3-为你的大脑编写条件语句而不只是为编译器">3. 为你的大脑编写条件语句，而不只是为编译器
@@ -565,7 +565,8 @@ Cheney 认为这样更好：<br>
 <p>这突出了核心问题：<code>main</code> 函数非常难以测试，因为它隐式依赖于全局状态，如操作系统环境变量、命令行标志和标准 I/O 流。测试操作这种全局状态的代码，用 Cheney 的话说，是&quot;糟糕且可怕的&rdquo;。更关键的是，这意味着测试无法并行运行，因为只有一个全局环境，这在现代 CI/CD 流水线中是一个主要瓶颈。</p>
 <p>为了解决这个问题，Cheney 提倡&quot;main.run 模式&rdquo;，这是 Matt Ryer 创造的一种技术。机制很简单：将应用程序的所有逻辑从 <code>main</code> 中移出，放入一个新函数中，通常称为 <code>run</code>。这个 <code>run</code> 函数应该将其所有依赖项——如配置、I/O 流和参数——作为参数接收，并返回一个错误。这种模式强制实现了清晰的分离，使你的逻辑更容易理解。正如 Cheney 所说，这是为了让你的逻辑更容易讨论：</p>
 <blockquote>
-<p>从根本上说，如果某样东西很难讨论，它就会很难使用。</p></blockquote>
+<p>从根本上说，如果某样东西很难讨论，它就会很难使用。</p>
+</blockquote>
 <p>你的 <code>main</code> 函数被简化为一个简单的六行包装器：</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
@@ -584,20 +585,20 @@ Cheney 认为这样更好：<br>
 </span><span class="lnt">13
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nf">run</span><span class="p">(</span><span class="nx">os</span><span class="p">.</span><span class="nx">Stdout</span><span class="p">,</span> <span class="nx">os</span><span class="p">.</span><span class="nx">Args</span><span class="p">);</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">fmt</span><span class="p">.</span><span class="nf">Fprintf</span><span class="p">(</span><span class="nx">os</span><span class="p">.</span><span class="nx">Stderr</span><span class="p">,</span> <span class="s">&#34;%s\n&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="c1">// 所有应用逻辑都在这里。</span>
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">run</span><span class="p">(</span><span class="nx">stdout</span> <span class="nx">io</span><span class="p">.</span><span class="nx">Writer</span><span class="p">,</span> <span class="nx">args</span> <span class="p">[]</span><span class="kt">string</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="c1">// ... 解析参数、设置依赖项、运行应用 ...</span>
-</span></span><span class="line"><span class="cl">    <span class="c1">// ... 如果出现问题，返回错误 ...</span>
-</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="kc">nil</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="nx">os</span><span class="p">.</span><span class="nx">Stdout</span><span class="p">,</span><span class="w"> </span><span class="nx">os</span><span class="p">.</span><span class="nx">Args</span><span class="p">);</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Fprintf</span><span class="p">(</span><span class="nx">os</span><span class="p">.</span><span class="nx">Stderr</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;%s\n&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="c1">// 所有应用逻辑都在这里。</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="nx">stdout</span><span class="w"> </span><span class="nx">io</span><span class="p">.</span><span class="nx">Writer</span><span class="p">,</span><span class="w"> </span><span class="nx">args</span><span class="w"> </span><span class="p">[]</span><span class="kt">string</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// ... 解析参数、设置依赖项、运行应用 ...</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// ... 如果出现问题，返回错误 ...</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>好处是立竿见影且非常显著的。<code>run</code> 函数现在只是一个普通的、可测试的 Go 函数。它没有隐藏状态；它的依赖项在函数签名中是显式的，可以像代码库中的其他单元一样快速且并行地进行测试。</p>
 <h3 id="结论">结论
@@ -639,7 +640,8 @@ Cheney 认为这样更好：<br>
                 >
             </script><script>
     window.addEventListener("DOMContentLoaded", () => {
-        renderMathInElement(document.body, {
+	const mainArticleElement = document.querySelector(".main-article");
+        renderMathInElement(mainArticleElement, {
             delimiters: [
                 { left: "$$", right: "$$", display: true },
                 { left: "$", right: "$", display: false },
@@ -649,6 +651,7 @@ Cheney 认为这样更好：<br>
             ignoredClasses: ["gist"]
         });})
 </script>
+
     
 </article>
 
@@ -672,7 +675,7 @@ Cheney 认为这样更好：<br>
     
     <section class="powerby">
         使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
-        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.30.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
     </section>
     <script src="/js/adblock-detection.js" defer></script>
      
@@ -771,7 +774,7 @@ Cheney 认为这样更好：<br>
                 src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
                 
                 >
-            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+            </script><script type="text/javascript" src="/ts/main.1e9a3bafd846ced4c345d084b355fb8c7bae75701c338f8a1f8a82c780137826.js" defer></script>
 <script>
     (function () {
         const customFont = document.createElement('link');

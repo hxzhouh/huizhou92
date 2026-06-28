@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" dir="ltr">
+<html lang="en-us" dir="ltr">
     <head>
 
 <meta charset='utf-8'>
@@ -9,7 +9,7 @@
 
 <link rel='canonical' href='https://huizhou92.com/p/bigcache-high-performance-memory-caching-in-go/'>
 
-<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css">
+<link rel="stylesheet" href="/scss/style.min.20b21821b24a8fcaadba2abf9fa81ceb2bf498798e28142c62203bfa694fbc02.css">
 <meta property='og:title' content="BigCache: High-Performance Memory Caching in Go">
 <meta property='og:description' content="BigCache[1] is a high-performance in-memory caching library designed for applications that demand high concurrency and low latency. This article explores BigCache&rsquo;s performance optimization techniques, including its sharding mechanism, efficient hashing algorithms, usage of read-write locks, and more, with detailed explanations based on the source code.\nShard &amp; Locking From a user&rsquo;s perspective, a cache functions like a large hashtable to store key-value pairs (k/v). Could this be achieved with map[string][]byte and sync.RWMutex?\n">
 <meta property='og:url' content='https://huizhou92.com/p/bigcache-high-performance-memory-caching-in-go/'>
@@ -24,7 +24,7 @@
       <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
       <script>
         var doNotTrack = false;
-        if ( false ) {
+        if ( true ) {
           var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
           var doNotTrack = (dnt == "1" || dnt == "yes");
         }
@@ -35,7 +35,7 @@
           gtag('config', 'G-JMPMQ2QREG');
         }
       </script>
-        <link rel="alternate" hreflang="en" href="https://huizhou92.com/p/bigcache-high-performance-memory-caching-in-go/">
+        <link rel="alternate" hreflang="en-us" href="https://huizhou92.com/p/bigcache-high-performance-memory-caching-in-go/">
         <link rel="alternate" hreflang="zh-cn" href="https://huizhou92.com/zh-cn/p/%E6%B7%B1%E5%85%A5%E6%8E%A2%E8%AE%A8-bigcache-%E7%9A%84%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%E6%89%8B%E6%AE%B5/">
             <link rel="alternate" hreflang="x-default" href="https://huizhou92.com/p/bigcache-high-performance-memory-caching-in-go/">
 <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
@@ -87,7 +87,7 @@
                     
                     
                         
-                        <img src="/img/avatar_hu_e52293b5d2b8c5f7.jpeg" width="300"
+                        <img src="/img/avatar_hu_2886835e4912e3b9.jpeg" width="300"
                             height="300" class="site-logo" loading="lazy" alt="Avatar">
                     
                 
@@ -538,31 +538,31 @@
 </span><span class="lnt">24
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// https://github.com/allegro/bigcache/blob/a2f05d7cbfdc7000a8b7e1c40f27d3f239c204df/bigcache.go#L58</span>
-</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">BigCache</span> <span class="kd">struct</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">shards</span>       <span class="p">[]</span><span class="o">*</span><span class="nx">cacheShard</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">shardMask</span>    <span class="kt">uint64</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">config</span>       <span class="nx">Config</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">newBigCache</span><span class="p">(</span><span class="nx">ctx</span> <span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span> <span class="nx">config</span> <span class="nx">Config</span><span class="p">,</span> <span class="nx">clock</span> <span class="nx">clock</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">BigCache</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="o">......</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">cache</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">BigCache</span><span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">shards</span><span class="p">:</span> <span class="nb">make</span><span class="p">([]</span><span class="o">*</span><span class="nx">cacheShard</span><span class="p">,</span> <span class="nx">config</span><span class="p">.</span><span class="nx">Shards</span><span class="p">),</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">lifeWindow</span><span class="p">:</span> <span class="nx">lifeWindowSeconds</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">clock</span><span class="p">:</span> <span class="nx">clock</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">hash</span><span class="p">:</span> <span class="nx">config</span><span class="p">.</span><span class="nx">Hasher</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">config</span><span class="p">:</span> <span class="nx">config</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">shardMask</span><span class="p">:</span> <span class="nb">uint64</span><span class="p">(</span><span class="nx">config</span><span class="p">.</span><span class="nx">Shards</span> <span class="o">-</span> <span class="mi">1</span><span class="p">),</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">close</span><span class="p">:</span> <span class="nb">make</span><span class="p">(</span><span class="kd">chan</span> <span class="kd">struct</span><span class="p">{}),</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">    <span class="o">......</span>
-</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nx">config</span><span class="p">.</span><span class="nx">Shards</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">cache</span><span class="p">.</span><span class="nx">shards</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">=</span> <span class="nf">initNewShard</span><span class="p">(</span><span class="nx">config</span><span class="p">,</span> <span class="nx">onRemove</span><span class="p">,</span> <span class="nx">clock</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">    <span class="o">......</span>
-</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">cache</span><span class="p">,</span> <span class="kc">nil</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// https://github.com/allegro/bigcache/blob/a2f05d7cbfdc7000a8b7e1c40f27d3f239c204df/bigcache.go#L58</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">type</span><span class="w"> </span><span class="nx">BigCache</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">shards</span><span class="w">       </span><span class="p">[]</span><span class="o">*</span><span class="nx">cacheShard</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">shardMask</span><span class="w">    </span><span class="kt">uint64</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">config</span><span class="w">       </span><span class="nx">Config</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">newBigCache</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span><span class="w"> </span><span class="nx">config</span><span class="w"> </span><span class="nx">Config</span><span class="p">,</span><span class="w"> </span><span class="nx">clock</span><span class="w"> </span><span class="nx">clock</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="nx">BigCache</span><span class="p">,</span><span class="w"> </span><span class="kt">error</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="o">......</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">cache</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">BigCache</span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">shards</span><span class="p">:</span><span class="w"> </span><span class="nb">make</span><span class="p">([]</span><span class="o">*</span><span class="nx">cacheShard</span><span class="p">,</span><span class="w"> </span><span class="nx">config</span><span class="p">.</span><span class="nx">Shards</span><span class="p">),</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">lifeWindow</span><span class="p">:</span><span class="w"> </span><span class="nx">lifeWindowSeconds</span><span class="p">,</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">clock</span><span class="p">:</span><span class="w"> </span><span class="nx">clock</span><span class="p">,</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">hash</span><span class="p">:</span><span class="w"> </span><span class="nx">config</span><span class="p">.</span><span class="nx">Hasher</span><span class="p">,</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">config</span><span class="p">:</span><span class="w"> </span><span class="nx">config</span><span class="p">,</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">shardMask</span><span class="p">:</span><span class="w"> </span><span class="nb">uint64</span><span class="p">(</span><span class="nx">config</span><span class="p">.</span><span class="nx">Shards</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">close</span><span class="p">:</span><span class="w"> </span><span class="nb">make</span><span class="p">(</span><span class="kd">chan</span><span class="w"> </span><span class="kd">struct</span><span class="p">{}),</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="o">......</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="nx">config</span><span class="p">.</span><span class="nx">Shards</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="o">++</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">cache</span><span class="p">.</span><span class="nx">shards</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nf">initNewShard</span><span class="p">(</span><span class="nx">config</span><span class="p">,</span><span class="w"> </span><span class="nx">onRemove</span><span class="p">,</span><span class="w"> </span><span class="nx">clock</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="o">......</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">cache</span><span class="p">,</span><span class="w"> </span><span class="kc">nil</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>Each cache object calculates its hash based on its key: <code>hash(key) % N</code>. Ideally, concurrent requests are evenly distributed across shards, minimizing lock contention and reducing latency</p>
 <h4 id="optimal-number-of-shards-n">Optimal Number of Shards (<code>N</code>)
@@ -575,11 +575,11 @@
 </span><span class="lnt">4
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// https://github.com/allegro/bigcache/blob/a2f05d7cbfdc7000a8b7e1c40f27d3f239c204df/bigcache.go#L253</span>
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">c</span> <span class="o">*</span><span class="nx">BigCache</span><span class="p">)</span> <span class="nf">getShard</span><span class="p">(</span><span class="nx">hashedKey</span> <span class="kt">uint64</span><span class="p">)</span> <span class="p">(</span><span class="nx">shard</span> <span class="o">*</span><span class="nx">cacheShard</span><span class="p">)</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">c</span><span class="p">.</span><span class="nx">shards</span><span class="p">[</span><span class="nx">hashedKey</span> <span class="o">&amp;</span> <span class="nx">c</span><span class="p">.</span><span class="nx">shardMask</span><span class="p">]</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// https://github.com/allegro/bigcache/blob/a2f05d7cbfdc7000a8b7e1c40f27d3f239c204df/bigcache.go#L253</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">c</span><span class="w"> </span><span class="o">*</span><span class="nx">BigCache</span><span class="p">)</span><span class="w"> </span><span class="nf">getShard</span><span class="p">(</span><span class="nx">hashedKey</span><span class="w"> </span><span class="kt">uint64</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nx">shard</span><span class="w"> </span><span class="o">*</span><span class="nx">cacheShard</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">shards</span><span class="p">[</span><span class="nx">hashedKey</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">shardMask</span><span class="p">]</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>Since for a power <code>N</code> of 2, for any <code>x</code>, the following equation holds.<br>
 <code>x mod N = (x &amp; (N - 1))</code>.<br>
@@ -610,21 +610,21 @@ So, you only need to use a bitwise AND (<code>&amp;</code>) once to find its rem
 </span><span class="lnt">14
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">fnv64a</span> <span class="kd">struct</span><span class="p">{}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="kd">const</span> <span class="p">(</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">offset64</span> <span class="p">=</span> <span class="mi">14695981039346656037</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">prime64</span> <span class="p">=</span> <span class="mi">1099511628211</span>
-</span></span><span class="line"><span class="cl"><span class="p">)</span>
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">f</span> <span class="nx">fnv64a</span><span class="p">)</span> <span class="nf">Sum64</span><span class="p">(</span><span class="nx">key</span> <span class="kt">string</span><span class="p">)</span> <span class="kt">uint64</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl"><span class="kd">var</span> <span class="nx">hash</span> <span class="kt">uint64</span> <span class="p">=</span> <span class="nx">offset64</span>
-</span></span><span class="line"><span class="cl"><span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="nx">key</span><span class="p">);</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">hash</span> <span class="p">^=</span> <span class="nb">uint64</span><span class="p">(</span><span class="nx">key</span><span class="p">[</span><span class="nx">i</span><span class="p">])</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">hash</span> <span class="o">*=</span> <span class="nx">prime64</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl"><span class="k">return</span> <span class="nx">hash</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span><span class="w"> </span><span class="nx">fnv64a</span><span class="w"> </span><span class="kd">struct</span><span class="p">{}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">const</span><span class="w"> </span><span class="p">(</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">offset64</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mi">14695981039346656037</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">prime64</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mi">1099511628211</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">f</span><span class="w"> </span><span class="nx">fnv64a</span><span class="p">)</span><span class="w"> </span><span class="nf">Sum64</span><span class="p">(</span><span class="nx">key</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="w"> </span><span class="kt">uint64</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">var</span><span class="w"> </span><span class="nx">hash</span><span class="w"> </span><span class="kt">uint64</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">offset64</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="k">for</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="nx">key</span><span class="p">);</span><span class="w"> </span><span class="nx">i</span><span class="o">++</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">hash</span><span class="w"> </span><span class="p">^=</span><span class="w"> </span><span class="nb">uint64</span><span class="p">(</span><span class="nx">key</span><span class="p">[</span><span class="nx">i</span><span class="p">])</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">hash</span><span class="w"> </span><span class="o">*=</span><span class="w"> </span><span class="nx">prime64</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="k">return</span><span class="w"> </span><span class="nx">hash</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><h3 id="memory-optimization">Memory Optimization
 </h3><p>In Go, the garbage collector checks every element in the map during the <code>mark</code> and <code>scan</code> phases. If the cache contains millions of cached objects, the garbage collector&rsquo;s pointless checking of these objects leads to unnecessary time overhead.<br>
@@ -660,33 +660,33 @@ We can test this with a simple example.</p>
 </span><span class="lnt">26
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">var</span> <span class="nx">pointMap</span> <span class="kd">map</span><span class="p">[</span><span class="kt">int</span><span class="p">]</span><span class="o">*</span><span class="kt">int</span>  
-</span></span><span class="line"><span class="cl"><span class="kd">var</span> <span class="nx">noPointMap</span> <span class="kd">map</span><span class="p">[</span><span class="kt">int</span><span class="p">]</span><span class="kt">int</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">BenchmarkPointMap</span><span class="p">(</span><span class="nx">b</span> <span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">B</span><span class="p">)</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">pointMap</span> <span class="p">=</span> <span class="nb">make</span><span class="p">(</span><span class="kd">map</span><span class="p">[</span><span class="kt">int</span><span class="p">]</span><span class="o">*</span><span class="kt">int</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="mf">10e6</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">pointMap</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">=</span> <span class="o">&amp;</span><span class="nx">i</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">b</span><span class="p">.</span><span class="nf">ResetTimer</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nx">b</span><span class="p">.</span><span class="nx">N</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nb">delete</span><span class="p">(</span><span class="nx">pointMap</span><span class="p">,</span> <span class="nx">i</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">pointMap</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">=</span> <span class="o">&amp;</span><span class="nx">i</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">BenchmarkNoPointMap</span><span class="p">(</span><span class="nx">b</span> <span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">B</span><span class="p">)</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">noPointMap</span> <span class="p">=</span> <span class="nb">make</span><span class="p">(</span><span class="kd">map</span><span class="p">[</span><span class="kt">int</span><span class="p">]</span><span class="kt">int</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="mf">10e6</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">noPointMap</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">=</span> <span class="nx">i</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">b</span><span class="p">.</span><span class="nf">ResetTimer</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nx">b</span><span class="p">.</span><span class="nx">N</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nb">delete</span><span class="p">(</span><span class="nx">noPointMap</span><span class="p">,</span> <span class="nx">i</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">noPointMap</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">=</span> <span class="nx">i</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">var</span><span class="w"> </span><span class="nx">pointMap</span><span class="w"> </span><span class="kd">map</span><span class="p">[</span><span class="kt">int</span><span class="p">]</span><span class="o">*</span><span class="kt">int</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="kd">var</span><span class="w"> </span><span class="nx">noPointMap</span><span class="w"> </span><span class="kd">map</span><span class="p">[</span><span class="kt">int</span><span class="p">]</span><span class="kt">int</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">BenchmarkPointMap</span><span class="p">(</span><span class="nx">b</span><span class="w"> </span><span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">B</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">pointMap</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nb">make</span><span class="p">(</span><span class="kd">map</span><span class="p">[</span><span class="kt">int</span><span class="p">]</span><span class="o">*</span><span class="kt">int</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="mf">10e6</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="o">++</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">pointMap</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">i</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">b</span><span class="p">.</span><span class="nf">ResetTimer</span><span class="p">()</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="nx">b</span><span class="p">.</span><span class="nx">N</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="o">++</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nb">delete</span><span class="p">(</span><span class="nx">pointMap</span><span class="p">,</span><span class="w"> </span><span class="nx">i</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">pointMap</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">i</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">BenchmarkNoPointMap</span><span class="p">(</span><span class="nx">b</span><span class="w"> </span><span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">B</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">noPointMap</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nb">make</span><span class="p">(</span><span class="kd">map</span><span class="p">[</span><span class="kt">int</span><span class="p">]</span><span class="kt">int</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="mf">10e6</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="o">++</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">noPointMap</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">i</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">b</span><span class="p">.</span><span class="nf">ResetTimer</span><span class="p">()</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="nx">b</span><span class="p">.</span><span class="nx">N</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="o">++</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nb">delete</span><span class="p">(</span><span class="nx">noPointMap</span><span class="p">,</span><span class="w"> </span><span class="nx">i</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">noPointMap</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">i</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>Result</p>
 <div class="highlight"><div class="chroma">
@@ -820,73 +820,73 @@ The way <code>bigcache</code> implements this is to use the hash value as the ke
 </span><span class="lnt">66
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">//https://github.com/allegro/bigcache/blob/a2f05d7cbfdc7000a8b7e1c40f27d3f239c204df/shard.go#L18</span>
-</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">cacheShard</span> <span class="kd">struct</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">hashmap</span>     <span class="kd">map</span><span class="p">[</span><span class="kt">uint64</span><span class="p">]</span><span class="kt">uint32</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">entries</span>     <span class="nx">queue</span><span class="p">.</span><span class="nx">BytesQueue</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">lock</span>        <span class="nx">sync</span><span class="p">.</span><span class="nx">RWMutex</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">entryBuffer</span> <span class="p">[]</span><span class="kt">byte</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">onRemove</span>    <span class="nx">onRemoveCallback</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">isVerbose</span>    <span class="kt">bool</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">statsEnabled</span> <span class="kt">bool</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">logger</span>       <span class="nx">Logger</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">clock</span>        <span class="nx">clock</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">lifeWindow</span>   <span class="kt">uint64</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">hashmapStats</span> <span class="kd">map</span><span class="p">[</span><span class="kt">uint64</span><span class="p">]</span><span class="kt">uint32</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">stats</span>        <span class="nx">Stats</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">s</span> <span class="o">*</span><span class="nx">cacheShard</span><span class="p">)</span> <span class="nf">set</span><span class="p">(</span><span class="nx">key</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">hashedKey</span> <span class="kt">uint64</span><span class="p">,</span> <span class="nx">entry</span> <span class="p">[]</span><span class="kt">byte</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">currentTimestamp</span> <span class="o">:=</span> <span class="nb">uint64</span><span class="p">(</span><span class="nx">s</span><span class="p">.</span><span class="nx">clock</span><span class="p">.</span><span class="nf">Epoch</span><span class="p">())</span> 
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl">    <span class="nx">s</span><span class="p">.</span><span class="nx">lock</span><span class="p">.</span><span class="nf">Lock</span><span class="p">()</span> 
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">previousIndex</span> <span class="o">:=</span> <span class="nx">s</span><span class="p">.</span><span class="nx">hashmap</span><span class="p">[</span><span class="nx">hashedKey</span><span class="p">];</span> <span class="nx">previousIndex</span> <span class="o">!=</span> <span class="mi">0</span> <span class="p">{</span> <span class="c1">// Check for old entries with the same hash key</span>
-</span></span><span class="line"><span class="cl">       <span class="k">if</span> <span class="nx">previousEntry</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">s</span><span class="p">.</span><span class="nx">entries</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="nx">previousIndex</span><span class="p">));</span> <span class="nx">err</span> <span class="o">==</span> <span class="kc">nil</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">          <span class="nf">resetHashFromEntry</span><span class="p">(</span><span class="nx">previousEntry</span><span class="p">)</span> <span class="c1">// reset hash of old entries</span>
-</span></span><span class="line"><span class="cl">          <span class="nb">delete</span><span class="p">(</span><span class="nx">s</span><span class="p">.</span><span class="nx">hashmap</span><span class="p">,</span> <span class="nx">hashedKey</span><span class="p">)</span> <span class="c1">// Remove old entries from the hash table </span>
-</span></span><span class="line"><span class="cl">       <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="p">!</span><span class="nx">s</span><span class="p">.</span><span class="nx">cleanEnabled</span> <span class="p">{</span> <span class="c1">// If cleanup is not enabled  </span>
-</span></span><span class="line"><span class="cl">       <span class="k">if</span> <span class="nx">oldestEntry</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">s</span><span class="p">.</span><span class="nx">entries</span><span class="p">.</span><span class="nf">Peek</span><span class="p">();</span> <span class="nx">err</span> <span class="o">==</span> <span class="kc">nil</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">          <span class="nx">s</span><span class="p">.</span><span class="nf">onEvict</span><span class="p">(</span><span class="nx">oldestEntry</span><span class="p">,</span> <span class="nx">currentTimestamp</span><span class="p">,</span> <span class="nx">s</span><span class="p">.</span><span class="nx">removeOldestEntry</span><span class="p">)</span> <span class="c1">// Process the oldest entries</span>
-</span></span><span class="line"><span class="cl">       <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl">    <span class="nx">w</span> <span class="o">:=</span> <span class="nf">wrapEntry</span><span class="p">(</span><span class="nx">currentTimestamp</span><span class="p">,</span> <span class="nx">hashedKey</span><span class="p">,</span> <span class="nx">key</span><span class="p">,</span> <span class="nx">entry</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">s</span><span class="p">.</span><span class="nx">entryBuffer</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="k">if</span> <span class="nx">index</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">s</span><span class="p">.</span><span class="nx">entries</span><span class="p">.</span><span class="nf">Push</span><span class="p">(</span><span class="nx">w</span><span class="p">);</span> <span class="nx">err</span> <span class="o">==</span> <span class="kc">nil</span> <span class="p">{</span> <span class="c1">// Try to push new entries into the queue</span>
-</span></span><span class="line"><span class="cl">          <span class="nx">s</span><span class="p">.</span><span class="nx">hashmap</span><span class="p">[</span><span class="nx">hashedKey</span><span class="p">]</span> <span class="p">=</span> <span class="nb">uint64</span><span class="p">(</span><span class="nx">index</span><span class="p">)</span><span class="c1">// Update the hash table </span>
-</span></span><span class="line"><span class="cl">          <span class="nx">s</span><span class="p">.</span><span class="nx">lock</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">()</span> 
-</span></span><span class="line"><span class="cl">          <span class="k">return</span> <span class="kc">nil</span> 
-</span></span><span class="line"><span class="cl">       <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">       <span class="k">if</span> <span class="nx">s</span><span class="p">.</span><span class="nf">removeOldestEntry</span><span class="p">(</span><span class="nx">NoSpace</span><span class="p">)</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span> <span class="c1">// If there is not enough space, delete the oldest entry  </span>
-</span></span><span class="line"><span class="cl">          <span class="nx">s</span><span class="p">.</span><span class="nx">lock</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">          <span class="k">return</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="s">&#34;entry is bigger than max shard size&#34;</span><span class="p">)</span> 
-</span></span><span class="line"><span class="cl">       <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">s</span> <span class="o">*</span><span class="nx">cacheShard</span><span class="p">)</span> <span class="nf">getValidWrapEntry</span><span class="p">(</span><span class="nx">key</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">hashedKey</span> <span class="kt">uint64</span><span class="p">)</span> <span class="p">([]</span><span class="kt">byte</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">wrappedEntry</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">s</span><span class="p">.</span><span class="nf">getWrappedEntry</span><span class="p">(</span><span class="nx">hashedKey</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="p">!</span><span class="nf">compareKeyFromEntry</span><span class="p">(</span><span class="nx">wrappedEntry</span><span class="p">,</span> <span class="nx">key</span><span class="p">)</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">s</span><span class="p">.</span><span class="nf">collision</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">       <span class="k">if</span> <span class="nx">s</span><span class="p">.</span><span class="nx">isVerbose</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">          <span class="nx">s</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Collision detected. Both %q and %q have the same hash %x&#34;</span><span class="p">,</span> <span class="nx">key</span><span class="p">,</span> <span class="nf">readKeyFromEntry</span><span class="p">(</span><span class="nx">wrappedEntry</span><span class="p">),</span> <span class="nx">hashedKey</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">       <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl">       <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">ErrEntryNotFound</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">s</span><span class="p">.</span><span class="nf">hitWithoutLock</span><span class="p">(</span><span class="nx">hashedKey</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">wrappedEntry</span><span class="p">,</span> <span class="kc">nil</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="cp">//https://github.com/allegro/bigcache/blob/a2f05d7cbfdc7000a8b7e1c40f27d3f239c204df/shard.go#L18</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">type</span><span class="w"> </span><span class="nx">cacheShard</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">hashmap</span><span class="w">     </span><span class="kd">map</span><span class="p">[</span><span class="kt">uint64</span><span class="p">]</span><span class="kt">uint32</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">entries</span><span class="w">     </span><span class="nx">queue</span><span class="p">.</span><span class="nx">BytesQueue</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">lock</span><span class="w">        </span><span class="nx">sync</span><span class="p">.</span><span class="nx">RWMutex</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">entryBuffer</span><span class="w"> </span><span class="p">[]</span><span class="kt">byte</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">onRemove</span><span class="w">    </span><span class="nx">onRemoveCallback</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">isVerbose</span><span class="w">    </span><span class="kt">bool</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">statsEnabled</span><span class="w"> </span><span class="kt">bool</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">logger</span><span class="w">       </span><span class="nx">Logger</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">clock</span><span class="w">        </span><span class="nx">clock</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">lifeWindow</span><span class="w">   </span><span class="kt">uint64</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">hashmapStats</span><span class="w"> </span><span class="kd">map</span><span class="p">[</span><span class="kt">uint64</span><span class="p">]</span><span class="kt">uint32</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">stats</span><span class="w">        </span><span class="nx">Stats</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">s</span><span class="w"> </span><span class="o">*</span><span class="nx">cacheShard</span><span class="p">)</span><span class="w"> </span><span class="nf">set</span><span class="p">(</span><span class="nx">key</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">hashedKey</span><span class="w"> </span><span class="kt">uint64</span><span class="p">,</span><span class="w"> </span><span class="nx">entry</span><span class="w"> </span><span class="p">[]</span><span class="kt">byte</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">currentTimestamp</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nb">uint64</span><span class="p">(</span><span class="nx">s</span><span class="p">.</span><span class="nx">clock</span><span class="p">.</span><span class="nf">Epoch</span><span class="p">())</span><span class="w"> 
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">s</span><span class="p">.</span><span class="nx">lock</span><span class="p">.</span><span class="nf">Lock</span><span class="p">()</span><span class="w"> 
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">previousIndex</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">s</span><span class="p">.</span><span class="nx">hashmap</span><span class="p">[</span><span class="nx">hashedKey</span><span class="p">];</span><span class="w"> </span><span class="nx">previousIndex</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="c1">// Check for old entries with the same hash key</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="k">if</span><span class="w"> </span><span class="nx">previousEntry</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">s</span><span class="p">.</span><span class="nx">entries</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="nx">previousIndex</span><span class="p">));</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nf">resetHashFromEntry</span><span class="p">(</span><span class="nx">previousEntry</span><span class="p">)</span><span class="w"> </span><span class="c1">// reset hash of old entries</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nb">delete</span><span class="p">(</span><span class="nx">s</span><span class="p">.</span><span class="nx">hashmap</span><span class="p">,</span><span class="w"> </span><span class="nx">hashedKey</span><span class="p">)</span><span class="w"> </span><span class="c1">// Remove old entries from the hash table </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">!</span><span class="nx">s</span><span class="p">.</span><span class="nx">cleanEnabled</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="c1">// If cleanup is not enabled  </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="k">if</span><span class="w"> </span><span class="nx">oldestEntry</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">s</span><span class="p">.</span><span class="nx">entries</span><span class="p">.</span><span class="nf">Peek</span><span class="p">();</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nx">s</span><span class="p">.</span><span class="nf">onEvict</span><span class="p">(</span><span class="nx">oldestEntry</span><span class="p">,</span><span class="w"> </span><span class="nx">currentTimestamp</span><span class="p">,</span><span class="w"> </span><span class="nx">s</span><span class="p">.</span><span class="nx">removeOldestEntry</span><span class="p">)</span><span class="w"> </span><span class="c1">// Process the oldest entries</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">w</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nf">wrapEntry</span><span class="p">(</span><span class="nx">currentTimestamp</span><span class="p">,</span><span class="w"> </span><span class="nx">hashedKey</span><span class="p">,</span><span class="w"> </span><span class="nx">key</span><span class="p">,</span><span class="w"> </span><span class="nx">entry</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">s</span><span class="p">.</span><span class="nx">entryBuffer</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="k">if</span><span class="w"> </span><span class="nx">index</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">s</span><span class="p">.</span><span class="nx">entries</span><span class="p">.</span><span class="nf">Push</span><span class="p">(</span><span class="nx">w</span><span class="p">);</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="c1">// Try to push new entries into the queue</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nx">s</span><span class="p">.</span><span class="nx">hashmap</span><span class="p">[</span><span class="nx">hashedKey</span><span class="p">]</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nb">uint64</span><span class="p">(</span><span class="nx">index</span><span class="p">)</span><span class="c1">// Update the hash table </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nx">s</span><span class="p">.</span><span class="nx">lock</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">()</span><span class="w"> 
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span><span class="w"> 
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="k">if</span><span class="w"> </span><span class="nx">s</span><span class="p">.</span><span class="nf">removeOldestEntry</span><span class="p">(</span><span class="nx">NoSpace</span><span class="p">)</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="c1">// If there is not enough space, delete the oldest entry  </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nx">s</span><span class="p">.</span><span class="nx">lock</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">()</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="k">return</span><span class="w"> </span><span class="nx">errors</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="s">&#34;entry is bigger than max shard size&#34;</span><span class="p">)</span><span class="w"> 
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">s</span><span class="w"> </span><span class="o">*</span><span class="nx">cacheShard</span><span class="p">)</span><span class="w"> </span><span class="nf">getValidWrapEntry</span><span class="p">(</span><span class="nx">key</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">hashedKey</span><span class="w"> </span><span class="kt">uint64</span><span class="p">)</span><span class="w"> </span><span class="p">([]</span><span class="kt">byte</span><span class="p">,</span><span class="w"> </span><span class="kt">error</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">wrappedEntry</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">s</span><span class="p">.</span><span class="nf">getWrappedEntry</span><span class="p">(</span><span class="nx">hashedKey</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">!</span><span class="nf">compareKeyFromEntry</span><span class="p">(</span><span class="nx">wrappedEntry</span><span class="p">,</span><span class="w"> </span><span class="nx">key</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">s</span><span class="p">.</span><span class="nf">collision</span><span class="p">()</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="k">if</span><span class="w"> </span><span class="nx">s</span><span class="p">.</span><span class="nx">isVerbose</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nx">s</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Collision detected. Both %q and %q have the same hash %x&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">key</span><span class="p">,</span><span class="w"> </span><span class="nf">readKeyFromEntry</span><span class="p">(</span><span class="nx">wrappedEntry</span><span class="p">),</span><span class="w"> </span><span class="nx">hashedKey</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span><span class="p">,</span><span class="w"> </span><span class="nx">ErrEntryNotFound</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">s</span><span class="p">.</span><span class="nf">hitWithoutLock</span><span class="p">(</span><span class="nx">hashedKey</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">wrappedEntry</span><span class="p">,</span><span class="w"> </span><span class="kc">nil</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p><code>queue.BytesQueue</code> is an array of bytes, on demand. When a <code>[]byte</code> is added, it copies the data to the end.<br>
 When <code>bigcache</code> deletes a cached element, it just removes the index it was added from from <code>map[uint64]uint32</code> and sets its data in the <code>queue.BytesQueue</code> queue to 0. The deletion operation creates a lot of &quot; Empty holes<code>and these</code>wormholes<code>will not be organized or removed. Because it is implemented using a byte array underneath, the removal of the &quot;holes&quot; is a time-consuming operation that causes locks to be held for too long.</code>bigcache` can only wait for the cleanup mechanism to remove these &ldquo;holes&rdquo;.</p>
@@ -949,7 +949,8 @@ When <code>bigcache</code> deletes a cached element, it just removes the index i
                 >
             </script><script>
     window.addEventListener("DOMContentLoaded", () => {
-        renderMathInElement(document.body, {
+	const mainArticleElement = document.querySelector(".main-article");
+        renderMathInElement(mainArticleElement, {
             delimiters: [
                 { left: "$$", right: "$$", display: true },
                 { left: "$", right: "$", display: false },
@@ -959,6 +960,7 @@ When <code>bigcache</code> deletes a cached element, it just removes the index i
             ignoredClasses: ["gist"]
         });})
 </script>
+
     
 </article>
 
@@ -1083,7 +1085,7 @@ When <code>bigcache</code> deletes a cached element, it just removes the index i
     
     <section class="powerby">
         Built with <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> <br />
-        Theme <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> designed by <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a>
+        Theme <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.30.0">Stack</a></b> designed by <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a>
     </section>
     <script src="/js/adblock-detection.js" defer></script>
      
@@ -1182,7 +1184,7 @@ When <code>bigcache</code> deletes a cached element, it just removes the index i
                 src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
                 
                 >
-            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+            </script><script type="text/javascript" src="/ts/main.1e9a3bafd846ced4c345d084b355fb8c7bae75701c338f8a1f8a82c780137826.js" defer></script>
 <script>
     (function () {
         const customFont = document.createElement('link');

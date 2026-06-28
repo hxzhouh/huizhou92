@@ -9,7 +9,7 @@
 
 <link rel='canonical' href='https://huizhou92.com/zh-cn/p/go124-mutex%E8%87%AA%E6%97%8B%E4%BC%98%E5%8C%96%E6%9C%80%E5%A4%A7%E6%8F%90%E5%8D%8770%E7%9A%84%E6%80%A7%E8%83%BD/'>
 
-<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css">
+<link rel="stylesheet" href="/scss/style.min.20b21821b24a8fcaadba2abf9fa81ceb2bf498798e28142c62203bfa694fbc02.css">
 <meta property='og:title' content="Go1.24: mutex自旋优化,最大提升70%的性能">
 <meta property='og:description' content="Go1.24引入了mutex自旋优化，提升性能最高可达70%。通过增加spinning状态，减少了锁竞争时的CPU资源浪费，优化了多线程环境下的性能表现。基准测试显示，在高竞争场景下，mutex的性能显著提升，平均性能提升约29%。该特性默认开启，用户可通过GOEXPERIMENT控制，期待在未来的版本中进一步优化。">
 <meta property='og:url' content='https://huizhou92.com/zh-cn/p/go124-mutex%E8%87%AA%E6%97%8B%E4%BC%98%E5%8C%96%E6%9C%80%E5%A4%A7%E6%8F%90%E5%8D%8770%E7%9A%84%E6%80%A7%E8%83%BD/'>
@@ -24,7 +24,7 @@
       <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
       <script>
         var doNotTrack = false;
-        if ( false ) {
+        if ( true ) {
           var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
           var doNotTrack = (dnt == "1" || dnt == "yes");
         }
@@ -85,7 +85,7 @@
                     
                     
                         
-                        <img src="/img/avatar_hu_e52293b5d2b8c5f7.jpeg" width="300"
+                        <img src="/img/avatar_hu_2886835e4912e3b9.jpeg" width="300"
                             height="300" class="site-logo" loading="lazy" alt="Avatar">
                     
                 
@@ -534,20 +534,21 @@
 </span><span class="lnt">7
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">https</span><span class="p">:</span><span class="c1">//github.com/golang/go/blob/608acff8479640b00c85371d91280b64f5ec9594/src/runtime/lock_spinbit.go#L57</span>
-</span></span><span class="line"><span class="cl"><span class="kd">const</span> <span class="p">(</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">mutexLocked</span> <span class="p">=</span> <span class="mh">0x001</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">mutexSleeping</span> <span class="p">=</span> <span class="mh">0x002</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">mutexSpinning</span> <span class="p">=</span> <span class="mh">0x100</span>
-</span></span><span class="line"><span class="cl">	<span class="o">...</span>
-</span></span><span class="line"><span class="cl"><span class="p">)</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">https</span><span class="p">:</span><span class="cp">//github.com/golang/go/blob/608acff8479640b00c85371d91280b64f5ec9594/src/runtime/lock_spinbit.go#L57</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">const</span><span class="w"> </span><span class="p">(</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">mutexLocked</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mh">0x001</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">mutexSleeping</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mh">0x002</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">mutexSpinning</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mh">0x100</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="o">...</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">)</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>使用这个 <code>spinning</code>位来表示是否有一个等待的线程处于 “醒着并循环尝试获取锁” 的状态。线程之间会互相排除进入 <code>spinning</code>状态，但它们不会因为尝试获取这个标志位而阻塞。</p>
 <blockquote>
 <p>metux 的介绍可以参考以前的文章<br>
 <a class="link" href="https://pub.huizhou92.com/go-source-code-sync-mutex-3082a25ef092"  target="_blank" rel="noopener"
-    >https://pub.huizhou92.com/go-source-code-sync-mutex-3082a25ef092</a></p></blockquote>
+    >https://pub.huizhou92.com/go-source-code-sync-mutex-3082a25ef092</a></p>
+</blockquote>
 <h2 id="mutex-获取锁分析">Mutex 获取锁分析
 </h2><h3 id="1-快速路径尝试获取锁">1. 快速路径尝试获取锁
 </h3><div class="highlight"><div class="chroma">
@@ -563,16 +564,16 @@
 </span><span class="lnt">9
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">//https://github.com/golang/go/blob/adc9c455873fef97c5759e4811f0d9c8217fe27b/src/runtime/lock_spinbit.go#L160</span>
-</span></span><span class="line"><span class="cl"><span class="nx">k8</span> <span class="o">:=</span> <span class="nf">key8</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">l</span><span class="p">.</span><span class="nx">key</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl"><span class="nx">v8</span> <span class="o">:=</span> <span class="nx">atomic</span><span class="p">.</span><span class="nf">Xchg8</span><span class="p">(</span><span class="nx">k8</span><span class="p">,</span> <span class="nx">mutexLocked</span><span class="p">)</span> 
-</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">v8</span><span class="o">&amp;</span><span class="nx">mutexLocked</span> <span class="o">==</span> <span class="mi">0</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">v8</span><span class="o">&amp;</span><span class="nx">mutexSleeping</span> <span class="o">!=</span> <span class="mi">0</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">atomic</span><span class="p">.</span><span class="nf">Or8</span><span class="p">(</span><span class="nx">k8</span><span class="p">,</span> <span class="nx">mutexSleeping</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">    <span class="k">return</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="cp">//https://github.com/golang/go/blob/adc9c455873fef97c5759e4811f0d9c8217fe27b/src/runtime/lock_spinbit.go#L160</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nx">k8</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nf">key8</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">l</span><span class="p">.</span><span class="nx">key</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nx">v8</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">atomic</span><span class="p">.</span><span class="nf">Xchg8</span><span class="p">(</span><span class="nx">k8</span><span class="p">,</span><span class="w"> </span><span class="nx">mutexLocked</span><span class="p">)</span><span class="w"> 
+</span></span></span><span class="line"><span class="cl"><span class="k">if</span><span class="w"> </span><span class="nx">v8</span><span class="o">&amp;</span><span class="nx">mutexLocked</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">v8</span><span class="o">&amp;</span><span class="nx">mutexSleeping</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">atomic</span><span class="p">.</span><span class="nf">Or8</span><span class="p">(</span><span class="nx">k8</span><span class="p">,</span><span class="w"> </span><span class="nx">mutexSleeping</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">return</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>fast 模式跟以前变化不大。如果成功(锁之前未被持有)则快速返回。这是最理想的情况，无竞争时的快速路径。</p>
 <h3 id="2-自旋等待阶段">2. 自旋等待阶段
@@ -595,22 +596,22 @@
 </span><span class="lnt">15
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">//https://github.com/golang/go/blob/adc9c455873fef97c5759e4811f0d9c8217fe27b/src/runtime/lock_spinbit.go#L208</span>
-</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="p">!</span><span class="nx">weSpin</span> <span class="o">&amp;&amp;</span> <span class="nx">v</span><span class="o">&amp;</span><span class="nx">mutexSpinning</span> <span class="o">==</span> <span class="mi">0</span> <span class="o">&amp;&amp;</span> <span class="nx">atomic</span><span class="p">.</span><span class="nf">Casuintptr</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">l</span><span class="p">.</span><span class="nx">key</span><span class="p">,</span> <span class="nx">v</span><span class="p">,</span> <span class="nx">v</span><span class="p">|</span><span class="nx">mutexSpinning</span><span class="p">)</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">v</span> <span class="o">|=</span> <span class="nx">mutexSpinning</span> 
-</span></span><span class="line"><span class="cl">    <span class="nx">weSpin</span> <span class="p">=</span> <span class="kc">true</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">weSpin</span> <span class="o">||</span> <span class="nx">atTail</span> <span class="o">||</span> <span class="nf">mutexPreferLowLatency</span><span class="p">(</span><span class="nx">l</span><span class="p">)</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nx">spin</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="nf">procyield</span><span class="p">(</span><span class="nx">mutexActiveSpinSize</span><span class="p">)</span>  <span class="c1">//主动自旋</span>
-</span></span><span class="line"><span class="cl">        <span class="c1">// ...</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span> <span class="k">else</span> <span class="k">if</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nx">spin</span><span class="o">+</span><span class="nx">mutexPassiveSpinCount</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="nf">osyield</span><span class="p">()</span> <span class="c1">//被动自旋</span>
-</span></span><span class="line"><span class="cl">        <span class="c1">// ...</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="cp">//https://github.com/golang/go/blob/adc9c455873fef97c5759e4811f0d9c8217fe27b/src/runtime/lock_spinbit.go#L208</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="k">if</span><span class="w"> </span><span class="p">!</span><span class="nx">weSpin</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">v</span><span class="o">&amp;</span><span class="nx">mutexSpinning</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">atomic</span><span class="p">.</span><span class="nf">Casuintptr</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">l</span><span class="p">.</span><span class="nx">key</span><span class="p">,</span><span class="w"> </span><span class="nx">v</span><span class="p">,</span><span class="w"> </span><span class="nx">v</span><span class="p">|</span><span class="nx">mutexSpinning</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">v</span><span class="w"> </span><span class="o">|=</span><span class="w"> </span><span class="nx">mutexSpinning</span><span class="w"> 
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">weSpin</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kc">true</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="k">if</span><span class="w"> </span><span class="nx">weSpin</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nx">atTail</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nf">mutexPreferLowLatency</span><span class="p">(</span><span class="nx">l</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="nx">spin</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nf">procyield</span><span class="p">(</span><span class="nx">mutexActiveSpinSize</span><span class="p">)</span><span class="w">  </span><span class="cp">//主动自旋</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="c1">// ...</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="nx">spin</span><span class="o">+</span><span class="nx">mutexPassiveSpinCount</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nf">osyield</span><span class="p">()</span><span class="w"> </span><span class="cp">//被动自旋</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="c1">// ...</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><ul>
 <li>如果快速路径失败，进入自旋等待阶段。</li>
@@ -642,23 +643,23 @@
 </span><span class="lnt">16
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">//https://github.com/golang/go/blob/adc9c455873fef97c5759e4811f0d9c8217fe27b/src/runtime/lock_spinbit.go#L231</span>
-</span></span><span class="line"><span class="cl"><span class="c1">// Store the current head of the list of sleeping Ms in our gp.m.mWaitList.next field</span>
-</span></span><span class="line"><span class="cl"><span class="nx">gp</span><span class="p">.</span><span class="nx">m</span><span class="p">.</span><span class="nx">mWaitList</span><span class="p">.</span><span class="nx">next</span> <span class="p">=</span> <span class="nf">mutexWaitListHead</span><span class="p">(</span><span class="nx">v</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="c1">// Pack a (partial) pointer to this M with the current lock state bits</span>
-</span></span><span class="line"><span class="cl"><span class="nx">next</span> <span class="o">:=</span> <span class="p">(</span><span class="nb">uintptr</span><span class="p">(</span><span class="nx">unsafe</span><span class="p">.</span><span class="nf">Pointer</span><span class="p">(</span><span class="nx">gp</span><span class="p">.</span><span class="nx">m</span><span class="p">))</span> <span class="o">&amp;^</span> <span class="nx">mutexMMask</span><span class="p">)</span> <span class="p">|</span> <span class="nx">v</span><span class="o">&amp;</span><span class="nx">mutexMMask</span> <span class="p">|</span> <span class="nx">mutexSleeping</span>
-</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">weSpin</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">next</span> <span class="p">=</span> <span class="nx">next</span> <span class="o">&amp;^</span> <span class="nx">mutexSpinning</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">atomic</span><span class="p">.</span><span class="nf">Casuintptr</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">l</span><span class="p">.</span><span class="nx">key</span><span class="p">,</span> <span class="nx">v</span><span class="p">,</span> <span class="nx">next</span><span class="p">)</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">weSpin</span> <span class="p">=</span> <span class="kc">false</span>
-</span></span><span class="line"><span class="cl">    <span class="nf">semasleep</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">atTail</span> <span class="p">=</span> <span class="nx">gp</span><span class="p">.</span><span class="nx">m</span><span class="p">.</span><span class="nx">mWaitList</span><span class="p">.</span><span class="nx">next</span> <span class="o">==</span> <span class="mi">0</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">i</span> <span class="p">=</span> <span class="mi">0</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="cp">//https://github.com/golang/go/blob/adc9c455873fef97c5759e4811f0d9c8217fe27b/src/runtime/lock_spinbit.go#L231</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="c1">// Store the current head of the list of sleeping Ms in our gp.m.mWaitList.next field</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nx">gp</span><span class="p">.</span><span class="nx">m</span><span class="p">.</span><span class="nx">mWaitList</span><span class="p">.</span><span class="nx">next</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nf">mutexWaitListHead</span><span class="p">(</span><span class="nx">v</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="c1">// Pack a (partial) pointer to this M with the current lock state bits</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nx">next</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="p">(</span><span class="nb">uintptr</span><span class="p">(</span><span class="nx">unsafe</span><span class="p">.</span><span class="nf">Pointer</span><span class="p">(</span><span class="nx">gp</span><span class="p">.</span><span class="nx">m</span><span class="p">))</span><span class="w"> </span><span class="o">&amp;^</span><span class="w"> </span><span class="nx">mutexMMask</span><span class="p">)</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="nx">v</span><span class="o">&amp;</span><span class="nx">mutexMMask</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="nx">mutexSleeping</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="k">if</span><span class="w"> </span><span class="nx">weSpin</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">next</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">next</span><span class="w"> </span><span class="o">&amp;^</span><span class="w"> </span><span class="nx">mutexSpinning</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="k">if</span><span class="w"> </span><span class="nx">atomic</span><span class="p">.</span><span class="nf">Casuintptr</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">l</span><span class="p">.</span><span class="nx">key</span><span class="p">,</span><span class="w"> </span><span class="nx">v</span><span class="p">,</span><span class="w"> </span><span class="nx">next</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">weSpin</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kc">false</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nf">semasleep</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">atTail</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">gp</span><span class="p">.</span><span class="nx">m</span><span class="p">.</span><span class="nx">mWaitList</span><span class="p">.</span><span class="nx">next</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">i</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mi">0</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>如果自旋失败，<code>goroutine</code> 将进入休眠等待，然后将当前 M 加入等待队列(通过 mWaitList 链表)，通过信号量(<a class="link" href="https://github.com/golang/go/blob/fd050b3c6d0294b6d72adb014ec14b3e6bf4ad60/src/runtime/lock_sema_tristate.go#L106"  target="_blank" rel="noopener"
     >semasleep</a>)使当前 <code>goroutine</code> 进入休眠，等待持有锁的 <code>goroutine</code> 在解锁时唤醒。</p>
@@ -804,7 +805,8 @@ source <a class="link" href="https://github.com/golang/go/issues/68578#issuecomm
                 >
             </script><script>
     window.addEventListener("DOMContentLoaded", () => {
-        renderMathInElement(document.body, {
+	const mainArticleElement = document.querySelector(".main-article");
+        renderMathInElement(mainArticleElement, {
             delimiters: [
                 { left: "$$", right: "$$", display: true },
                 { left: "$", right: "$", display: false },
@@ -814,6 +816,7 @@ source <a class="link" href="https://github.com/golang/go/issues/68578#issuecomm
             ignoredClasses: ["gist"]
         });})
 </script>
+
     
 </article>
 
@@ -932,7 +935,7 @@ source <a class="link" href="https://github.com/golang/go/issues/68578#issuecomm
     
     <section class="powerby">
         使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
-        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.30.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
     </section>
     <script src="/js/adblock-detection.js" defer></script>
      
@@ -1031,7 +1034,7 @@ source <a class="link" href="https://github.com/golang/go/issues/68578#issuecomm
                 src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
                 
                 >
-            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+            </script><script type="text/javascript" src="/ts/main.1e9a3bafd846ced4c345d084b355fb8c7bae75701c338f8a1f8a82c780137826.js" defer></script>
 <script>
     (function () {
         const customFont = document.createElement('link');

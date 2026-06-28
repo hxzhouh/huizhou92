@@ -9,7 +9,7 @@
 
 <link rel='canonical' href='https://huizhou92.com/zh-cn/p/%E6%B7%B1%E5%85%A5-go-%E4%B8%AD%E5%90%84%E4%B8%AA%E9%AB%98%E6%80%A7%E8%83%BD-json-%E8%A7%A3%E6%9E%90%E5%BA%93/'>
 
-<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css">
+<link rel="stylesheet" href="/scss/style.min.20b21821b24a8fcaadba2abf9fa81ceb2bf498798e28142c62203bfa694fbc02.css">
 <meta property='og:title' content="深入 Go 中各个高性能 JSON 解析库">
 <meta property='og:description' content="本文深入分析了 Go 语言中多种高性能 JSON 解析库，包括标准库 JSON Unmarshal、fastjson、gjson 和 jsonparser。通过对比它们的性能、优缺点及适用场景，帮助开发者选择合适的 JSON 解析工具。文章还提供了详细的源码解析和性能测试数据，适合对性能有要求的开发者参考。">
 <meta property='og:url' content='https://huizhou92.com/zh-cn/p/%E6%B7%B1%E5%85%A5-go-%E4%B8%AD%E5%90%84%E4%B8%AA%E9%AB%98%E6%80%A7%E8%83%BD-json-%E8%A7%A3%E6%9E%90%E5%BA%93/'>
@@ -24,7 +24,7 @@
       <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
       <script>
         var doNotTrack = false;
-        if ( false ) {
+        if ( true ) {
           var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
           var doNotTrack = (dnt == "1" || dnt == "yes");
         }
@@ -35,7 +35,7 @@
           gtag('config', 'G-JMPMQ2QREG');
         }
       </script>
-        <link rel="alternate" hreflang="en" href="https://huizhou92.com/p/analyze-various-high-performance-json-parsing-libraries-in-go./">
+        <link rel="alternate" hreflang="en-us" href="https://huizhou92.com/p/analyze-various-high-performance-json-parsing-libraries-in-go./">
         <link rel="alternate" hreflang="zh-cn" href="https://huizhou92.com/zh-cn/p/%E6%B7%B1%E5%85%A5-go-%E4%B8%AD%E5%90%84%E4%B8%AA%E9%AB%98%E6%80%A7%E8%83%BD-json-%E8%A7%A3%E6%9E%90%E5%BA%93/">
             <link rel="alternate" hreflang="x-default" href="https://huizhou92.com/p/analyze-various-high-performance-json-parsing-libraries-in-go./">
 <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
@@ -87,7 +87,7 @@
                     
                     
                         
-                        <img src="/img/avatar_hu_e52293b5d2b8c5f7.jpeg" width="300"
+                        <img src="/img/avatar_hu_2886835e4912e3b9.jpeg" width="300"
                             height="300" class="site-logo" loading="lazy" alt="Avatar">
                     
                 
@@ -334,21 +334,21 @@
         <li><a href="#小结">小结</a></li>
       </ol>
     </li>
-    <li><a href="#fastjson"><a href="https://github.com/valyala/fastjson">fastjson</a></a>
+    <li><a href="#fastjson">fastjson</a>
       <ol>
         <li><a href="#分析">分析</a></li>
         <li><a href="#代码">代码</a></li>
         <li><a href="#小结-1">小结</a></li>
       </ol>
     </li>
-    <li><a href="#gjson"><a href="https://github.com/tidwall/gjson">GJSON</a></a>
+    <li><a href="#gjson">GJSON</a>
       <ol>
         <li><a href="#分析-1">分析</a></li>
         <li><a href="#代码-1">代码</a></li>
         <li><a href="#小结-2">小结</a></li>
       </ol>
     </li>
-    <li><a href="#jsonparser"><a href="https://github.com/buger/jsonparser">jsonparser</a></a>
+    <li><a href="#jsonparser">jsonparser</a>
       <ol>
         <li><a href="#分析-2">分析</a></li>
         <li><a href="#小结-3">小结</a></li>
@@ -519,7 +519,8 @@
 <!-- more -->
 <blockquote>
 <p>This article is first published in the medium MPP plan. If you are a medium user, please follow me on the <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
-    >medium</a>. Thank you very much.</p></blockquote>
+    >medium</a>. Thank you very much.</p>
+</blockquote>
 <p>其实本来我是没打算去看 JSON 库的性能问题的，但是最近我对我的项目做了一次 pprof，从下面的火焰图中可以发现在业务逻辑处理中，有一半多的性能消耗都是在 JSON 解析过程中，所以就有了这篇文章。</p>
 <p><img src="https://images.yixiao9206.cn/blog-images/2024/06/350348b7bfe6aaec853676d44ca04beb.png"
 	
@@ -534,30 +535,30 @@
 <p>这篇文章深入源码分析一下在 Go 中标准库是如何解析 JSON 的，然后再看看有哪些比较流行的 Json 解析库，以及这些库都有什么特点，在什么场景下能更好的帮助我们进行开发。</p>
 <p>主要介绍分析以下几个库（2024-06-13）：</p>
 <div class="table-wrapper"><table>
-  <thead>
-      <tr>
-          <th>库名</th>
-          <th>Star</th>
-      </tr>
-  </thead>
-  <tbody>
-      <tr>
-          <td>标准库 JSON Unmarshal</td>
-          <td></td>
-      </tr>
-      <tr>
-          <td>valyala/fastjson</td>
-          <td>2.2 k</td>
-      </tr>
-      <tr>
-          <td>tidwall/gjson</td>
-          <td>13.8 k</td>
-      </tr>
-      <tr>
-          <td>buger/jsonparser</td>
-          <td>5.4 k</td>
-      </tr>
-  </tbody>
+	<thead>
+			<tr>
+					<th>库名</th>
+					<th>Star</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>标准库 JSON Unmarshal</td>
+					<td></td>
+			</tr>
+			<tr>
+					<td>valyala/fastjson</td>
+					<td>2.2 k</td>
+			</tr>
+			<tr>
+					<td>tidwall/gjson</td>
+					<td>13.8 k</td>
+			</tr>
+			<tr>
+					<td>buger/jsonparser</td>
+					<td>5.4 k</td>
+			</tr>
+	</tbody>
 </table></div>
 <h2 id="标准库-json-unmarshal">标准库 JSON Unmarshal
 </h2><div class="highlight"><div class="chroma">
@@ -565,8 +566,8 @@
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">Unmarshal</span><span class="p">(</span><span class="nx">data</span> <span class="p">[]</span><span class="kt">byte</span><span class="p">,</span> <span class="nx">v</span> <span class="kd">interface</span><span class="p">{})</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">Unmarshal</span><span class="p">(</span><span class="nx">data</span><span class="w"> </span><span class="p">[]</span><span class="kt">byte</span><span class="p">,</span><span class="w"> </span><span class="nx">v</span><span class="w"> </span><span class="kd">interface</span><span class="p">{})</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>官方的 JSON 解析库需要传两个参数，一个是需要被序列化的对象，另一个是表示这个对象的类型。</p>
 <p>在真正执行 JSON 解析之前会调用 <code>reflect.ValueOf</code>来获取参数 v 的反射对象。然后会获取到传入的 data 对象的开头非空字符来界定该用哪种方式来进行解析。</p>
@@ -590,23 +591,23 @@
 </span><span class="lnt">16
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">d</span> <span class="o">*</span><span class="nx">decodeState</span><span class="p">)</span> <span class="nf">value</span><span class="p">(</span><span class="nx">v</span> <span class="nx">reflect</span><span class="p">.</span><span class="nx">Value</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="k">switch</span> <span class="nx">d</span><span class="p">.</span><span class="nx">opcode</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="k">default</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">        <span class="nb">panic</span><span class="p">(</span><span class="nx">phasePanicMsg</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">    <span class="c1">// 数组 </span>
-</span></span><span class="line"><span class="cl">    <span class="k">case</span> <span class="nx">scanBeginArray</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">        <span class="o">...</span>
-</span></span><span class="line"><span class="cl">    <span class="c1">// 结构体或map</span>
-</span></span><span class="line"><span class="cl">    <span class="k">case</span> <span class="nx">scanBeginObject</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">        <span class="o">...</span>
-</span></span><span class="line"><span class="cl">    <span class="c1">// 字面量，包括 int、string、float 等</span>
-</span></span><span class="line"><span class="cl">    <span class="k">case</span> <span class="nx">scanBeginLiteral</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">        <span class="o">...</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="kc">nil</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">d</span><span class="w"> </span><span class="o">*</span><span class="nx">decodeState</span><span class="p">)</span><span class="w"> </span><span class="nf">value</span><span class="p">(</span><span class="nx">v</span><span class="w"> </span><span class="nx">reflect</span><span class="p">.</span><span class="nx">Value</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">switch</span><span class="w"> </span><span class="nx">d</span><span class="p">.</span><span class="nx">opcode</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">default</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nb">panic</span><span class="p">(</span><span class="nx">phasePanicMsg</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// 数组 </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="nx">scanBeginArray</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="o">...</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// 结构体或map</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="nx">scanBeginObject</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="o">...</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// 字面量，包括 int、string、float 等</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="nx">scanBeginLiteral</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="o">...</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>如果被解析的对象是以<code>[</code>开头，那么表示这是个数组对象会进入到 scanBeginArray 分支；如果是以<code>{</code>开头，表明被解析的对象是一个结构体或 map，那么进入到 scanBeginObject 分支 等等。</p>
 <h3 id="小结">小结
@@ -616,7 +617,8 @@
     >fastjson</a>
 </h2><p>这个库的特点和它的名字一样就是快，它的介绍页是这么说的：</p>
 <blockquote>
-<p>Fast. As usual, up to 15x faster than the standard encoding/json.</p></blockquote>
+<p>Fast. As usual, up to 15x faster than the standard encoding/json.</p>
+</blockquote>
 <p>它的使用也是非常的简单,如下：</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
@@ -643,28 +645,28 @@
 </span><span class="lnt">21
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">p</span> <span class="nx">fastjson</span><span class="p">.</span><span class="nx">Parser</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">v</span><span class="p">,</span> <span class="nx">_</span> <span class="o">:=</span> <span class="nx">p</span><span class="p">.</span><span class="nf">Parse</span><span class="p">(</span><span class="s">`{
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="nx">p</span><span class="w"> </span><span class="nx">fastjson</span><span class="p">.</span><span class="nx">Parser</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">v</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">p</span><span class="p">.</span><span class="nf">Parse</span><span class="p">(</span><span class="s">`{
 </span></span></span><span class="line"><span class="cl"><span class="s">                &#34;str&#34;: &#34;bar&#34;,
 </span></span></span><span class="line"><span class="cl"><span class="s">                &#34;int&#34;: 123,
 </span></span></span><span class="line"><span class="cl"><span class="s">                &#34;float&#34;: 1.23,
 </span></span></span><span class="line"><span class="cl"><span class="s">                &#34;bool&#34;: true,
 </span></span></span><span class="line"><span class="cl"><span class="s">                &#34;arr&#34;: [1, &#34;foo&#34;, {}]
-</span></span></span><span class="line"><span class="cl"><span class="s">        }`</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;foo=%s\n&#34;</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nf">GetStringBytes</span><span class="p">(</span><span class="s">&#34;str&#34;</span><span class="p">))</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;int=%d\n&#34;</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nf">GetInt</span><span class="p">(</span><span class="s">&#34;int&#34;</span><span class="p">))</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;float=%f\n&#34;</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nf">GetFloat64</span><span class="p">(</span><span class="s">&#34;float&#34;</span><span class="p">))</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;bool=%v\n&#34;</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nf">GetBool</span><span class="p">(</span><span class="s">&#34;bool&#34;</span><span class="p">))</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;arr.1=%s\n&#34;</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nf">GetStringBytes</span><span class="p">(</span><span class="s">&#34;arr&#34;</span><span class="p">,</span> <span class="s">&#34;1&#34;</span><span class="p">))</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span><span class="line"><span class="cl"><span class="c1">// Output:</span>
-</span></span><span class="line"><span class="cl"><span class="c1">// foo=bar</span>
-</span></span><span class="line"><span class="cl"><span class="c1">// int=123</span>
-</span></span><span class="line"><span class="cl"><span class="c1">// float=1.230000</span>
-</span></span><span class="line"><span class="cl"><span class="c1">// bool=true</span>
-</span></span><span class="line"><span class="cl"><span class="c1">// arr.1=foo</span>
-</span></span></code></pre></td></tr></table>
+</span></span></span><span class="line"><span class="cl"><span class="s">        }`</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;foo=%s\n&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">v</span><span class="p">.</span><span class="nf">GetStringBytes</span><span class="p">(</span><span class="s">&#34;str&#34;</span><span class="p">))</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;int=%d\n&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">v</span><span class="p">.</span><span class="nf">GetInt</span><span class="p">(</span><span class="s">&#34;int&#34;</span><span class="p">))</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;float=%f\n&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">v</span><span class="p">.</span><span class="nf">GetFloat64</span><span class="p">(</span><span class="s">&#34;float&#34;</span><span class="p">))</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;bool=%v\n&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">v</span><span class="p">.</span><span class="nf">GetBool</span><span class="p">(</span><span class="s">&#34;bool&#34;</span><span class="p">))</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;arr.1=%s\n&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">v</span><span class="p">.</span><span class="nf">GetStringBytes</span><span class="p">(</span><span class="s">&#34;arr&#34;</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;1&#34;</span><span class="p">))</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="c1">// Output:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="c1">// foo=bar</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="c1">// int=123</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="c1">// float=1.230000</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="c1">// bool=true</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="c1">// arr.1=foo</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>使用 fastjson 首先要将被解析的 JSON 串交给 Parser 解析器进行解析，然后通过 Parse 方法返回的对象来获取。如果是嵌套对象可以直接在 Get 方法传参的时候传入相应的父子 key 即可。</p>
 <h3 id="分析">分析
@@ -676,8 +678,8 @@
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Value</span> <span class="kd">struct</span> <span class="p">{</span> <span class="nx">o</span> <span class="nx">Object</span> <span class="nx">a</span> <span class="p">[]</span><span class="o">*</span><span class="nx">Value</span> <span class="nx">s</span> <span class="kt">string</span> <span class="nx">t</span> <span class="nx">Type</span> <span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span><span class="w"> </span><span class="nx">Value</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">o</span><span class="w"> </span><span class="nx">Object</span><span class="w"> </span><span class="nx">a</span><span class="w"> </span><span class="p">[]</span><span class="o">*</span><span class="nx">Value</span><span class="w"> </span><span class="nx">s</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="nx">t</span><span class="w"> </span><span class="nx">Type</span><span class="w"> </span><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>这个结构体非常简成：</p>
 <ul>
@@ -691,8 +693,8 @@
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Object</span> <span class="kd">struct</span> <span class="p">{</span> <span class="nx">kvs</span> <span class="p">[]</span><span class="nx">kv</span> <span class="nx">keysUnescaped</span> <span class="kt">bool</span> <span class="p">}</span> <span class="kd">type</span> <span class="nx">kv</span> <span class="kd">struct</span> <span class="p">{</span> <span class="nx">k</span> <span class="kt">string</span> <span class="nx">v</span> <span class="o">*</span><span class="nx">Value</span> <span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span><span class="w"> </span><span class="nx">Object</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">kvs</span><span class="w"> </span><span class="p">[]</span><span class="nx">kv</span><span class="w"> </span><span class="nx">keysUnescaped</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kd">type</span><span class="w"> </span><span class="nx">kv</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">k</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="nx">v</span><span class="w"> </span><span class="o">*</span><span class="nx">Value</span><span class="w"> </span><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>这个结构存放对象的递归结构。如果把上面例子中的 JSON 串解析完毕之后就是这样一个结构：</p>
 <p><img src="https://images.yixiao9206.cn/blog-images/2024/06/f14ac18535d8ad2d963fb0c08bcb879f.png"
@@ -739,35 +741,35 @@
 </span><span class="lnt">28
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">parseValue</span><span class="p">(</span><span class="nx">s</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">c</span> <span class="o">*</span><span class="nx">cache</span><span class="p">,</span> <span class="nx">depth</span> <span class="kt">int</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">Value</span><span class="p">,</span> <span class="kt">string</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="nx">s</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">s</span><span class="p">,</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&#34;cannot parse empty string&#34;</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">depth</span><span class="o">++</span>
-</span></span><span class="line"><span class="cl">    <span class="c1">// 最大深度的json串不能超过MaxDepth</span>
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">depth</span> <span class="p">&gt;</span> <span class="nx">MaxDepth</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">s</span><span class="p">,</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&#34;too big depth for the nested JSON; it exceeds %d&#34;</span><span class="p">,</span> <span class="nx">MaxDepth</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">    <span class="c1">// 解析对象</span>
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;{&#39;</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">v</span><span class="p">,</span> <span class="nx">tail</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nf">parseObject</span><span class="p">(</span><span class="nx">s</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="nx">c</span><span class="p">,</span> <span class="nx">depth</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">            <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">tail</span><span class="p">,</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&#34;cannot parse object: %s&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">        <span class="p">}</span>
-</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="nx">v</span><span class="p">,</span> <span class="nx">tail</span><span class="p">,</span> <span class="kc">nil</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">    <span class="c1">// 解析数组</span>
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;[&#39;</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="o">...</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">    <span class="c1">// 解析字符串</span>
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;&#34;&#39;</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="o">...</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span> 
-</span></span><span class="line"><span class="cl">    <span class="o">...</span>
-</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">v</span><span class="p">,</span> <span class="nx">tail</span><span class="p">,</span> <span class="kc">nil</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">parseValue</span><span class="p">(</span><span class="nx">s</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="w"> </span><span class="o">*</span><span class="nx">cache</span><span class="p">,</span><span class="w"> </span><span class="nx">depth</span><span class="w"> </span><span class="kt">int</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="nx">Value</span><span class="p">,</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="kt">error</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="nx">s</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span><span class="p">,</span><span class="w"> </span><span class="nx">s</span><span class="p">,</span><span class="w"> </span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&#34;cannot parse empty string&#34;</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">depth</span><span class="o">++</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// 最大深度的json串不能超过MaxDepth</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">depth</span><span class="w"> </span><span class="p">&gt;</span><span class="w"> </span><span class="nx">MaxDepth</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span><span class="p">,</span><span class="w"> </span><span class="nx">s</span><span class="p">,</span><span class="w"> </span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&#34;too big depth for the nested JSON; it exceeds %d&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">MaxDepth</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// 解析对象</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="sc">&#39;{&#39;</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">v</span><span class="p">,</span><span class="w"> </span><span class="nx">tail</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nf">parseObject</span><span class="p">(</span><span class="nx">s</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span><span class="w"> </span><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="nx">depth</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span><span class="p">,</span><span class="w"> </span><span class="nx">tail</span><span class="p">,</span><span class="w"> </span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&#34;cannot parse object: %s&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">v</span><span class="p">,</span><span class="w"> </span><span class="nx">tail</span><span class="p">,</span><span class="w"> </span><span class="kc">nil</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// 解析数组</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="sc">&#39;[&#39;</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="o">...</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// 解析字符串</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="sc">&#39;&#34;&#39;</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="o">...</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w"> 
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="o">...</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">v</span><span class="p">,</span><span class="w"> </span><span class="nx">tail</span><span class="p">,</span><span class="w"> </span><span class="kc">nil</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>parseValue 会根据字符串的第一个非空字符来判断要解析的类型。这里用一个对象类型来做解析：</p>
 <div class="highlight"><div class="chroma">
@@ -803,36 +805,36 @@
 </span><span class="lnt">29
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">parseObject</span><span class="p">(</span><span class="nx">s</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">c</span> <span class="o">*</span><span class="nx">cache</span><span class="p">,</span> <span class="nx">depth</span> <span class="kt">int</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">Value</span><span class="p">,</span> <span class="kt">string</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="o">...</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">o</span> <span class="o">:=</span> <span class="nx">c</span><span class="p">.</span><span class="nf">getValue</span><span class="p">()</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">o</span><span class="p">.</span><span class="nx">t</span> <span class="p">=</span> <span class="nx">TypeObject</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">o</span><span class="p">.</span><span class="nx">o</span><span class="p">.</span><span class="nf">reset</span><span class="p">()</span>
-</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="kd">var</span> <span class="nx">err</span> <span class="kt">error</span>
-</span></span><span class="line"><span class="cl">        <span class="c1">// 获取Ojbect结构体中的 kv 对象</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">kv</span> <span class="o">:=</span> <span class="nx">o</span><span class="p">.</span><span class="nx">o</span><span class="p">.</span><span class="nf">getKV</span><span class="p">()</span>
-</span></span><span class="line"><span class="cl">        <span class="o">...</span> 
-</span></span><span class="line"><span class="cl">        <span class="c1">// 解析 key 值</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">        <span class="nx">kv</span><span class="p">.</span><span class="nx">k</span><span class="p">,</span> <span class="nx">s</span><span class="p">,</span> <span class="nx">err</span> <span class="p">=</span> <span class="nf">parseRawKey</span><span class="p">(</span><span class="nx">s</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
-</span></span><span class="line"><span class="cl">        <span class="o">...</span> 
-</span></span><span class="line"><span class="cl">        <span class="c1">// 递归解析 value 值</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">kv</span><span class="p">.</span><span class="nx">v</span><span class="p">,</span> <span class="nx">s</span><span class="p">,</span> <span class="nx">err</span> <span class="p">=</span> <span class="nf">parseValue</span><span class="p">(</span><span class="nx">s</span><span class="p">,</span> <span class="nx">c</span><span class="p">,</span> <span class="nx">depth</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">        <span class="o">...</span>
-</span></span><span class="line"><span class="cl">        <span class="c1">// 遇到 ，号继续往下解析</span>
-</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="nx">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;,&#39;</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">            <span class="nx">s</span> <span class="p">=</span> <span class="nx">s</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
-</span></span><span class="line"><span class="cl">            <span class="k">continue</span>
-</span></span><span class="line"><span class="cl">        <span class="p">}</span>
-</span></span><span class="line"><span class="cl">        <span class="c1">// 解析完毕</span>
-</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="nx">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;}&#39;</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">            <span class="k">return</span> <span class="nx">o</span><span class="p">,</span> <span class="nx">s</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="kc">nil</span>
-</span></span><span class="line"><span class="cl">        <span class="p">}</span>
-</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">s</span><span class="p">,</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&#34;missing &#39;,&#39; after object value&#34;</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">parseObject</span><span class="p">(</span><span class="nx">s</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="w"> </span><span class="o">*</span><span class="nx">cache</span><span class="p">,</span><span class="w"> </span><span class="nx">depth</span><span class="w"> </span><span class="kt">int</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="nx">Value</span><span class="p">,</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="kt">error</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="o">...</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">o</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nf">getValue</span><span class="p">()</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">o</span><span class="p">.</span><span class="nx">t</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">TypeObject</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">o</span><span class="p">.</span><span class="nx">o</span><span class="p">.</span><span class="nf">reset</span><span class="p">()</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="kd">var</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="kt">error</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="c1">// 获取Ojbect结构体中的 kv 对象</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">kv</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">o</span><span class="p">.</span><span class="nx">o</span><span class="p">.</span><span class="nf">getKV</span><span class="p">()</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="o">...</span><span class="w"> 
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="c1">// 解析 key 值</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">kv</span><span class="p">.</span><span class="nx">k</span><span class="p">,</span><span class="w"> </span><span class="nx">s</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nf">parseRawKey</span><span class="p">(</span><span class="nx">s</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="o">...</span><span class="w"> 
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="c1">// 递归解析 value 值</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">kv</span><span class="p">.</span><span class="nx">v</span><span class="p">,</span><span class="w"> </span><span class="nx">s</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nf">parseValue</span><span class="p">(</span><span class="nx">s</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="nx">depth</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="o">...</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="c1">// 遇到 ，号继续往下解析</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="nx">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="sc">&#39;,&#39;</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nx">s</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">s</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="k">continue</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="c1">// 解析完毕</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="nx">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="sc">&#39;}&#39;</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="nx">o</span><span class="p">,</span><span class="w"> </span><span class="nx">s</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span><span class="w"> </span><span class="kc">nil</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span><span class="p">,</span><span class="w"> </span><span class="nx">s</span><span class="p">,</span><span class="w"> </span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&#34;missing &#39;,&#39; after object value&#34;</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>parseObject 函数也非常简单，在循环体中会获取 key 值，然后调用 parseValue 递归解析 value 值，从上往下依次解析 JSON 对象，直到最后遇到 <code>}</code>退出。</p>
 <h3 id="小结-1">小结
@@ -848,9 +850,9 @@
 </span><span class="lnt">2
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">json</span> <span class="o">:=</span> <span class="s">`{&#34;name&#34;:{&#34;first&#34;:&#34;li&#34;,&#34;last&#34;:&#34;dj&#34;},&#34;age&#34;:18}`</span>
-</span></span><span class="line"><span class="cl"><span class="nx">lastName</span> <span class="o">:=</span> <span class="nx">gjson</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">json</span><span class="p">,</span> <span class="s">&#34;name.last&#34;</span><span class="p">)</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">json</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="s">`{&#34;name&#34;:{&#34;first&#34;:&#34;li&#34;,&#34;last&#34;:&#34;dj&#34;},&#34;age&#34;:18}`</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nx">lastName</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">gjson</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">json</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;name.last&#34;</span><span class="p">)</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>除了这个功能以外还可以进行简单的模糊匹配，支持在键中包含通配符<code>*</code>和<code>?</code>，<code>*</code>匹配任意多个字符，<code>?</code>匹配单个字符，如下：</p>
 <div class="highlight"><div class="chroma">
@@ -864,14 +866,14 @@
 </span><span class="lnt">7
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">json</span> <span class="o">:=</span> <span class="s">`{
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">json</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="s">`{
 </span></span></span><span class="line"><span class="cl"><span class="s">    &#34;name&#34;:{&#34;first&#34;:&#34;Tom&#34;, &#34;last&#34;: &#34;Anderson&#34;},
 </span></span></span><span class="line"><span class="cl"><span class="s">    &#34;age&#34;: 37,
 </span></span></span><span class="line"><span class="cl"><span class="s">    &#34;children&#34;: [&#34;Sara&#34;, &#34;Alex&#34;, &#34;Jack&#34;]
-</span></span></span><span class="line"><span class="cl"><span class="s">}`</span>
-</span></span><span class="line"><span class="cl"><span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;third child*:&#34;</span><span class="p">,</span> <span class="nx">gjson</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">json</span><span class="p">,</span> <span class="s">&#34;child*.2&#34;</span><span class="p">))</span>
-</span></span><span class="line"><span class="cl"><span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;first c?ild:&#34;</span><span class="p">,</span> <span class="nx">gjson</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">json</span><span class="p">,</span> <span class="s">&#34;c?ildren.0&#34;</span><span class="p">))</span>
-</span></span></code></pre></td></tr></table>
+</span></span></span><span class="line"><span class="cl"><span class="s">}`</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;third child*:&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">gjson</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">json</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;child*.2&#34;</span><span class="p">))</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;first c?ild:&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">gjson</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">json</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;c?ildren.0&#34;</span><span class="p">))</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><ul>
 <li><code>child*.2</code>：首先<code>child*</code>匹配<code>children</code>，<code>.2</code>读取第 3 个元素；</li>
@@ -888,13 +890,13 @@
 </span><span class="lnt">6
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">json</span> <span class="o">:=</span> <span class="s">`{
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">json</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="s">`{
 </span></span></span><span class="line"><span class="cl"><span class="s">    &#34;name&#34;:{&#34;first&#34;:&#34;Tom&#34;, &#34;last&#34;: &#34;Anderson&#34;},
 </span></span></span><span class="line"><span class="cl"><span class="s">    &#34;age&#34;: 37,
 </span></span></span><span class="line"><span class="cl"><span class="s">    &#34;children&#34;: [&#34;Sara&#34;, &#34;Alex&#34;, &#34;Jack&#34;]
-</span></span></span><span class="line"><span class="cl"><span class="s">}`</span>
-</span></span><span class="line"><span class="cl"><span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;third child*:&#34;</span><span class="p">,</span> <span class="nx">gjson</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">json</span><span class="p">,</span> <span class="s">&#34;children|@reverse&#34;</span><span class="p">))</span>
-</span></span></code></pre></td></tr></table>
+</span></span></span><span class="line"><span class="cl"><span class="s">}`</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;third child*:&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">gjson</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">json</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;children|@reverse&#34;</span><span class="p">))</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p><code>children|@reverse</code> 先读取数组<code>children</code>，然后使用修饰符<code>@reverse</code>翻转之后返回，输出。</p>
 <div class="highlight"><div class="chroma">
@@ -902,8 +904,8 @@
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">nestedJSON</span> <span class="o">:=</span> <span class="s">`{&#34;nested&#34;: [&#34;one&#34;, &#34;two&#34;, [&#34;three&#34;, &#34;four&#34;]]}`</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nx">gjson</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">nestedJSON</span><span class="p">,</span> <span class="s">&#34;nested|@flatten&#34;</span><span class="p">))</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">nestedJSON</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="s">`{&#34;nested&#34;: [&#34;one&#34;, &#34;two&#34;, [&#34;three&#34;, &#34;four&#34;]]}`</span><span class="w"> </span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nx">gjson</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">nestedJSON</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;nested|@flatten&#34;</span><span class="p">))</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p><code>@flatten</code>将数组<code>nested</code>的内层数组平坦到外层后返回：</p>
 <div class="highlight"><div class="chroma">
@@ -970,41 +972,41 @@
 </span><span class="lnt">34
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">Get</span><span class="p">(</span><span class="nx">json</span><span class="p">,</span> <span class="nx">path</span> <span class="kt">string</span><span class="p">)</span> <span class="nx">Result</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="c1">// 解析 path </span>
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="nx">path</span><span class="p">)</span> <span class="p">&gt;</span> <span class="mi">1</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="o">...</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">i</span> <span class="kt">int</span>
-</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">c</span> <span class="p">=</span> <span class="o">&amp;</span><span class="nx">parseContext</span><span class="p">{</span><span class="nx">json</span><span class="p">:</span> <span class="nx">json</span><span class="p">}</span>
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="nx">path</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">2</span> <span class="o">&amp;&amp;</span> <span class="nx">path</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;.&#39;</span> <span class="o">&amp;&amp;</span> <span class="nx">path</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;.&#39;</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">c</span><span class="p">.</span><span class="nx">lines</span> <span class="p">=</span> <span class="kc">true</span>
-</span></span><span class="line"><span class="cl">        <span class="nf">parseArray</span><span class="p">(</span><span class="nx">c</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="nx">path</span><span class="p">[</span><span class="mi">2</span><span class="p">:])</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="c1">// 根据不同的对象进行解析,这里会一直循环，直到找到 &#39;{&#39; 或 &#39;[&#39;</span>
-</span></span><span class="line"><span class="cl">        <span class="k">for</span> <span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">);</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;{&#39;</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">                <span class="nx">i</span><span class="o">++</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">                <span class="nf">parseObject</span><span class="p">(</span><span class="nx">c</span><span class="p">,</span> <span class="nx">i</span><span class="p">,</span> <span class="nx">path</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">                <span class="k">break</span>
-</span></span><span class="line"><span class="cl">            <span class="p">}</span>
-</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;[&#39;</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">                <span class="nx">i</span><span class="o">++</span>
-</span></span><span class="line"><span class="cl">                <span class="nf">parseArray</span><span class="p">(</span><span class="nx">c</span><span class="p">,</span> <span class="nx">i</span><span class="p">,</span> <span class="nx">path</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">                <span class="k">break</span>
-</span></span><span class="line"><span class="cl">            <span class="p">}</span>
-</span></span><span class="line"><span class="cl">        <span class="p">}</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">c</span><span class="p">.</span><span class="nx">piped</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">res</span> <span class="o">:=</span> <span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">pipe</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">res</span><span class="p">.</span><span class="nx">Index</span> <span class="p">=</span> <span class="mi">0</span>
-</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="nx">res</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">    <span class="nf">fillIndex</span><span class="p">(</span><span class="nx">json</span><span class="p">,</span> <span class="nx">c</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">c</span><span class="p">.</span><span class="nx">value</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">Get</span><span class="p">(</span><span class="nx">json</span><span class="p">,</span><span class="w"> </span><span class="nx">path</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="w"> </span><span class="nx">Result</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// 解析 path </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="nx">path</span><span class="p">)</span><span class="w"> </span><span class="p">&gt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="o">...</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="kt">int</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="nx">c</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">parseContext</span><span class="p">{</span><span class="nx">json</span><span class="p">:</span><span class="w"> </span><span class="nx">json</span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="nx">path</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">path</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="sc">&#39;.&#39;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">path</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="sc">&#39;.&#39;</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">c</span><span class="p">.</span><span class="nx">lines</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kc">true</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nf">parseArray</span><span class="p">(</span><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nx">path</span><span class="p">[</span><span class="mi">2</span><span class="p">:])</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="c1">// 根据不同的对象进行解析,这里会一直循环，直到找到 &#39;{&#39; 或 &#39;[&#39;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">);</span><span class="w"> </span><span class="nx">i</span><span class="o">++</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="sc">&#39;{&#39;</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nx">i</span><span class="o">++</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nf">parseObject</span><span class="p">(</span><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="nx">i</span><span class="p">,</span><span class="w"> </span><span class="nx">path</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="k">break</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="sc">&#39;[&#39;</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nx">i</span><span class="o">++</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nf">parseArray</span><span class="p">(</span><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="nx">i</span><span class="p">,</span><span class="w"> </span><span class="nx">path</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="k">break</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">piped</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">res</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">pipe</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">res</span><span class="p">.</span><span class="nx">Index</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mi">0</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">res</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nf">fillIndex</span><span class="p">(</span><span class="nx">json</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>Get 方法里面可以看到有很长一串的代码是用来解析各种 Path，然后一个 for 循环一直遍历 JSON 直到找到 ‘{‘ 或 ‘[‘，然后才进行相应的逻辑进行处理。</p>
 <div class="highlight"><div class="chroma">
@@ -1104,100 +1106,100 @@
 </span><span class="lnt">93
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">parseObject</span><span class="p">(</span><span class="nx">c</span> <span class="o">*</span><span class="nx">parseContext</span><span class="p">,</span> <span class="nx">i</span> <span class="kt">int</span><span class="p">,</span> <span class="nx">path</span> <span class="kt">string</span><span class="p">)</span> <span class="p">(</span><span class="kt">int</span><span class="p">,</span> <span class="kt">bool</span><span class="p">)</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">pmatch</span><span class="p">,</span> <span class="nx">kesc</span><span class="p">,</span> <span class="nx">vesc</span><span class="p">,</span> <span class="nx">ok</span><span class="p">,</span> <span class="nx">hit</span> <span class="kt">bool</span>
-</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">key</span><span class="p">,</span> <span class="nx">val</span> <span class="kt">string</span>
-</span></span><span class="line"><span class="cl">    <span class="nx">rp</span> <span class="o">:=</span> <span class="nf">parseObjectPath</span><span class="p">(</span><span class="nx">path</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="p">!</span><span class="nx">rp</span><span class="p">.</span><span class="nx">more</span> <span class="o">&amp;&amp;</span> <span class="nx">rp</span><span class="p">.</span><span class="nx">piped</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">c</span><span class="p">.</span><span class="nx">pipe</span> <span class="p">=</span> <span class="nx">rp</span><span class="p">.</span><span class="nx">pipe</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">c</span><span class="p">.</span><span class="nx">piped</span> <span class="p">=</span> <span class="kc">true</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">    <span class="c1">// 嵌套两个 for 循环 寻找 key 值</span>
-</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">)</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">        <span class="k">for</span> <span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">);</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;&#34;&#39;</span> <span class="p">{</span> 
-</span></span><span class="line"><span class="cl">                <span class="nx">i</span><span class="o">++</span>
-</span></span><span class="line"><span class="cl">                <span class="kd">var</span> <span class="nx">s</span> <span class="p">=</span> <span class="nx">i</span>
-</span></span><span class="line"><span class="cl">                <span class="k">for</span> <span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">);</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">                    <span class="k">if</span> <span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">&gt;</span> <span class="sc">&#39;\\&#39;</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">                        <span class="k">continue</span>
-</span></span><span class="line"><span class="cl">                    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">                    <span class="c1">// 找到 key 值跳转到 parse_key_string_done</span>
-</span></span><span class="line"><span class="cl">                    <span class="k">if</span> <span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;&#34;&#39;</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">                        <span class="nx">i</span><span class="p">,</span> <span class="nx">key</span><span class="p">,</span> <span class="nx">kesc</span><span class="p">,</span> <span class="nx">ok</span> <span class="p">=</span> <span class="nx">i</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">s</span><span class="p">:</span><span class="nx">i</span><span class="p">],</span> <span class="kc">false</span><span class="p">,</span> <span class="kc">true</span>
-</span></span><span class="line"><span class="cl">                        <span class="k">goto</span> <span class="nx">parse_key_string_done</span>
-</span></span><span class="line"><span class="cl">                    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">                    <span class="o">...</span>
-</span></span><span class="line"><span class="cl">                <span class="p">}</span>
-</span></span><span class="line"><span class="cl">                <span class="nx">key</span><span class="p">,</span> <span class="nx">kesc</span><span class="p">,</span> <span class="nx">ok</span> <span class="p">=</span> <span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">s</span><span class="p">:],</span> <span class="kc">false</span><span class="p">,</span> <span class="kc">false</span>
-</span></span><span class="line"><span class="cl">            <span class="c1">// 直接break</span>
-</span></span><span class="line"><span class="cl">            <span class="nx">parse_key_string_done</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">                <span class="k">break</span>
-</span></span><span class="line"><span class="cl">            <span class="p">}</span>
-</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;}&#39;</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">                <span class="k">return</span> <span class="nx">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="kc">false</span>
-</span></span><span class="line"><span class="cl">            <span class="p">}</span>
-</span></span><span class="line"><span class="cl">        <span class="p">}</span>
-</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="p">!</span><span class="nx">ok</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">            <span class="k">return</span> <span class="nx">i</span><span class="p">,</span> <span class="kc">false</span>
-</span></span><span class="line"><span class="cl">        <span class="p">}</span>
-</span></span><span class="line"><span class="cl">        <span class="c1">// 校验是否是模糊匹配</span>
-</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="nx">rp</span><span class="p">.</span><span class="nx">wild</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="nx">kesc</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">                <span class="nx">pmatch</span> <span class="p">=</span> <span class="nx">match</span><span class="p">.</span><span class="nf">Match</span><span class="p">(</span><span class="nf">unescape</span><span class="p">(</span><span class="nx">key</span><span class="p">),</span> <span class="nx">rp</span><span class="p">.</span><span class="nx">part</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">            <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">                <span class="nx">pmatch</span> <span class="p">=</span> <span class="nx">match</span><span class="p">.</span><span class="nf">Match</span><span class="p">(</span><span class="nx">key</span><span class="p">,</span> <span class="nx">rp</span><span class="p">.</span><span class="nx">part</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">            <span class="p">}</span>
-</span></span><span class="line"><span class="cl">        <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="nx">kesc</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">                <span class="nx">pmatch</span> <span class="p">=</span> <span class="nx">rp</span><span class="p">.</span><span class="nx">part</span> <span class="o">==</span> <span class="nf">unescape</span><span class="p">(</span><span class="nx">key</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">            <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">                <span class="nx">pmatch</span> <span class="p">=</span> <span class="nx">rp</span><span class="p">.</span><span class="nx">part</span> <span class="o">==</span> <span class="nx">key</span>
-</span></span><span class="line"><span class="cl">            <span class="p">}</span>
-</span></span><span class="line"><span class="cl">        <span class="p">}</span>
-</span></span><span class="line"><span class="cl">        <span class="c1">// 解析 value</span>
-</span></span><span class="line"><span class="cl">        <span class="nx">hit</span> <span class="p">=</span> <span class="nx">pmatch</span> <span class="o">&amp;&amp;</span> <span class="p">!</span><span class="nx">rp</span><span class="p">.</span><span class="nx">more</span>
-</span></span><span class="line"><span class="cl">        <span class="k">for</span> <span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">);</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">            <span class="k">switch</span> <span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">            <span class="k">default</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">                <span class="k">continue</span>
-</span></span><span class="line"><span class="cl">            <span class="k">case</span> <span class="sc">&#39;&#34;&#39;</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">                <span class="nx">i</span><span class="o">++</span>
-</span></span><span class="line"><span class="cl">                <span class="nx">i</span><span class="p">,</span> <span class="nx">val</span><span class="p">,</span> <span class="nx">vesc</span><span class="p">,</span> <span class="nx">ok</span> <span class="p">=</span> <span class="nf">parseString</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">,</span> <span class="nx">i</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">                <span class="k">if</span> <span class="p">!</span><span class="nx">ok</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">                    <span class="k">return</span> <span class="nx">i</span><span class="p">,</span> <span class="kc">false</span>
-</span></span><span class="line"><span class="cl">                <span class="p">}</span>
-</span></span><span class="line"><span class="cl">                <span class="k">if</span> <span class="nx">hit</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">                    <span class="k">if</span> <span class="nx">vesc</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">                        <span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="p">.</span><span class="nx">Str</span> <span class="p">=</span> <span class="nf">unescape</span><span class="p">(</span><span class="nx">val</span><span class="p">[</span><span class="mi">1</span> <span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="nx">val</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
-</span></span><span class="line"><span class="cl">                    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">                        <span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="p">.</span><span class="nx">Str</span> <span class="p">=</span> <span class="nx">val</span><span class="p">[</span><span class="mi">1</span> <span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="nx">val</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-</span></span><span class="line"><span class="cl">                    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">                    <span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="p">.</span><span class="nx">Raw</span> <span class="p">=</span> <span class="nx">val</span>
-</span></span><span class="line"><span class="cl">                    <span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="p">.</span><span class="nx">Type</span> <span class="p">=</span> <span class="nx">String</span>
-</span></span><span class="line"><span class="cl">                    <span class="k">return</span> <span class="nx">i</span><span class="p">,</span> <span class="kc">true</span>
-</span></span><span class="line"><span class="cl">                <span class="p">}</span>
-</span></span><span class="line"><span class="cl">            <span class="k">case</span> <span class="sc">&#39;{&#39;</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">                <span class="k">if</span> <span class="nx">pmatch</span> <span class="o">&amp;&amp;</span> <span class="p">!</span><span class="nx">hit</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">                    <span class="nx">i</span><span class="p">,</span> <span class="nx">hit</span> <span class="p">=</span> <span class="nf">parseObject</span><span class="p">(</span><span class="nx">c</span><span class="p">,</span> <span class="nx">i</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="nx">rp</span><span class="p">.</span><span class="nx">path</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">                    <span class="k">if</span> <span class="nx">hit</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">                        <span class="k">return</span> <span class="nx">i</span><span class="p">,</span> <span class="kc">true</span>
-</span></span><span class="line"><span class="cl">                    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">                <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">                    <span class="nx">i</span><span class="p">,</span> <span class="nx">val</span> <span class="p">=</span> <span class="nf">parseSquash</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">,</span> <span class="nx">i</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">                    <span class="k">if</span> <span class="nx">hit</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">                        <span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="p">.</span><span class="nx">Raw</span> <span class="p">=</span> <span class="nx">val</span>
-</span></span><span class="line"><span class="cl">                        <span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="p">.</span><span class="nx">Type</span> <span class="p">=</span> <span class="nx">JSON</span>
-</span></span><span class="line"><span class="cl">                        <span class="k">return</span> <span class="nx">i</span><span class="p">,</span> <span class="kc">true</span>
-</span></span><span class="line"><span class="cl">                    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">                <span class="p">}</span>
-</span></span><span class="line"><span class="cl">            <span class="o">...</span>
-</span></span><span class="line"><span class="cl">            <span class="k">break</span>
-</span></span><span class="line"><span class="cl">        <span class="p">}</span>
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>
-</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">i</span><span class="p">,</span> <span class="kc">false</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">parseObject</span><span class="p">(</span><span class="nx">c</span><span class="w"> </span><span class="o">*</span><span class="nx">parseContext</span><span class="p">,</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="kt">int</span><span class="p">,</span><span class="w"> </span><span class="nx">path</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="p">,</span><span class="w"> </span><span class="kt">bool</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="nx">pmatch</span><span class="p">,</span><span class="w"> </span><span class="nx">kesc</span><span class="p">,</span><span class="w"> </span><span class="nx">vesc</span><span class="p">,</span><span class="w"> </span><span class="nx">ok</span><span class="p">,</span><span class="w"> </span><span class="nx">hit</span><span class="w"> </span><span class="kt">bool</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="nx">key</span><span class="p">,</span><span class="w"> </span><span class="nx">val</span><span class="w"> </span><span class="kt">string</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">rp</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nf">parseObjectPath</span><span class="p">(</span><span class="nx">path</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">!</span><span class="nx">rp</span><span class="p">.</span><span class="nx">more</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">rp</span><span class="p">.</span><span class="nx">piped</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">c</span><span class="p">.</span><span class="nx">pipe</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">rp</span><span class="p">.</span><span class="nx">pipe</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">c</span><span class="p">.</span><span class="nx">piped</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kc">true</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// 嵌套两个 for 循环 寻找 key 值</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">);</span><span class="w"> </span><span class="nx">i</span><span class="o">++</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="sc">&#39;&#34;&#39;</span><span class="w"> </span><span class="p">{</span><span class="w"> 
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nx">i</span><span class="o">++</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="kd">var</span><span class="w"> </span><span class="nx">s</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">i</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="k">for</span><span class="w"> </span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">);</span><span class="w"> </span><span class="nx">i</span><span class="o">++</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                    </span><span class="k">if</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span><span class="w"> </span><span class="p">&gt;</span><span class="w"> </span><span class="sc">&#39;\\&#39;</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                        </span><span class="k">continue</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                    </span><span class="c1">// 找到 key 值跳转到 parse_key_string_done</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                    </span><span class="k">if</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="sc">&#39;&#34;&#39;</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                        </span><span class="nx">i</span><span class="p">,</span><span class="w"> </span><span class="nx">key</span><span class="p">,</span><span class="w"> </span><span class="nx">kesc</span><span class="p">,</span><span class="w"> </span><span class="nx">ok</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">i</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">s</span><span class="p">:</span><span class="nx">i</span><span class="p">],</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w"> </span><span class="kc">true</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                        </span><span class="k">goto</span><span class="w"> </span><span class="nx">parse_key_string_done</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                    </span><span class="o">...</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nx">key</span><span class="p">,</span><span class="w"> </span><span class="nx">kesc</span><span class="p">,</span><span class="w"> </span><span class="nx">ok</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">s</span><span class="p">:],</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w"> </span><span class="kc">false</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="c1">// 直接break</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="nx">parse_key_string_done</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="k">break</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="sc">&#39;}&#39;</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="k">return</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="kc">false</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">!</span><span class="nx">ok</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="nx">i</span><span class="p">,</span><span class="w"> </span><span class="kc">false</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="c1">// 校验是否是模糊匹配</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="nx">rp</span><span class="p">.</span><span class="nx">wild</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="nx">kesc</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nx">pmatch</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">match</span><span class="p">.</span><span class="nf">Match</span><span class="p">(</span><span class="nf">unescape</span><span class="p">(</span><span class="nx">key</span><span class="p">),</span><span class="w"> </span><span class="nx">rp</span><span class="p">.</span><span class="nx">part</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nx">pmatch</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">match</span><span class="p">.</span><span class="nf">Match</span><span class="p">(</span><span class="nx">key</span><span class="p">,</span><span class="w"> </span><span class="nx">rp</span><span class="p">.</span><span class="nx">part</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="nx">kesc</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nx">pmatch</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">rp</span><span class="p">.</span><span class="nx">part</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nf">unescape</span><span class="p">(</span><span class="nx">key</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nx">pmatch</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">rp</span><span class="p">.</span><span class="nx">part</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nx">key</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="c1">// 解析 value</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="nx">hit</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">pmatch</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">!</span><span class="nx">rp</span><span class="p">.</span><span class="nx">more</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">);</span><span class="w"> </span><span class="nx">i</span><span class="o">++</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="k">switch</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="k">default</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="k">continue</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="k">case</span><span class="w"> </span><span class="sc">&#39;&#34;&#39;</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nx">i</span><span class="o">++</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="nx">i</span><span class="p">,</span><span class="w"> </span><span class="nx">val</span><span class="p">,</span><span class="w"> </span><span class="nx">vesc</span><span class="p">,</span><span class="w"> </span><span class="nx">ok</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nf">parseString</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">,</span><span class="w"> </span><span class="nx">i</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="k">if</span><span class="w"> </span><span class="p">!</span><span class="nx">ok</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                    </span><span class="k">return</span><span class="w"> </span><span class="nx">i</span><span class="p">,</span><span class="w"> </span><span class="kc">false</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="k">if</span><span class="w"> </span><span class="nx">hit</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                    </span><span class="k">if</span><span class="w"> </span><span class="nx">vesc</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                        </span><span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="p">.</span><span class="nx">Str</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nf">unescape</span><span class="p">(</span><span class="nx">val</span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="nx">val</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                        </span><span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="p">.</span><span class="nx">Str</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">val</span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="nx">val</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                    </span><span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="p">.</span><span class="nx">Raw</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">val</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                    </span><span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="p">.</span><span class="nx">Type</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">String</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                    </span><span class="k">return</span><span class="w"> </span><span class="nx">i</span><span class="p">,</span><span class="w"> </span><span class="kc">true</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="k">case</span><span class="w"> </span><span class="sc">&#39;{&#39;</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="k">if</span><span class="w"> </span><span class="nx">pmatch</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">!</span><span class="nx">hit</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                    </span><span class="nx">i</span><span class="p">,</span><span class="w"> </span><span class="nx">hit</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nf">parseObject</span><span class="p">(</span><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="nx">i</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nx">rp</span><span class="p">.</span><span class="nx">path</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                    </span><span class="k">if</span><span class="w"> </span><span class="nx">hit</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                        </span><span class="k">return</span><span class="w"> </span><span class="nx">i</span><span class="p">,</span><span class="w"> </span><span class="kc">true</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                    </span><span class="nx">i</span><span class="p">,</span><span class="w"> </span><span class="nx">val</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nf">parseSquash</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">,</span><span class="w"> </span><span class="nx">i</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                    </span><span class="k">if</span><span class="w"> </span><span class="nx">hit</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                        </span><span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="p">.</span><span class="nx">Raw</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">val</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                        </span><span class="nx">c</span><span class="p">.</span><span class="nx">value</span><span class="p">.</span><span class="nx">Type</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">JSON</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                        </span><span class="k">return</span><span class="w"> </span><span class="nx">i</span><span class="p">,</span><span class="w"> </span><span class="kc">true</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">                </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="o">...</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="k">break</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">i</span><span class="p">,</span><span class="w"> </span><span class="kc">false</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>在上面看 parseObject 这段代码的时候其实不是想让大家学习如何解析 JSON，以及遍历字符串，而是想要让大家看看一个 bad case 是怎样的。for 循环一层套一层，if 一个接以一个看得我 San 值狂掉，这片代码大家是不是看起来很眼熟？是不是有点像工作中遇到的某个同事写的代码？</p>
 <h3 id="小结-2">小结
@@ -1234,218 +1236,218 @@
 </h2><p><strong>解析小 JSON 字符串</strong></p>
 <p>解析一个结构简单，大小约 190 bytes 的字符串</p>
 <div class="table-wrapper"><table>
-  <thead>
-      <tr>
-          <th>库名</th>
-          <th>操作</th>
-          <th>每次迭代耗时</th>
-          <th>占用内存数</th>
-          <th>分配内存次数</th>
-          <th>性能</th>
-      </tr>
-  </thead>
-  <tbody>
-      <tr>
-          <td>标准库</td>
-          <td>解析为map</td>
-          <td>724 ns/op</td>
-          <td>976 B/op</td>
-          <td>51 allocs/op</td>
-          <td>慢</td>
-      </tr>
-      <tr>
-          <td></td>
-          <td>解析为struct</td>
-          <td>297 ns/op</td>
-          <td>256 B/op</td>
-          <td>5 allocs/op</td>
-          <td>一般</td>
-      </tr>
-      <tr>
-          <td>fastjson</td>
-          <td>get</td>
-          <td>68.2 ns/op</td>
-          <td>0 B/op</td>
-          <td>0 allocs/op</td>
-          <td>最快</td>
-      </tr>
-      <tr>
-          <td></td>
-          <td>parse</td>
-          <td>35.1 ns/op</td>
-          <td>0 B/op</td>
-          <td>0 allocs/op</td>
-          <td>最快</td>
-      </tr>
-      <tr>
-          <td>GJSON</td>
-          <td>转map</td>
-          <td>255 ns/op</td>
-          <td>1009 B/op</td>
-          <td>11 allocs/op</td>
-          <td>一般</td>
-      </tr>
-      <tr>
-          <td></td>
-          <td>get</td>
-          <td>232 ns/op</td>
-          <td>448 B/op</td>
-          <td>1 allocs/op</td>
-          <td>一般</td>
-      </tr>
-      <tr>
-          <td>jsonparser</td>
-          <td>get</td>
-          <td>106 ns/op</td>
-          <td>232 B/op</td>
-          <td>3 allocs/op</td>
-          <td>快</td>
-      </tr>
-  </tbody>
+	<thead>
+			<tr>
+					<th>库名</th>
+					<th>操作</th>
+					<th>每次迭代耗时</th>
+					<th>占用内存数</th>
+					<th>分配内存次数</th>
+					<th>性能</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>标准库</td>
+					<td>解析为map</td>
+					<td>724 ns/op</td>
+					<td>976 B/op</td>
+					<td>51 allocs/op</td>
+					<td>慢</td>
+			</tr>
+			<tr>
+					<td></td>
+					<td>解析为struct</td>
+					<td>297 ns/op</td>
+					<td>256 B/op</td>
+					<td>5 allocs/op</td>
+					<td>一般</td>
+			</tr>
+			<tr>
+					<td>fastjson</td>
+					<td>get</td>
+					<td>68.2 ns/op</td>
+					<td>0 B/op</td>
+					<td>0 allocs/op</td>
+					<td>最快</td>
+			</tr>
+			<tr>
+					<td></td>
+					<td>parse</td>
+					<td>35.1 ns/op</td>
+					<td>0 B/op</td>
+					<td>0 allocs/op</td>
+					<td>最快</td>
+			</tr>
+			<tr>
+					<td>GJSON</td>
+					<td>转map</td>
+					<td>255 ns/op</td>
+					<td>1009 B/op</td>
+					<td>11 allocs/op</td>
+					<td>一般</td>
+			</tr>
+			<tr>
+					<td></td>
+					<td>get</td>
+					<td>232 ns/op</td>
+					<td>448 B/op</td>
+					<td>1 allocs/op</td>
+					<td>一般</td>
+			</tr>
+			<tr>
+					<td>jsonparser</td>
+					<td>get</td>
+					<td>106 ns/op</td>
+					<td>232 B/op</td>
+					<td>3 allocs/op</td>
+					<td>快</td>
+			</tr>
+	</tbody>
 </table></div>
 <p><strong>解析中等大小 JSON 字符串</strong></p>
 <p>解析一个具有一定复杂度，大小约 2.3KB 的字符串</p>
 <div class="table-wrapper"><table>
-  <thead>
-      <tr>
-          <th>库名</th>
-          <th>操作</th>
-          <th>每次迭代耗时</th>
-          <th>占用内存数</th>
-          <th>分配内存次数</th>
-          <th>性能</th>
-      </tr>
-  </thead>
-  <tbody>
-      <tr>
-          <td>标准库</td>
-          <td>解析为map</td>
-          <td>4263 ns/op</td>
-          <td>10212 B/op</td>
-          <td>208 allocs/op</td>
-          <td>慢</td>
-      </tr>
-      <tr>
-          <td></td>
-          <td>解析为struct</td>
-          <td>4789 ns/op</td>
-          <td>9206 B/op</td>
-          <td>259 allocs/op</td>
-          <td>慢</td>
-      </tr>
-      <tr>
-          <td>fastjson</td>
-          <td>get</td>
-          <td>285 ns/op</td>
-          <td>0 B/op</td>
-          <td>0 allocs/op</td>
-          <td>最快</td>
-      </tr>
-      <tr>
-          <td></td>
-          <td>parse</td>
-          <td>302 ns/op</td>
-          <td>0 B/op</td>
-          <td>0 allocs/op</td>
-          <td>最快</td>
-      </tr>
-      <tr>
-          <td>GJSON</td>
-          <td>转map</td>
-          <td>2571 ns/op</td>
-          <td>8539 B/op</td>
-          <td>83 allocs/op</td>
-          <td>一般</td>
-      </tr>
-      <tr>
-          <td></td>
-          <td>get</td>
-          <td>1489 ns/op</td>
-          <td>448 B/op</td>
-          <td>1 allocs/op</td>
-          <td>一般</td>
-      </tr>
-      <tr>
-          <td>jsonparser</td>
-          <td>get</td>
-          <td>878 ns/op</td>
-          <td>2728 B/op</td>
-          <td>5 allocs/op</td>
-          <td>快</td>
-      </tr>
-  </tbody>
+	<thead>
+			<tr>
+					<th>库名</th>
+					<th>操作</th>
+					<th>每次迭代耗时</th>
+					<th>占用内存数</th>
+					<th>分配内存次数</th>
+					<th>性能</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>标准库</td>
+					<td>解析为map</td>
+					<td>4263 ns/op</td>
+					<td>10212 B/op</td>
+					<td>208 allocs/op</td>
+					<td>慢</td>
+			</tr>
+			<tr>
+					<td></td>
+					<td>解析为struct</td>
+					<td>4789 ns/op</td>
+					<td>9206 B/op</td>
+					<td>259 allocs/op</td>
+					<td>慢</td>
+			</tr>
+			<tr>
+					<td>fastjson</td>
+					<td>get</td>
+					<td>285 ns/op</td>
+					<td>0 B/op</td>
+					<td>0 allocs/op</td>
+					<td>最快</td>
+			</tr>
+			<tr>
+					<td></td>
+					<td>parse</td>
+					<td>302 ns/op</td>
+					<td>0 B/op</td>
+					<td>0 allocs/op</td>
+					<td>最快</td>
+			</tr>
+			<tr>
+					<td>GJSON</td>
+					<td>转map</td>
+					<td>2571 ns/op</td>
+					<td>8539 B/op</td>
+					<td>83 allocs/op</td>
+					<td>一般</td>
+			</tr>
+			<tr>
+					<td></td>
+					<td>get</td>
+					<td>1489 ns/op</td>
+					<td>448 B/op</td>
+					<td>1 allocs/op</td>
+					<td>一般</td>
+			</tr>
+			<tr>
+					<td>jsonparser</td>
+					<td>get</td>
+					<td>878 ns/op</td>
+					<td>2728 B/op</td>
+					<td>5 allocs/op</td>
+					<td>快</td>
+			</tr>
+	</tbody>
 </table></div>
 <p><strong>解析大 JSON 字符串</strong></p>
 <p>解析复杂度比较高，大小约 2.2MB 的字符串</p>
 <div class="table-wrapper"><table>
-  <thead>
-      <tr>
-          <th>库名</th>
-          <th>操作</th>
-          <th>每次迭代耗时</th>
-          <th>占用内存数</th>
-          <th>分配内存次数</th>
-          <th>性能</th>
-      </tr>
-  </thead>
-  <tbody>
-      <tr>
-          <td>标准库</td>
-          <td>解析为map</td>
-          <td>2292959 ns/op</td>
-          <td>5214009 B/op</td>
-          <td>95402 allocs/op</td>
-          <td>慢</td>
-      </tr>
-      <tr>
-          <td></td>
-          <td>解析为struct</td>
-          <td>1165490 ns/op</td>
-          <td>2023 B/op</td>
-          <td>76 allocs/op</td>
-          <td>一般</td>
-      </tr>
-      <tr>
-          <td>fastjson</td>
-          <td>get</td>
-          <td>368056 ns/op</td>
-          <td>0 B/op</td>
-          <td>0 allocs/op</td>
-          <td>快</td>
-      </tr>
-      <tr>
-          <td></td>
-          <td>parse</td>
-          <td>371397 ns/op</td>
-          <td>0 B/op</td>
-          <td>0 allocs/op</td>
-          <td>快</td>
-      </tr>
-      <tr>
-          <td>GJSON</td>
-          <td>转map</td>
-          <td>1901727 ns/op</td>
-          <td>4788894 B/op</td>
-          <td>54372 allocs/op</td>
-          <td>一般</td>
-      </tr>
-      <tr>
-          <td></td>
-          <td>get</td>
-          <td>1322167 ns/op</td>
-          <td>448 B/op</td>
-          <td>1 allocs/op</td>
-          <td>一般</td>
-      </tr>
-      <tr>
-          <td>jsonparser</td>
-          <td>get</td>
-          <td>233090 ns/op</td>
-          <td>1788865 B/op</td>
-          <td>376 allocs/op</td>
-          <td>最快</td>
-      </tr>
-  </tbody>
+	<thead>
+			<tr>
+					<th>库名</th>
+					<th>操作</th>
+					<th>每次迭代耗时</th>
+					<th>占用内存数</th>
+					<th>分配内存次数</th>
+					<th>性能</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>标准库</td>
+					<td>解析为map</td>
+					<td>2292959 ns/op</td>
+					<td>5214009 B/op</td>
+					<td>95402 allocs/op</td>
+					<td>慢</td>
+			</tr>
+			<tr>
+					<td></td>
+					<td>解析为struct</td>
+					<td>1165490 ns/op</td>
+					<td>2023 B/op</td>
+					<td>76 allocs/op</td>
+					<td>一般</td>
+			</tr>
+			<tr>
+					<td>fastjson</td>
+					<td>get</td>
+					<td>368056 ns/op</td>
+					<td>0 B/op</td>
+					<td>0 allocs/op</td>
+					<td>快</td>
+			</tr>
+			<tr>
+					<td></td>
+					<td>parse</td>
+					<td>371397 ns/op</td>
+					<td>0 B/op</td>
+					<td>0 allocs/op</td>
+					<td>快</td>
+			</tr>
+			<tr>
+					<td>GJSON</td>
+					<td>转map</td>
+					<td>1901727 ns/op</td>
+					<td>4788894 B/op</td>
+					<td>54372 allocs/op</td>
+					<td>一般</td>
+			</tr>
+			<tr>
+					<td></td>
+					<td>get</td>
+					<td>1322167 ns/op</td>
+					<td>448 B/op</td>
+					<td>1 allocs/op</td>
+					<td>一般</td>
+			</tr>
+			<tr>
+					<td>jsonparser</td>
+					<td>get</td>
+					<td>233090 ns/op</td>
+					<td>1788865 B/op</td>
+					<td>376 allocs/op</td>
+					<td>最快</td>
+			</tr>
+	</tbody>
 </table></div>
 <h2 id="总结">总结
 </h2><p>在这次的分享过程中，我找了很多 JSON 的解析库分别进行对比分析，可以发现这些高性能的解析库基本上都有一些共同的特点：</p>
@@ -1538,7 +1540,8 @@
                 >
             </script><script>
     window.addEventListener("DOMContentLoaded", () => {
-        renderMathInElement(document.body, {
+	const mainArticleElement = document.querySelector(".main-article");
+        renderMathInElement(mainArticleElement, {
             delimiters: [
                 { left: "$$", right: "$$", display: true },
                 { left: "$", right: "$", display: false },
@@ -1548,6 +1551,7 @@
             ignoredClasses: ["gist"]
         });})
 </script>
+
     
 </article>
 
@@ -1666,7 +1670,7 @@
     
     <section class="powerby">
         使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
-        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.30.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
     </section>
     <script src="/js/adblock-detection.js" defer></script>
      
@@ -1765,7 +1769,7 @@
                 src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
                 
                 >
-            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+            </script><script type="text/javascript" src="/ts/main.1e9a3bafd846ced4c345d084b355fb8c7bae75701c338f8a1f8a82c780137826.js" defer></script>
 <script>
     (function () {
         const customFont = document.createElement('link');

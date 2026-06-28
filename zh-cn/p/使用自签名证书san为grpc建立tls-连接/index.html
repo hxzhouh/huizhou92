@@ -9,7 +9,7 @@
 
 <link rel='canonical' href='https://huizhou92.com/zh-cn/p/%E4%BD%BF%E7%94%A8%E8%87%AA%E7%AD%BE%E5%90%8D%E8%AF%81%E4%B9%A6san%E4%B8%BAgrpc%E5%BB%BA%E7%AB%8Btls-%E8%BF%9E%E6%8E%A5/'>
 
-<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css">
+<link rel="stylesheet" href="/scss/style.min.20b21821b24a8fcaadba2abf9fa81ceb2bf498798e28142c62203bfa694fbc02.css">
 <meta property='og:title' content=" 使用自签名证书SAN为gRPC建立TLS 连接">
 <meta property='og:description' content="gRPC 是Google开发的一个高性能RPC框架，gRPC 默认内置了两种认证方式：\nSSL/TLS 认证方式 基于 Token 的认证方式\n没有启用证书的gRPC服务和客户端进行的是明文通信，信息面临被任何第三方监听的风险。为了保证gRPC通信不被第三方监听、篡改或伪造，可以对服务器启动TLS加密特性。\n从 go 1.15 版本开始废弃 CommonName，因此推荐使用 SAN 证书。如果按照之前的步骤通过 OpenSSL 来生成密钥、CSR、证书，会出现这样的错误： 1 rpc error: code = Unavailable desc = connection error: desc = &#34;transport: authentication handshake failed: x509: certificate relies on legacy Common Name field, use SANs instead&#34;| This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on Medium. Thank you very much.\n什么是SAN SAN(Subject Alternative Name) 是\u00a0SSL\u00a0标准\u00a0x509\u00a0中定义的一个扩展。使用了\u00a0SAN\u00a0字段的\u00a0SSL\u00a0证书，可以扩展此证书支持的域名，使得一个证书可以支持多个不同域名的解析。\n通俗点就是，在 SAN 证书中，可以有多个完整的 CN（CommonName），这样只需要购买一个证书就可以用在多个 URL。比如 skype.com 的证书，它就有很多 SAN。\n">
 <meta property='og:url' content='https://huizhou92.com/zh-cn/p/%E4%BD%BF%E7%94%A8%E8%87%AA%E7%AD%BE%E5%90%8D%E8%AF%81%E4%B9%A6san%E4%B8%BAgrpc%E5%BB%BA%E7%AB%8Btls-%E8%BF%9E%E6%8E%A5/'>
@@ -24,7 +24,7 @@
       <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
       <script>
         var doNotTrack = false;
-        if ( false ) {
+        if ( true ) {
           var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
           var doNotTrack = (dnt == "1" || dnt == "yes");
         }
@@ -85,7 +85,7 @@
                     
                     
                         
-                        <img src="/img/avatar_hu_e52293b5d2b8c5f7.jpeg" width="300"
+                        <img src="/img/avatar_hu_2886835e4912e3b9.jpeg" width="300"
                             height="300" class="site-logo" loading="lazy" alt="Avatar">
                     
                 
@@ -498,7 +498,8 @@
 </div><!-- more -->
 <blockquote>
 <p>This article was first published in the Medium MPP plan. If you are a Medium user, please follow me on <a class="link" href="https://medium.huizhou92.com/"  target="_blank" rel="noopener"
-    >Medium</a>. Thank you very much.</p></blockquote>
+    >Medium</a>. Thank you very much.</p>
+</blockquote>
 <h2 id="什么是san">什么是<code>SAN</code>
 </h2><p><em><strong>SAN(Subject Alternative Name)</strong></em> 是 <code>SSL</code> 标准 <code>x509</code> 中定义的一个扩展。使用了 <code>SAN</code> 字段的 <code>SSL</code> 证书，可以扩展此证书支持的域名，使得一个证书可以支持多个不同域名的解析。<br>
 通俗点就是，在 SAN 证书中，可以有多个<strong>完整</strong>的 CN（CommonName），这样只需要购买一个证书就可以用在多个 URL。比如 skype.com 的证书，它就有很多 SAN。</p>
@@ -623,25 +624,25 @@
 </span></code></pre></td>
 <td class="lntd">
 <pre tabindex="0" class="chroma"><code class="language-proto" data-lang="proto"><span class="line"><span class="cl"><span class="c1">// helloworld.proto  
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="n">syntax</span> <span class="o">=</span> <span class="s">&#34;proto3&#34;</span><span class="p">;</span>  <span class="err">
-</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="k">option</span> <span class="n">go_package</span> <span class="o">=</span> <span class="s">&#34;./api;api&#34;</span><span class="p">;</span>  <span class="err">
-</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kn">package</span> <span class="nn">api</span><span class="p">;</span>  <span class="err">
-</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="err">
-</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="c1">// The greeting service definition.  
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">service</span> <span class="n">Greeter</span> <span class="p">{</span>  <span class="err">
-</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="c1">// Sends a greeting  
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span>  <span class="k">rpc</span> <span class="n">SayHello</span> <span class="p">(</span><span class="n">HelloRequest</span><span class="p">)</span> <span class="k">returns</span> <span class="p">(</span><span class="n">HelloReply</span><span class="p">)</span> <span class="p">{}</span>  <span class="err">
-</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span>  <span class="err">
-</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="err">
-</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="c1">// The request message containing the user&#39;s name.  
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">message</span> <span class="nc">HelloRequest</span> <span class="p">{</span>  <span class="err">
-</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="kt">string</span> <span class="n">name</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>  <span class="err">
-</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span>  <span class="err">
-</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="err">
-</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="c1">// The response message containing the greetings  
-</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">message</span> <span class="nc">HelloReply</span> <span class="p">{</span>  <span class="err">
-</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="kt">string</span> <span class="kd">message</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>  <span class="err">
-</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="n">syntax</span> <span class="o">=</span> <span class="s">&#34;proto3&#34;</span><span class="p">;</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="k">option</span> <span class="n">go_package</span> <span class="o">=</span> <span class="s">&#34;./api;api&#34;</span><span class="p">;</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="kn">package</span> <span class="nn">api</span><span class="p">;</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl">  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="c1">// The greeting service definition.  
+</span></span></span><span class="line"><span class="cl"><span class="kd">service</span> <span class="n">Greeter</span> <span class="p">{</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl">  <span class="c1">// Sends a greeting  
+</span></span></span><span class="line"><span class="cl">  <span class="k">rpc</span> <span class="n">SayHello</span> <span class="p">(</span><span class="n">HelloRequest</span><span class="p">)</span> <span class="k">returns</span> <span class="p">(</span><span class="n">HelloReply</span><span class="p">)</span> <span class="p">{}</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl">  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="c1">// The request message containing the user&#39;s name.  
+</span></span></span><span class="line"><span class="cl"><span class="kd">message</span> <span class="nc">HelloRequest</span> <span class="p">{</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl">  <span class="kt">string</span> <span class="n">name</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl">  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="c1">// The response message containing the greetings  
+</span></span></span><span class="line"><span class="cl"><span class="kd">message</span> <span class="nc">HelloReply</span> <span class="p">{</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl">  <span class="kt">string</span> <span class="kd">message</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>  <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="err">
 </span></span></span></code></pre></td></tr></table>
 </div>
 </div><h3 id="服务端实现">服务端实现
@@ -738,96 +739,96 @@
 </span><span class="lnt">89
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">main</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="p">(</span>  
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;context&#34;</span>  
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;crypto/tls&#34;</span>    
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;crypto/x509&#34;</span>    
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;fmt&#34;</span>    
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;google.golang.org/genproto/googleapis/rpc/errdetails&#34;</span>    
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;google.golang.org/grpc&#34;</span>    
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;google.golang.org/grpc/codes&#34;</span>    
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;google.golang.org/grpc/credentials&#34;</span>    
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;google.golang.org/grpc/status&#34;</span>    
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;hello-world/api&#34;</span>    
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;io&#34;</span>    
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;log&#34;</span>    
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;net&#34;</span>    
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;os&#34;</span>    
-</span></span><span class="line"><span class="cl">    <span class="s">&#34;time&#34;</span>
-</span></span><span class="line"><span class="cl"><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">server</span> <span class="kd">struct</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">api</span><span class="p">.</span><span class="nx">UnimplementedGreeterServer</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">s</span> <span class="o">*</span><span class="nx">server</span><span class="p">)</span> <span class="nf">SayHello</span><span class="p">(</span><span class="nx">ctx</span> <span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span> <span class="nx">in</span> <span class="o">*</span><span class="nx">api</span><span class="p">.</span><span class="nx">HelloRequest</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">api</span><span class="p">.</span><span class="nx">HelloReply</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Received: %v&#34;</span><span class="p">,</span> <span class="nx">in</span><span class="p">.</span><span class="nf">GetName</span><span class="p">())</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">select</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">case</span> <span class="o">&lt;-</span><span class="nx">ctx</span><span class="p">.</span><span class="nf">Done</span><span class="p">():</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;client timeout return&#34;</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">       <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nf">ErrorWithDetails</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">case</span> <span class="o">&lt;-</span><span class="nx">time</span><span class="p">.</span><span class="nf">After</span><span class="p">(</span><span class="mi">3</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">):</span>  
-</span></span><span class="line"><span class="cl">       <span class="k">return</span> <span class="o">&amp;</span><span class="nx">api</span><span class="p">.</span><span class="nx">HelloReply</span><span class="p">{</span><span class="nx">Message</span><span class="p">:</span> <span class="s">&#34;Hello &#34;</span> <span class="o">+</span> <span class="nx">in</span><span class="p">.</span><span class="nf">GetName</span><span class="p">()},</span> <span class="kc">nil</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>  
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl">    <span class="nx">certificate</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">tls</span><span class="p">.</span><span class="nf">LoadX509KeyPair</span><span class="p">(</span><span class="s">&#34;./keys/server.crt&#34;</span><span class="p">,</span> <span class="s">&#34;./keys/server.key&#34;</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to load key pair: %v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">    <span class="c1">// 通过CA创建证书池  </span>
-</span></span><span class="line"><span class="cl">    <span class="nx">certPool</span> <span class="o">:=</span> <span class="nx">x509</span><span class="p">.</span><span class="nf">NewCertPool</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">ca</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">os</span><span class="p">.</span><span class="nf">ReadFile</span><span class="p">(</span><span class="s">&#34;./keys/ca.crt&#34;</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to read ca: %v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl">    <span class="c1">// 将来自CA的客户端证书附加到证书池  </span>
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">ok</span> <span class="o">:=</span> <span class="nx">certPool</span><span class="p">.</span><span class="nf">AppendCertsFromPEM</span><span class="p">(</span><span class="nx">ca</span><span class="p">);</span> <span class="p">!</span><span class="nx">ok</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to append ca certificate&#34;</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl">    <span class="nx">opts</span> <span class="o">:=</span> <span class="p">[]</span><span class="nx">grpc</span><span class="p">.</span><span class="nx">ServerOption</span><span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">grpc</span><span class="p">.</span><span class="nf">Creds</span><span class="p">(</span> <span class="c1">// 为所有传入的连接启用TLS  </span>
-</span></span><span class="line"><span class="cl">          <span class="nx">credentials</span><span class="p">.</span><span class="nf">NewTLS</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">tls</span><span class="p">.</span><span class="nx">Config</span><span class="p">{</span>  
-</span></span><span class="line"><span class="cl">             <span class="nx">ClientAuth</span><span class="p">:</span>   <span class="nx">tls</span><span class="p">.</span><span class="nx">RequireAndVerifyClientCert</span><span class="p">,</span>  
-</span></span><span class="line"><span class="cl">             <span class="nx">Certificates</span><span class="p">:</span> <span class="p">[]</span><span class="nx">tls</span><span class="p">.</span><span class="nx">Certificate</span><span class="p">{</span><span class="nx">certificate</span><span class="p">},</span>  
-</span></span><span class="line"><span class="cl">             <span class="nx">ClientCAs</span><span class="p">:</span>    <span class="nx">certPool</span><span class="p">,</span>  
-</span></span><span class="line"><span class="cl">          <span class="p">},</span>  
-</span></span><span class="line"><span class="cl">          <span class="p">)),</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl">    <span class="nx">listen</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">net</span><span class="p">.</span><span class="nf">Listen</span><span class="p">(</span><span class="s">&#34;tcp&#34;</span><span class="p">,</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;0.0.0.0:%d&#34;</span><span class="p">,</span> <span class="mi">50051</span><span class="p">))</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;failed to listen %d port&#34;</span><span class="p">,</span> <span class="mi">50051</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">    <span class="c1">// 通过传入的TLS服务器凭证创建新的gRPC服务实例  </span>
-</span></span><span class="line"><span class="cl">    <span class="nx">s</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">NewServer</span><span class="p">(</span><span class="nx">opts</span><span class="o">...</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">api</span><span class="p">.</span><span class="nf">RegisterGreeterServer</span><span class="p">(</span><span class="nx">s</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">server</span><span class="p">{})</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;server listening at %v&#34;</span><span class="p">,</span> <span class="nx">listen</span><span class="p">.</span><span class="nf">Addr</span><span class="p">())</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">s</span><span class="p">.</span><span class="nf">Serve</span><span class="p">(</span><span class="nx">listen</span><span class="p">);</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to serve: %v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">ErrorWithDetails</span><span class="p">()</span> <span class="kt">error</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">st</span> <span class="o">:=</span> <span class="nx">status</span><span class="p">.</span><span class="nf">Newf</span><span class="p">(</span><span class="nx">codes</span><span class="p">.</span><span class="nx">Internal</span><span class="p">,</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;something went wrong: %v&#34;</span><span class="p">,</span> <span class="s">&#34;api.Getter&#34;</span><span class="p">))</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">v</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">errdetails</span><span class="p">.</span><span class="nx">PreconditionFailure_Violation</span><span class="p">{</span> <span class="c1">//errDetails  </span>
-</span></span><span class="line"><span class="cl">       <span class="nx">Type</span><span class="p">:</span>        <span class="s">&#34;test&#34;</span><span class="p">,</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">Subject</span><span class="p">:</span>     <span class="s">&#34;12&#34;</span><span class="p">,</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">Description</span><span class="p">:</span> <span class="s">&#34;32&#34;</span><span class="p">,</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">br</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">errdetails</span><span class="p">.</span><span class="nx">PreconditionFailure</span><span class="p">{}</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">br</span><span class="p">.</span><span class="nx">Violations</span> <span class="p">=</span> <span class="nb">append</span><span class="p">(</span><span class="nx">br</span><span class="p">.</span><span class="nx">Violations</span><span class="p">,</span> <span class="nx">v</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">st</span><span class="p">,</span> <span class="nx">_</span> <span class="p">=</span> <span class="nx">st</span><span class="p">.</span><span class="nf">WithDetails</span><span class="p">(</span><span class="nx">br</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">st</span><span class="p">.</span><span class="nf">Err</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span><span class="w"> </span><span class="nx">main</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="kn">import</span><span class="w"> </span><span class="p">(</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="s">&#34;context&#34;</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="s">&#34;crypto/tls&#34;</span><span class="w">    
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="s">&#34;crypto/x509&#34;</span><span class="w">    
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="s">&#34;fmt&#34;</span><span class="w">    
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="s">&#34;google.golang.org/genproto/googleapis/rpc/errdetails&#34;</span><span class="w">    
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="s">&#34;google.golang.org/grpc&#34;</span><span class="w">    
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="s">&#34;google.golang.org/grpc/codes&#34;</span><span class="w">    
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="s">&#34;google.golang.org/grpc/credentials&#34;</span><span class="w">    
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="s">&#34;google.golang.org/grpc/status&#34;</span><span class="w">    
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="s">&#34;hello-world/api&#34;</span><span class="w">    
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="s">&#34;io&#34;</span><span class="w">    
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="s">&#34;log&#34;</span><span class="w">    
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="s">&#34;net&#34;</span><span class="w">    
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="s">&#34;os&#34;</span><span class="w">    
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="s">&#34;time&#34;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="kd">type</span><span class="w"> </span><span class="nx">server</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">api</span><span class="p">.</span><span class="nx">UnimplementedGreeterServer</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">s</span><span class="w"> </span><span class="o">*</span><span class="nx">server</span><span class="p">)</span><span class="w"> </span><span class="nf">SayHello</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span><span class="w"> </span><span class="nx">in</span><span class="w"> </span><span class="o">*</span><span class="nx">api</span><span class="p">.</span><span class="nx">HelloRequest</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="nx">api</span><span class="p">.</span><span class="nx">HelloReply</span><span class="p">,</span><span class="w"> </span><span class="kt">error</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Received: %v&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">in</span><span class="p">.</span><span class="nf">GetName</span><span class="p">())</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">select</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="o">&lt;-</span><span class="nx">ctx</span><span class="p">.</span><span class="nf">Done</span><span class="p">():</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">log</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;client timeout return&#34;</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span><span class="p">,</span><span class="w"> </span><span class="nf">ErrorWithDetails</span><span class="p">()</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="o">&lt;-</span><span class="nx">time</span><span class="p">.</span><span class="nf">After</span><span class="p">(</span><span class="mi">3</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">):</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="k">return</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">api</span><span class="p">.</span><span class="nx">HelloReply</span><span class="p">{</span><span class="nx">Message</span><span class="p">:</span><span class="w"> </span><span class="s">&#34;Hello &#34;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">in</span><span class="p">.</span><span class="nf">GetName</span><span class="p">()},</span><span class="w"> </span><span class="kc">nil</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">certificate</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">tls</span><span class="p">.</span><span class="nf">LoadX509KeyPair</span><span class="p">(</span><span class="s">&#34;./keys/server.crt&#34;</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;./keys/server.key&#34;</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to load key pair: %v&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// 通过CA创建证书池  </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">certPool</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">x509</span><span class="p">.</span><span class="nf">NewCertPool</span><span class="p">()</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">ca</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">os</span><span class="p">.</span><span class="nf">ReadFile</span><span class="p">(</span><span class="s">&#34;./keys/ca.crt&#34;</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to read ca: %v&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// 将来自CA的客户端证书附加到证书池  </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">ok</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">certPool</span><span class="p">.</span><span class="nf">AppendCertsFromPEM</span><span class="p">(</span><span class="nx">ca</span><span class="p">);</span><span class="w"> </span><span class="p">!</span><span class="nx">ok</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to append ca certificate&#34;</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">opts</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="p">[]</span><span class="nx">grpc</span><span class="p">.</span><span class="nx">ServerOption</span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">grpc</span><span class="p">.</span><span class="nf">Creds</span><span class="p">(</span><span class="w"> </span><span class="c1">// 为所有传入的连接启用TLS  </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="nx">credentials</span><span class="p">.</span><span class="nf">NewTLS</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">tls</span><span class="p">.</span><span class="nx">Config</span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">             </span><span class="nx">ClientAuth</span><span class="p">:</span><span class="w">   </span><span class="nx">tls</span><span class="p">.</span><span class="nx">RequireAndVerifyClientCert</span><span class="p">,</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">             </span><span class="nx">Certificates</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span><span class="nx">tls</span><span class="p">.</span><span class="nx">Certificate</span><span class="p">{</span><span class="nx">certificate</span><span class="p">},</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">             </span><span class="nx">ClientCAs</span><span class="p">:</span><span class="w">    </span><span class="nx">certPool</span><span class="p">,</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="p">},</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="p">)),</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">listen</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">net</span><span class="p">.</span><span class="nf">Listen</span><span class="p">(</span><span class="s">&#34;tcp&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;0.0.0.0:%d&#34;</span><span class="p">,</span><span class="w"> </span><span class="mi">50051</span><span class="p">))</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;failed to listen %d port&#34;</span><span class="p">,</span><span class="w"> </span><span class="mi">50051</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// 通过传入的TLS服务器凭证创建新的gRPC服务实例  </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">s</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">grpc</span><span class="p">.</span><span class="nf">NewServer</span><span class="p">(</span><span class="nx">opts</span><span class="o">...</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">api</span><span class="p">.</span><span class="nf">RegisterGreeterServer</span><span class="p">(</span><span class="nx">s</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">server</span><span class="p">{})</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;server listening at %v&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">listen</span><span class="p">.</span><span class="nf">Addr</span><span class="p">())</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">s</span><span class="p">.</span><span class="nf">Serve</span><span class="p">(</span><span class="nx">listen</span><span class="p">);</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to serve: %v&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">ErrorWithDetails</span><span class="p">()</span><span class="w"> </span><span class="kt">error</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">st</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">status</span><span class="p">.</span><span class="nf">Newf</span><span class="p">(</span><span class="nx">codes</span><span class="p">.</span><span class="nx">Internal</span><span class="p">,</span><span class="w"> </span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;something went wrong: %v&#34;</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;api.Getter&#34;</span><span class="p">))</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">v</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">errdetails</span><span class="p">.</span><span class="nx">PreconditionFailure_Violation</span><span class="p">{</span><span class="w"> </span><span class="cp">//errDetails  </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">Type</span><span class="p">:</span><span class="w">        </span><span class="s">&#34;test&#34;</span><span class="p">,</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">Subject</span><span class="p">:</span><span class="w">     </span><span class="s">&#34;12&#34;</span><span class="p">,</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">Description</span><span class="p">:</span><span class="w"> </span><span class="s">&#34;32&#34;</span><span class="p">,</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">br</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">errdetails</span><span class="p">.</span><span class="nx">PreconditionFailure</span><span class="p">{}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">br</span><span class="p">.</span><span class="nx">Violations</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nb">append</span><span class="p">(</span><span class="nx">br</span><span class="p">.</span><span class="nx">Violations</span><span class="p">,</span><span class="w"> </span><span class="nx">v</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">st</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">st</span><span class="p">.</span><span class="nf">WithDetails</span><span class="p">(</span><span class="nx">br</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">st</span><span class="p">.</span><span class="nf">Err</span><span class="p">()</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>我们直接运行服务端 <code>go run main.go</code></p>
 <h3 id="客户端">客户端
@@ -856,27 +857,27 @@
 </span><span class="lnt">20
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">Test_server_SayHello_No_Cert</span><span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">conn</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">Dial</span><span class="p">(</span><span class="s">&#34;localhost:50051&#34;</span><span class="p">,</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">WithTransportCredentials</span><span class="p">(</span><span class="nx">insecure</span><span class="p">.</span><span class="nf">NewCredentials</span><span class="p">()))</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Connect to %s failed&#34;</span><span class="p">,</span> <span class="s">&#34;localhost:50051&#34;</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nx">conn</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl">    <span class="nx">client</span> <span class="o">:=</span> <span class="nx">api</span><span class="p">.</span><span class="nf">NewGreeterClient</span><span class="p">(</span><span class="nx">conn</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="c1">// 创建带有超时时间的上下文, cancel可以取消上下文  </span>
-</span></span><span class="line"><span class="cl">    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(),</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="o">*</span><span class="mi">5</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nf">cancel</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">    <span class="c1">// 业务代码处理部分 ...    r, err := client.SayHello(ctx, &amp;api.HelloRequest{Name: &#34;Hello&#34;})  </span>
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Failed to greet, error: %v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Greeting: %v&#34;</span><span class="p">,</span> <span class="nx">r</span><span class="p">.</span><span class="nf">GetMessage</span><span class="p">())</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">    <span class="c1">// Set up a connection to the server.  </span>
-</span></span><span class="line"><span class="cl">    <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Greeting: %s&#34;</span><span class="p">,</span> <span class="nx">r</span><span class="p">.</span><span class="nf">GetMessage</span><span class="p">())</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">Test_server_SayHello_No_Cert</span><span class="p">(</span><span class="nx">t</span><span class="w"> </span><span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">conn</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">grpc</span><span class="p">.</span><span class="nf">Dial</span><span class="p">(</span><span class="s">&#34;localhost:50051&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">grpc</span><span class="p">.</span><span class="nf">WithTransportCredentials</span><span class="p">(</span><span class="nx">insecure</span><span class="p">.</span><span class="nf">NewCredentials</span><span class="p">()))</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Connect to %s failed&#34;</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;localhost:50051&#34;</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">defer</span><span class="w"> </span><span class="nx">conn</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">client</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">api</span><span class="p">.</span><span class="nf">NewGreeterClient</span><span class="p">(</span><span class="nx">conn</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// 创建带有超时时间的上下文, cancel可以取消上下文  </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">cancel</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(),</span><span class="w"> </span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="o">*</span><span class="mi">5</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">defer</span><span class="w"> </span><span class="nf">cancel</span><span class="p">()</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// 业务代码处理部分 ...    r, err := client.SayHello(ctx, &amp;api.HelloRequest{Name: &#34;Hello&#34;})  </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Failed to greet, error: %v&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Greeting: %v&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nf">GetMessage</span><span class="p">())</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// Set up a connection to the server.  </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Greeting: %s&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nf">GetMessage</span><span class="p">())</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>输出</p>
 <div class="highlight"><div class="chroma">
@@ -938,52 +939,52 @@
 </span><span class="lnt">45
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">Test_server_SayHello</span><span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">certificate</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">tls</span><span class="p">.</span><span class="nf">LoadX509KeyPair</span><span class="p">(</span><span class="s">&#34;./keys/client.crt&#34;</span><span class="p">,</span> <span class="s">&#34;./keys/client.key&#34;</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to load client key pair, %v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl">    <span class="nx">certPool</span> <span class="o">:=</span> <span class="nx">x509</span><span class="p">.</span><span class="nf">NewCertPool</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">    <span class="nx">ca</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">os</span><span class="p">.</span><span class="nf">ReadFile</span><span class="p">(</span><span class="s">&#34;./keys/ca.crt&#34;</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to read %s, error: %v&#34;</span><span class="p">,</span> <span class="s">&#34;./keys/ca.crt&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">ok</span> <span class="o">:=</span> <span class="nx">certPool</span><span class="p">.</span><span class="nf">AppendCertsFromPEM</span><span class="p">(</span><span class="nx">ca</span><span class="p">);</span> <span class="p">!</span><span class="nx">ok</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to append ca certs&#34;</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl">    <span class="nx">opts</span> <span class="o">:=</span> <span class="p">[]</span><span class="nx">grpc</span><span class="p">.</span><span class="nx">DialOption</span><span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">grpc</span><span class="p">.</span><span class="nf">WithTransportCredentials</span><span class="p">(</span><span class="nx">credentials</span><span class="p">.</span><span class="nf">NewTLS</span><span class="p">(</span>  
-</span></span><span class="line"><span class="cl">          <span class="o">&amp;</span><span class="nx">tls</span><span class="p">.</span><span class="nx">Config</span><span class="p">{</span>  
-</span></span><span class="line"><span class="cl">             <span class="nx">ServerName</span><span class="p">:</span>   <span class="s">&#34;localhost&#34;</span><span class="p">,</span>  
-</span></span><span class="line"><span class="cl">             <span class="nx">Certificates</span><span class="p">:</span> <span class="p">[]</span><span class="nx">tls</span><span class="p">.</span><span class="nx">Certificate</span><span class="p">{</span><span class="nx">certificate</span><span class="p">},</span>  
-</span></span><span class="line"><span class="cl">             <span class="nx">RootCAs</span><span class="p">:</span>      <span class="nx">certPool</span><span class="p">,</span>  
-</span></span><span class="line"><span class="cl">          <span class="p">})),</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl">    <span class="c1">// conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(insecure.NewCredentials()))  </span>
-</span></span><span class="line"><span class="cl">    <span class="nx">conn</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">Dial</span><span class="p">(</span><span class="s">&#34;localhost:50051&#34;</span><span class="p">,</span> <span class="nx">opts</span><span class="o">...</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Connect to %s failed&#34;</span><span class="p">,</span> <span class="s">&#34;localhost:50051&#34;</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nx">conn</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">  
-</span></span><span class="line"><span class="cl">    <span class="nx">client</span> <span class="o">:=</span> <span class="nx">api</span><span class="p">.</span><span class="nf">NewGreeterClient</span><span class="p">(</span><span class="nx">conn</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="c1">// 创建带有超时时间的上下文, cancel可以取消上下文  </span>
-</span></span><span class="line"><span class="cl">    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(),</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="o">*</span><span class="mi">5</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="k">defer</span> <span class="nf">cancel</span><span class="p">()</span>  
-</span></span><span class="line"><span class="cl">    <span class="c1">// 业务代码处理部分 ...    r, err := client.SayHello(ctx, &amp;api.HelloRequest{Name: &#34;Hello&#34;})  </span>
-</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Failed to greet, error: %v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>  
-</span></span><span class="line"><span class="cl">       <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Greeting: %v&#34;</span><span class="p">,</span> <span class="nx">r</span><span class="p">.</span><span class="nf">GetMessage</span><span class="p">())</span>  
-</span></span><span class="line"><span class="cl">    <span class="p">}</span>  
-</span></span><span class="line"><span class="cl">    <span class="c1">// Set up a connection to the server.  </span>
-</span></span><span class="line"><span class="cl">    <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Greeting: %s&#34;</span><span class="p">,</span> <span class="nx">r</span><span class="p">.</span><span class="nf">GetMessage</span><span class="p">())</span>  
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">Test_server_SayHello</span><span class="p">(</span><span class="nx">t</span><span class="w"> </span><span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">certificate</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">tls</span><span class="p">.</span><span class="nf">LoadX509KeyPair</span><span class="p">(</span><span class="s">&#34;./keys/client.crt&#34;</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;./keys/client.key&#34;</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to load client key pair, %v&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">certPool</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">x509</span><span class="p">.</span><span class="nf">NewCertPool</span><span class="p">()</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">ca</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">os</span><span class="p">.</span><span class="nf">ReadFile</span><span class="p">(</span><span class="s">&#34;./keys/ca.crt&#34;</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to read %s, error: %v&#34;</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;./keys/ca.crt&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">ok</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">certPool</span><span class="p">.</span><span class="nf">AppendCertsFromPEM</span><span class="p">(</span><span class="nx">ca</span><span class="p">);</span><span class="w"> </span><span class="p">!</span><span class="nx">ok</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Failed to append ca certs&#34;</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">opts</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="p">[]</span><span class="nx">grpc</span><span class="p">.</span><span class="nx">DialOption</span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">grpc</span><span class="p">.</span><span class="nf">WithTransportCredentials</span><span class="p">(</span><span class="nx">credentials</span><span class="p">.</span><span class="nf">NewTLS</span><span class="p">(</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="o">&amp;</span><span class="nx">tls</span><span class="p">.</span><span class="nx">Config</span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">             </span><span class="nx">ServerName</span><span class="p">:</span><span class="w">   </span><span class="s">&#34;localhost&#34;</span><span class="p">,</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">             </span><span class="nx">Certificates</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span><span class="nx">tls</span><span class="p">.</span><span class="nx">Certificate</span><span class="p">{</span><span class="nx">certificate</span><span class="p">},</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">             </span><span class="nx">RootCAs</span><span class="p">:</span><span class="w">      </span><span class="nx">certPool</span><span class="p">,</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">          </span><span class="p">})),</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(insecure.NewCredentials()))  </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">conn</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">grpc</span><span class="p">.</span><span class="nf">Dial</span><span class="p">(</span><span class="s">&#34;localhost:50051&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">opts</span><span class="o">...</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Connect to %s failed&#34;</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;localhost:50051&#34;</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">defer</span><span class="w"> </span><span class="nx">conn</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">client</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">api</span><span class="p">.</span><span class="nf">NewGreeterClient</span><span class="p">(</span><span class="nx">conn</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// 创建带有超时时间的上下文, cancel可以取消上下文  </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">cancel</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(),</span><span class="w"> </span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="o">*</span><span class="mi">5</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">defer</span><span class="w"> </span><span class="nf">cancel</span><span class="p">()</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// 业务代码处理部分 ...    r, err := client.SayHello(ctx, &amp;api.HelloRequest{Name: &#34;Hello&#34;})  </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Failed to greet, error: %v&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">       </span><span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Greeting: %v&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nf">GetMessage</span><span class="p">())</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// Set up a connection to the server.  </span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Greeting: %s&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nf">GetMessage</span><span class="p">())</span><span class="w">  
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>输出</p>
 <div class="highlight"><div class="chroma">
@@ -1057,7 +1058,8 @@
                 >
             </script><script>
     window.addEventListener("DOMContentLoaded", () => {
-        renderMathInElement(document.body, {
+	const mainArticleElement = document.querySelector(".main-article");
+        renderMathInElement(mainArticleElement, {
             delimiters: [
                 { left: "$$", right: "$$", display: true },
                 { left: "$", right: "$", display: false },
@@ -1067,6 +1069,7 @@
             ignoredClasses: ["gist"]
         });})
 </script>
+
     
 </article>
 
@@ -1185,7 +1188,7 @@
     
     <section class="powerby">
         使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
-        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.30.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
     </section>
     <script src="/js/adblock-detection.js" defer></script>
      
@@ -1284,7 +1287,7 @@
                 src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
                 
                 >
-            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+            </script><script type="text/javascript" src="/ts/main.1e9a3bafd846ced4c345d084b355fb8c7bae75701c338f8a1f8a82c780137826.js" defer></script>
 <script>
     (function () {
         const customFont = document.createElement('link');

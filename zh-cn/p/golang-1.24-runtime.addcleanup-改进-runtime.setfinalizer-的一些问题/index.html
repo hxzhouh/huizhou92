@@ -9,7 +9,7 @@
 
 <link rel='canonical' href='https://huizhou92.com/zh-cn/p/golang-1.24-runtime.addcleanup-%E6%94%B9%E8%BF%9B-runtime.setfinalizer-%E7%9A%84%E4%B8%80%E4%BA%9B%E9%97%AE%E9%A2%98/'>
 
-<link rel="stylesheet" href="/scss/style.min.7a8650e463f7bf12cc86f69675ab60349b39aa794883f0c4ba0547d9e71cd5b5.css">
+<link rel="stylesheet" href="/scss/style.min.20b21821b24a8fcaadba2abf9fa81ceb2bf498798e28142c62203bfa694fbc02.css">
 <meta property='og:title' content="Golang 1.24: runtime.AddCleanup 改进 runtime.SetFinalizer 的一些问题">
 <meta property='og:description' content="Golang 1.24 introduces `runtime.AddCleanup`, improving upon `runtime.SetFinalizer` by allowing multiple cleanup functions and better handling of object references, thus preventing memory leaks and enabling timely cleanup. #Golang #Go1_24">
 <meta property='og:url' content='https://huizhou92.com/zh-cn/p/golang-1.24-runtime.addcleanup-%E6%94%B9%E8%BF%9B-runtime.setfinalizer-%E7%9A%84%E4%B8%80%E4%BA%9B%E9%97%AE%E9%A2%98/'>
@@ -24,7 +24,7 @@
       <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMPMQ2QREG"></script>
       <script>
         var doNotTrack = false;
-        if ( false ) {
+        if ( true ) {
           var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
           var doNotTrack = (dnt == "1" || dnt == "yes");
         }
@@ -35,7 +35,7 @@
           gtag('config', 'G-JMPMQ2QREG');
         }
       </script>
-        <link rel="alternate" hreflang="en" href="https://huizhou92.com/p/golang-1.24-runtime.addcleanup/">
+        <link rel="alternate" hreflang="en-us" href="https://huizhou92.com/p/golang-1.24-runtime.addcleanup/">
         <link rel="alternate" hreflang="zh-cn" href="https://huizhou92.com/zh-cn/p/golang-1.24-runtime.addcleanup-%E6%94%B9%E8%BF%9B-runtime.setfinalizer-%E7%9A%84%E4%B8%80%E4%BA%9B%E9%97%AE%E9%A2%98/">
             <link rel="alternate" hreflang="x-default" href="https://huizhou92.com/p/golang-1.24-runtime.addcleanup/">
 <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
@@ -87,7 +87,7 @@
                     
                     
                         
-                        <img src="/img/avatar_hu_e52293b5d2b8c5f7.jpeg" width="300"
+                        <img src="/img/avatar_hu_2886835e4912e3b9.jpeg" width="300"
                             height="300" class="site-logo" loading="lazy" alt="Avatar">
                     
                 
@@ -510,7 +510,8 @@
 <li>带有<code>SetFinalizer</code>的对象至少需要两个 GC 循环才能被释放。<br>
 <a class="link" href="https://github.com/golang/go/issues/67535"  target="_blank" rel="noopener"
     >https://github.com/golang/go/issues/67535</a></li>
-</ul></blockquote>
+</ul>
+</blockquote>
 <p>对于第一条，我们可以用一个例子说明</p>
 <div class="highlight"><div class="chroma">
 <table class="lntable"><tr><td class="lntd">
@@ -538,29 +539,29 @@
 </span><span class="lnt">22
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">main</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="p">(</span>
-</span></span><span class="line"><span class="cl">	<span class="s">&#34;fmt&#34;</span>
-</span></span><span class="line"><span class="cl">	<span class="s">&#34;runtime&#34;</span>
-</span></span><span class="line"><span class="cl"><span class="p">)</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">MyStruct</span> <span class="kd">struct</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">Field</span> <span class="kt">int</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">obj</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">MyStruct</span><span class="p">{</span><span class="nx">Field</span><span class="p">:</span> <span class="mi">42</span><span class="p">}</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">runtime</span><span class="p">.</span><span class="nf">SetFinalizer</span><span class="p">(</span><span class="nx">obj</span><span class="p">,</span> <span class="kd">func</span><span class="p">(</span><span class="nx">m</span> <span class="o">*</span><span class="nx">MyStruct</span><span class="p">)</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">		<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Finalizer called for:&#34;</span><span class="p">,</span> <span class="nx">m</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">	<span class="p">})</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">	<span class="c1">// 错误示例：传递字段引用而非对象本身</span>
-</span></span><span class="line"><span class="cl">	<span class="c1">// runtime.SetFinalizer(&amp;obj.Field, func(m *int) {</span>
-</span></span><span class="line"><span class="cl">	<span class="c1">//     fmt.Println(&#34;Finalizer called for:&#34;, *m)</span>
-</span></span><span class="line"><span class="cl">	<span class="c1">// })</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span><span class="w"> </span><span class="nx">main</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kn">import</span><span class="w"> </span><span class="p">(</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="s">&#34;fmt&#34;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="s">&#34;runtime&#34;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">type</span><span class="w"> </span><span class="nx">MyStruct</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">Field</span><span class="w"> </span><span class="kt">int</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">obj</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">MyStruct</span><span class="p">{</span><span class="nx">Field</span><span class="p">:</span><span class="w"> </span><span class="mi">42</span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">runtime</span><span class="p">.</span><span class="nf">SetFinalizer</span><span class="p">(</span><span class="nx">obj</span><span class="p">,</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">m</span><span class="w"> </span><span class="o">*</span><span class="nx">MyStruct</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">		</span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Finalizer called for:&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">m</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="p">})</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="c1">// 错误示例：传递字段引用而非对象本身</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="c1">// runtime.SetFinalizer(&amp;obj.Field, func(m *int) {</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="c1">//     fmt.Println(&#34;Finalizer called for:&#34;, *m)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="c1">// })</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>基于上面的原因，在<code>Golang 1.24</code> 中添加了一个新的函数<code>runtime.AddCleanUp</code> 来替换 <code>runtime.SetFinalizer</code> 。</p>
 <p><strong>注意： <code>runtime.AddCleanup</code> 和 <code>runtime.SetFinalizer</code> 都不保证 清理函数一定会被执行。</strong></p>
@@ -571,8 +572,8 @@ AddCleanup函数的原型如下：</p>
 <pre tabindex="0" class="chroma"><code><span class="lnt">1
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nx">AddCleanup</span><span class="p">[</span><span class="nx">T</span><span class="p">,</span> <span class="nx">S</span> <span class="kt">any</span><span class="p">](</span><span class="nx">ptr</span> <span class="o">*</span><span class="nx">T</span><span class="p">,</span> <span class="nx">cleanup</span> <span class="kd">func</span><span class="p">(</span><span class="nx">S</span><span class="p">),</span> <span class="nx">arg</span> <span class="nx">S</span><span class="p">)</span> <span class="nx">Cleanup</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nx">AddCleanup</span><span class="p">[</span><span class="nx">T</span><span class="p">,</span><span class="w"> </span><span class="nx">S</span><span class="w"> </span><span class="kt">any</span><span class="p">](</span><span class="nx">ptr</span><span class="w"> </span><span class="o">*</span><span class="nx">T</span><span class="p">,</span><span class="w"> </span><span class="nx">cleanup</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">S</span><span class="p">),</span><span class="w"> </span><span class="nx">arg</span><span class="w"> </span><span class="nx">S</span><span class="p">)</span><span class="w"> </span><span class="nx">Cleanup</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p>基于此，可以写一个RAII(Resource Acquisition Is Initialization)的 Demo 。在<a class="link" href="https://medium.com/plain-golang-tutorial/go1-24-new-std-lib-weak-6e0a79a27902"  target="_blank" rel="noopener"
     ><code>go weak</code></a>  的文章中，我们实现了一个固定长度的<code>cache</code>，改一下代码，添加一个<code>newElemWeak</code> 方法，当最旧的elem 被逐出的时候，会自动调用<code>delete</code> 将<code>key</code> 从<code>cache</code> 中删除。不需要我们手动管理。</p>
@@ -587,14 +588,14 @@ AddCleanup函数的原型如下：</p>
 </span><span class="lnt">7
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">c</span> <span class="o">*</span><span class="nx">WeakCache</span><span class="p">)</span> <span class="nf">newElemWeak</span><span class="p">(</span><span class="nx">elem</span> <span class="o">*</span><span class="nx">list</span><span class="p">.</span><span class="nx">Element</span><span class="p">)</span> <span class="nx">weak</span><span class="p">.</span><span class="nx">Pointer</span><span class="p">[</span><span class="nx">list</span><span class="p">.</span><span class="nx">Element</span><span class="p">]</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">elemWeak</span> <span class="o">:=</span> <span class="nx">weak</span><span class="p">.</span><span class="nf">Make</span><span class="p">(</span><span class="nx">elem</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">runtime</span><span class="p">.</span><span class="nf">AddCleanup</span><span class="p">(</span><span class="nx">elem</span><span class="p">,</span> <span class="kd">func</span><span class="p">(</span><span class="nx">name</span> <span class="kt">string</span><span class="p">)</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">		<span class="nb">delete</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">cache</span><span class="p">,</span> <span class="nx">name</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">	<span class="p">},</span> <span class="nx">elem</span><span class="p">.</span><span class="nx">Value</span><span class="p">.(</span><span class="o">*</span><span class="nx">CacheItem</span><span class="p">).</span><span class="nx">key</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="nx">elemWeak</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">c</span><span class="w"> </span><span class="o">*</span><span class="nx">WeakCache</span><span class="p">)</span><span class="w"> </span><span class="nf">newElemWeak</span><span class="p">(</span><span class="nx">elem</span><span class="w"> </span><span class="o">*</span><span class="nx">list</span><span class="p">.</span><span class="nx">Element</span><span class="p">)</span><span class="w"> </span><span class="nx">weak</span><span class="p">.</span><span class="nx">Pointer</span><span class="p">[</span><span class="nx">list</span><span class="p">.</span><span class="nx">Element</span><span class="p">]</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">elemWeak</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">weak</span><span class="p">.</span><span class="nf">Make</span><span class="p">(</span><span class="nx">elem</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">runtime</span><span class="p">.</span><span class="nf">AddCleanup</span><span class="p">(</span><span class="nx">elem</span><span class="p">,</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">name</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">		</span><span class="nb">delete</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">cache</span><span class="p">,</span><span class="w"> </span><span class="nx">name</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="p">},</span><span class="w"> </span><span class="nx">elem</span><span class="p">.</span><span class="nx">Value</span><span class="p">.(</span><span class="o">*</span><span class="nx">CacheItem</span><span class="p">).</span><span class="nx">key</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="k">return</span><span class="w"> </span><span class="nx">elemWeak</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><h3 id="需要注意的几个问题">需要注意的几个问题
 </h3><p><code>AddCleanup</code>对<code>ptr</code>的约束很少，支持为同一个指针附加多个清理函数。不过，如果<code>ptr</code>可以从<code>cleanup</code>或<code>arg</code>中可达，<code>ptr</code>将永远不会被回收(memory leak)，清理函数也永远不会运行，目前来看这种情况也不会panic。 或许以后会用 <code>GODEBUG=gccheckmark=1</code> 这种模式来检测？<br>
@@ -620,20 +621,20 @@ AddCleanup函数的原型如下：</p>
 </span><span class="lnt">13
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">NewFileResource</span><span class="p">(</span><span class="nx">filename</span> <span class="kt">string</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">os</span><span class="p">.</span><span class="nx">File</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">file</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">os</span><span class="p">.</span><span class="nf">OpenFile</span><span class="p">(</span><span class="nx">filename</span><span class="p">,</span> <span class="nx">os</span><span class="p">.</span><span class="nx">O_RDWR</span><span class="p">|</span><span class="nx">os</span><span class="p">.</span><span class="nx">O_CREATE</span><span class="p">,</span> <span class="mo">0666</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">		<span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>
-</span></span><span class="line"><span class="cl">	<span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">	<span class="nx">runtime</span><span class="p">.</span><span class="nf">AddCleanup</span><span class="p">(</span><span class="nx">file</span><span class="p">,</span> <span class="kd">func</span><span class="p">(</span><span class="nx">f</span> <span class="o">*</span><span class="nx">os</span><span class="p">.</span><span class="nx">File</span><span class="p">)</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">		<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;close f&#34;</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">		<span class="nx">_</span> <span class="p">=</span> <span class="nx">f</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span>
-</span></span><span class="line"><span class="cl">	<span class="p">},</span> <span class="nx">file</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="nx">file</span><span class="p">,</span> <span class="kc">nil</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">NewFileResource</span><span class="p">(</span><span class="nx">filename</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="nx">os</span><span class="p">.</span><span class="nx">File</span><span class="p">,</span><span class="w"> </span><span class="kt">error</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">file</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">os</span><span class="p">.</span><span class="nf">OpenFile</span><span class="p">(</span><span class="nx">filename</span><span class="p">,</span><span class="w"> </span><span class="nx">os</span><span class="p">.</span><span class="nx">O_RDWR</span><span class="p">|</span><span class="nx">os</span><span class="p">.</span><span class="nx">O_CREATE</span><span class="p">,</span><span class="w"> </span><span class="mo">0666</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">		</span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">runtime</span><span class="p">.</span><span class="nf">AddCleanup</span><span class="p">(</span><span class="nx">file</span><span class="p">,</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">f</span><span class="w"> </span><span class="o">*</span><span class="nx">os</span><span class="p">.</span><span class="nx">File</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">		</span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;close f&#34;</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">		</span><span class="nx">_</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">f</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="p">},</span><span class="w"> </span><span class="nx">file</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="k">return</span><span class="w"> </span><span class="nx">file</span><span class="p">,</span><span class="w"> </span><span class="kc">nil</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p><code>fmt.Println(&quot;close f&quot;)</code> 不会被打印，file 也不会被关闭。</p>
 <p><a class="link" href="https://go.dev/play/p/zpZ_oMnpJRv?v=gotip"  target="_blank" rel="noopener"
@@ -670,32 +671,32 @@ AddCleanup函数的原型如下：</p>
 </span><span class="lnt">25
 </span></code></pre></td>
 <td class="lntd">
-<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">x</span> <span class="o">:=</span> <span class="nx">MyStruct</span><span class="p">{</span><span class="nx">Name</span><span class="p">:</span> <span class="s">&#34;X&#34;</span><span class="p">}</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">y</span> <span class="o">:=</span> <span class="nx">MyStruct</span><span class="p">{</span><span class="nx">Name</span><span class="p">:</span> <span class="s">&#34;Y&#34;</span><span class="p">}</span>
-</span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">	<span class="nx">x</span><span class="p">.</span><span class="nx">Other</span> <span class="p">=</span> <span class="o">&amp;</span><span class="nx">y</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">y</span><span class="p">.</span><span class="nx">Other</span> <span class="p">=</span> <span class="o">&amp;</span><span class="nx">x</span>
-</span></span><span class="line"><span class="cl">	<span class="c1">//runtime.SetFinalizer(&amp;x, func(x *MyStruct) {</span>
-</span></span><span class="line"><span class="cl">	<span class="c1">//	fmt.Printf(&#34;Finalizer for %s is called\n&#34;, x.Name)</span>
-</span></span><span class="line"><span class="cl">	<span class="c1">//})</span>
-</span></span><span class="line"><span class="cl">	<span class="c1">//runtime.SetFinalizer(&amp;y, func(y *MyStruct) {</span>
-</span></span><span class="line"><span class="cl">	<span class="c1">//	fmt.Printf(&#34;Finalizer for %s is called\n&#34;, y.Name)</span>
-</span></span><span class="line"><span class="cl">	<span class="c1">//})</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">xName</span> <span class="o">:=</span> <span class="nx">x</span><span class="p">.</span><span class="nx">Name</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">runtime</span><span class="p">.</span><span class="nf">AddCleanup</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">x</span><span class="p">,</span> <span class="kd">func</span><span class="p">(</span><span class="nx">name</span> <span class="kt">string</span><span class="p">)</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">		<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Cleanup for&#34;</span><span class="p">,</span> <span class="nx">x</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">	<span class="p">},</span> <span class="nx">xName</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">yName</span> <span class="o">:=</span> <span class="nx">y</span><span class="p">.</span><span class="nx">Name</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">runtime</span><span class="p">.</span><span class="nf">AddCleanup</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">y</span><span class="p">,</span> <span class="kd">func</span><span class="p">(</span><span class="nx">name</span> <span class="kt">string</span><span class="p">)</span> <span class="p">{</span>
-</span></span><span class="line"><span class="cl">		<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Cleanup for&#34;</span><span class="p">,</span> <span class="nx">x</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">	<span class="p">},</span> <span class="nx">yName</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">time</span><span class="p">.</span><span class="nf">Sleep</span><span class="p">(</span><span class="nx">time</span><span class="p">.</span><span class="nx">Millisecond</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">runtime</span><span class="p">.</span><span class="nf">GC</span><span class="p">()</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">time</span><span class="p">.</span><span class="nf">Sleep</span><span class="p">(</span><span class="nx">time</span><span class="p">.</span><span class="nx">Millisecond</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">	<span class="nx">runtime</span><span class="p">.</span><span class="nf">GC</span><span class="p">()</span>
-</span></span><span class="line"><span class="cl"><span class="p">}</span>
-</span></span></code></pre></td></tr></table>
+<pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">x</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">MyStruct</span><span class="p">{</span><span class="nx">Name</span><span class="p">:</span><span class="w"> </span><span class="s">&#34;X&#34;</span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">y</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">MyStruct</span><span class="p">{</span><span class="nx">Name</span><span class="p">:</span><span class="w"> </span><span class="s">&#34;Y&#34;</span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">x</span><span class="p">.</span><span class="nx">Other</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">y</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">y</span><span class="p">.</span><span class="nx">Other</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">x</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="cp">//runtime.SetFinalizer(&amp;x, func(x *MyStruct) {</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="c1">//	fmt.Printf(&#34;Finalizer for %s is called\n&#34;, x.Name)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="cp">//})</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="cp">//runtime.SetFinalizer(&amp;y, func(y *MyStruct) {</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="c1">//	fmt.Printf(&#34;Finalizer for %s is called\n&#34;, y.Name)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="cp">//})</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">xName</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">x</span><span class="p">.</span><span class="nx">Name</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">runtime</span><span class="p">.</span><span class="nf">AddCleanup</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">x</span><span class="p">,</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">name</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">		</span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Cleanup for&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">x</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="p">},</span><span class="w"> </span><span class="nx">xName</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">yName</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">y</span><span class="p">.</span><span class="nx">Name</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">runtime</span><span class="p">.</span><span class="nf">AddCleanup</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">y</span><span class="p">,</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">name</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">		</span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Cleanup for&#34;</span><span class="p">,</span><span class="w"> </span><span class="nx">x</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="p">},</span><span class="w"> </span><span class="nx">yName</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">time</span><span class="p">.</span><span class="nf">Sleep</span><span class="p">(</span><span class="nx">time</span><span class="p">.</span><span class="nx">Millisecond</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">runtime</span><span class="p">.</span><span class="nf">GC</span><span class="p">()</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">time</span><span class="p">.</span><span class="nf">Sleep</span><span class="p">(</span><span class="nx">time</span><span class="p">.</span><span class="nx">Millisecond</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">	</span><span class="nx">runtime</span><span class="p">.</span><span class="nf">GC</span><span class="p">()</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
 </div>
 </div><p><a class="link" href="https://gist.github.com/hxzhouh/ca402c723faa78726baba7e56bff573a"  target="_blank" rel="noopener"
     >https://gist.github.com/hxzhouh/ca402c723faa78726baba7e56bff573a</a><br>
@@ -775,7 +776,8 @@ AddCleanup函数的原型如下：</p>
                 >
             </script><script>
     window.addEventListener("DOMContentLoaded", () => {
-        renderMathInElement(document.body, {
+	const mainArticleElement = document.querySelector(".main-article");
+        renderMathInElement(mainArticleElement, {
             delimiters: [
                 { left: "$$", right: "$$", display: true },
                 { left: "$", right: "$", display: false },
@@ -785,6 +787,7 @@ AddCleanup函数的原型如下：</p>
             ignoredClasses: ["gist"]
         });})
 </script>
+
     
 </article>
 
@@ -909,7 +912,7 @@ AddCleanup函数的原型如下：</p>
     
     <section class="powerby">
         使用 <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a> 构建 <br />
-        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.26.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
+        主题 <b><a href="https://github.com/CaiJimmy/hugo-theme-stack" target="_blank" rel="noopener" data-version="3.30.0">Stack</a></b> 由 <a href="https://jimmycai.com" target="_blank" rel="noopener">Jimmy</a> 设计
     </section>
     <script src="/js/adblock-detection.js" defer></script>
      
@@ -1008,7 +1011,7 @@ AddCleanup函数的原型如下：</p>
                 src="https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js"integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z&#43;KMkF24hUW8WePSA9HM="crossorigin="anonymous"
                 
                 >
-            </script><script type="text/javascript" src="/ts/main.js" defer></script>
+            </script><script type="text/javascript" src="/ts/main.1e9a3bafd846ced4c345d084b355fb8c7bae75701c338f8a1f8a82c780137826.js" defer></script>
 <script>
     (function () {
         const customFont = document.createElement('link');
